@@ -1,0 +1,55 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model JobDescription {
+  id             String        @id @default(uuid())
+  title          String
+  description    String        @db.Text
+  requiredSkills String[]
+  minExperience  Int           @default(0)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  matchResults   MatchResult[]
+
+  @@map("job_descriptions")
+}
+
+model Candidate {
+  id                String        @id @default(uuid())
+  fullName          String
+  email             String?
+  phone             String?
+  rawText           String        @db.Text
+  skills            String[]
+  yearsOfExperience Int           @default(0)
+  education         String?
+  fileName          String
+  fileUrl           String
+  createdAt         DateTime      @default(now())
+  matchResults      MatchResult[]
+
+  @@map("candidates")
+}
+
+model MatchResult {
+  id               String         @id @default(uuid())
+  candidateId      String
+  jobDescriptionId String
+  score            Int
+  summary          String         @db.Text
+  matchedSkills    String[]
+  missingSkills    String[]
+  createdAt        DateTime       @default(now())
+
+  candidate        Candidate      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  jobDescription   JobDescription @relation(fields: [jobDescriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([candidateId, jobDescriptionId])
+  @@map("match_results")
+}
