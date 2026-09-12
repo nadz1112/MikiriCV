@@ -3,9 +3,11 @@
   "version": "1.0.0",
   "description": "Backend API service for CVMikiri with Express, TypeScript, PostgreSQL (Prisma) and Google Gemini AI",
   "main": "dist/server.js",
+  "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
+    "typecheck": "tsc --noEmit",
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",

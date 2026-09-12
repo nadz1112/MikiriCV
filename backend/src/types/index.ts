@@ -23,6 +23,8 @@ export interface CandidateFilterQuery {
   search?: string;
   skills?: string;
   minExp?: string;
+  page?: string;
+  limit?: string;
 }
 
 export interface RunMatchingDto {

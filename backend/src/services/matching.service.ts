@@ -3,6 +3,24 @@ import { geminiModel } from '../config/gemini.js';
 import { RunMatchingDto } from '../types/index.js';
 import { sanitizeAndParseGeminiResponse } from '../utils/geminiParser.js';
 
+async function generateWithRetry(prompt: string, maxRetries = 2): Promise<string> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const geminiResponse = await geminiModel.generateContent(prompt);
+      return geminiResponse.response.text();
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxRetries) {
+        const waitMs = (attempt + 1) * 1500;
+        console.warn(`[Gemini Retry] Lần ${attempt + 1} gặp sự cố, tạm dừng ${waitMs}ms trước khi thử lại...`, err);
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+      }
+    }
+  }
+  throw lastError;
+}
+
 export class MatchingService {
   async runMatching(dto: RunMatchingDto) {
     const { jobDescriptionId, candidateIds } = dto;
@@ -25,12 +43,16 @@ export class MatchingService {
       throw new Error('Không tìm thấy ứng viên nào để thực hiện đối soát');
     }
 
-    const results = [];
+    const results: any[] = [];
+    const BATCH_SIZE = 3; // Giới hạn concurrency = 3 để tránh chạm rate limit mà vẫn xử lý nhanh
 
-    // Xử lý từng ứng viên với Gemini (có thể batch tuần tự để tránh rate limit)
-    for (const candidate of candidates) {
-      try {
-        const prompt = `
+    for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
+      const chunk = candidates.slice(i, i + BATCH_SIZE);
+
+      const chunkResults = await Promise.all(
+        chunk.map(async (candidate) => {
+          try {
+            const prompt = `
 === THÔNG TIN JOB DESCRIPTION (JD) ===
 Tiêu đề vị trí: ${job.title}
 Số năm kinh nghiệm tối thiểu: ${job.minExperience} năm
@@ -52,72 +74,71 @@ Hãy đánh giá mức độ phù hợp và trả về kết quả JSON theo đ�
 }
 `;
 
-        const geminiResponse = await geminiModel.generateContent(prompt);
-        const rawText = geminiResponse.response.text();
-        const parsedResult = sanitizeAndParseGeminiResponse(rawText);
+            const rawText = await generateWithRetry(prompt);
+            const parsedResult = sanitizeAndParseGeminiResponse(rawText);
 
-        // Lưu hoặc cập nhật (Upsert) vào PostgreSQL
-        const savedMatch = await prisma.matchResult.upsert({
-          where: {
-            candidateId_jobDescriptionId: {
-              candidateId: candidate.id,
-              jobDescriptionId: job.id,
-            },
-          },
-          update: {
-            score: parsedResult.score,
-            summary: parsedResult.summary,
-            matchedSkills: parsedResult.matchedSkills,
-            missingSkills: parsedResult.missingSkills,
-          },
-          create: {
-            candidateId: candidate.id,
-            jobDescriptionId: job.id,
-            score: parsedResult.score,
-            summary: parsedResult.summary,
-            matchedSkills: parsedResult.matchedSkills,
-            missingSkills: parsedResult.missingSkills,
-          },
-          include: {
-            candidate: {
-              select: {
-                id: true,
-                fullName: true,
-                email: true,
-                phone: true,
+            // Lưu hoặc cập nhật (Upsert) vào PostgreSQL
+            return await prisma.matchResult.upsert({
+              where: {
+                candidateId_jobDescriptionId: {
+                  candidateId: candidate.id,
+                  jobDescriptionId: job.id,
+                },
               },
-            },
-          },
-        });
+              update: {
+                score: parsedResult.score,
+                summary: parsedResult.summary,
+                matchedSkills: parsedResult.matchedSkills,
+                missingSkills: parsedResult.missingSkills,
+              },
+              create: {
+                candidateId: candidate.id,
+                jobDescriptionId: job.id,
+                score: parsedResult.score,
+                summary: parsedResult.summary,
+                matchedSkills: parsedResult.matchedSkills,
+                missingSkills: parsedResult.missingSkills,
+              },
+              include: {
+                candidate: {
+                  select: {
+                    id: true,
+                    fullName: true,
+                    email: true,
+                    phone: true,
+                  },
+                },
+              },
+            });
+          } catch (err) {
+            console.error(`Lỗi khi chấm điểm ứng viên ${candidate.fullName}:`, err);
+            return await prisma.matchResult.upsert({
+              where: {
+                candidateId_jobDescriptionId: {
+                  candidateId: candidate.id,
+                  jobDescriptionId: job.id,
+                },
+              },
+              update: {
+                score: 0,
+                summary: 'Đã xảy ra lỗi trong quá trình kết nối với Gemini AI. Vui lòng thử lại.',
+                matchedSkills: [],
+                missingSkills: [],
+              },
+              create: {
+                candidateId: candidate.id,
+                jobDescriptionId: job.id,
+                score: 0,
+                summary: 'Đã xảy ra lỗi trong quá trình kết nối với Gemini AI. Vui lòng thử lại.',
+                matchedSkills: [],
+                missingSkills: [],
+              },
+            });
+          }
+        })
+      );
 
-        results.push(savedMatch);
-      } catch (err) {
-        console.error(`Lỗi khi chấm điểm ứng viên ${candidate.fullName}:`, err);
-        // Lưu kết quả fallback tạm thời nếu AI gặp sự cố
-        const fallbackMatch = await prisma.matchResult.upsert({
-          where: {
-            candidateId_jobDescriptionId: {
-              candidateId: candidate.id,
-              jobDescriptionId: job.id,
-            },
-          },
-          update: {
-            score: 0,
-            summary: 'Đã xảy ra lỗi trong quá trình kết nối với Gemini AI. Vui lòng thử lại.',
-            matchedSkills: [],
-            missingSkills: [],
-          },
-          create: {
-            candidateId: candidate.id,
-            jobDescriptionId: job.id,
-            score: 0,
-            summary: 'Đã xảy ra lỗi trong quá trình kết nối với Gemini AI. Vui lòng thử lại.',
-            matchedSkills: [],
-            missingSkills: [],
-          },
-        });
-        results.push(fallbackMatch);
-      }
+      results.push(...chunkResults);
     }
 
     return results;

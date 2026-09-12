@@ -25,10 +25,21 @@ const storage = multer.diskStorage({
 
 const fileFilter = (_req: Express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   const allowedExtensions = ['.pdf', '.docx'];
+  const allowedMimeTypes = [
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/msword',
+    'application/octet-stream', // Một số trình duyệt gửi file docx dưới dạng octet-stream
+  ];
+
   const ext = path.extname(file.originalname).toLowerCase();
 
   if (!allowedExtensions.includes(ext)) {
     return cb(new Error(`Định dạng tệp không được chấp nhận. Hệ thống chỉ hỗ trợ ${allowedExtensions.join(', ')}`));
+  }
+
+  if (file.mimetype && !allowedMimeTypes.includes(file.mimetype)) {
+    return cb(new Error(`Loại nội dung file không hợp lệ (${file.mimetype}). Chỉ chấp nhận tài liệu PDF và DOCX.`));
   }
 
   cb(null, true);

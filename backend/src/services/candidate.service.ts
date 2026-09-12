@@ -17,7 +17,7 @@ export class CandidateService {
         email: parsed.email,
         phone: parsed.phone,
         yearsOfExperience: parsed.yearsOfExperience,
-        skills: parsed.skills,
+        skills: parsed.skills.map((s) => s.toLowerCase()),
         education: parsed.education,
         rawText: parsed.rawText,
         fileName: file.originalname,
@@ -27,7 +27,7 @@ export class CandidateService {
   }
 
   async getFilteredCandidates(filters: CandidateFilterQuery) {
-    const { search, skills, minExp } = filters;
+    const { search, skills, minExp, page, limit } = filters;
 
     // Chuẩn bị điều kiện truy vấn Prisma
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -62,7 +62,8 @@ export class CandidateService {
       }
     }
 
-    return prisma.candidate.findMany({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const queryOptions: any = {
       where,
       orderBy: { createdAt: 'desc' },
       include: {
@@ -73,7 +74,17 @@ export class CandidateService {
           },
         },
       },
-    });
+    };
+
+    const pageNum = page ? parseInt(page, 10) : undefined;
+    const limitNum = limit ? parseInt(limit, 10) : undefined;
+
+    if (pageNum && limitNum && pageNum > 0 && limitNum > 0) {
+      queryOptions.skip = (pageNum - 1) * limitNum;
+      queryOptions.take = limitNum;
+    }
+
+    return prisma.candidate.findMany(queryOptions);
   }
 
   async getCandidateById(id: string) {

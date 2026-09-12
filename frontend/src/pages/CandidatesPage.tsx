@@ -1,8 +1,9 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { useDropzone } from 'react-dropzone';
-import { UploadCloud, Search, Trash2, Mail, Phone, Clock, FileText, CheckCircle2 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { UploadCloud, Search, Trash2, Mail, Phone, Clock, FileText, CheckCircle2, Eye } from 'lucide-react';
 import { useCandidateStore } from '../store/useCandidateStore';
-import { candidateApi } from '../services/candidateApi';
+import { Candidate } from '../types';
+import { UploadModal } from '../components/candidates/UploadModal';
+import { CandidateDetailModal } from '../components/candidates/CandidateDetailModal';
 import toast from 'react-hot-toast';
 
 export const CandidatesPage: React.FC = () => {
@@ -19,7 +20,8 @@ export const CandidatesPage: React.FC = () => {
     deleteCandidate,
   } = useCandidateStore();
 
-  const [uploading, setUploading] = useState(false);
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [inspectCandidate, setInspectCandidate] = useState<Candidate | null>(null);
   const [searchInput, setSearchInput] = useState(filter.search || '');
   const [skillsInput, setSkillsInput] = useState(filter.skills || '');
   const [minExpInput, setMinExpInput] = useState(filter.minExp || '');
@@ -27,33 +29,6 @@ export const CandidatesPage: React.FC = () => {
   useEffect(() => {
     fetchCandidates();
   }, [fetchCandidates]);
-
-  // Dropzone handling
-  const onDrop = useCallback(
-    async (acceptedFiles: File[]) => {
-      if (acceptedFiles.length === 0) return;
-      setUploading(true);
-      try {
-        const res = await candidateApi.upload(acceptedFiles);
-        toast.success(res.message || 'Tải lên CV thành công!');
-        fetchCandidates();
-      } catch {
-        // lỗi đã được xử lý bởi api interceptor
-      } finally {
-        setUploading(false);
-      }
-    },
-    [fetchCandidates]
-  );
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      'application/pdf': ['.pdf'],
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-    },
-    maxSize: 10 * 1024 * 1024, // 10MB
-  });
 
   const handleApplyFilter = (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,7 +67,7 @@ export const CandidatesPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Title & Stats */}
+      {/* Title & Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Hồ sơ Ứng viên (Candidates)</h1>
@@ -100,40 +75,20 @@ export const CandidatesPage: React.FC = () => {
             Tự động bóc tách thông tin từ PDF/DOCX và lọc nhanh bằng quy tắc (Rule-based)
           </p>
         </div>
-        {selectedCandidates.length > 0 && (
-          <div className="flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-xl text-xs font-semibold">
-            <CheckCircle2 className="w-4 h-4" />
-            <span>Đã chọn {selectedCandidates.length} ứng viên</span>
-          </div>
-        )}
-      </div>
-
-      {/* Upload Drag & Drop Area */}
-      <div
-        {...getRootProps()}
-        className={`glass-panel border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
-          isDragActive
-            ? 'border-blue-500 bg-blue-50/50 scale-[1.01]'
-            : 'border-slate-300 hover:border-blue-400 hover:bg-slate-50/50'
-        }`}
-      >
-        <input {...getInputProps()} />
-        <div className="max-w-md mx-auto space-y-3">
-          <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl inline-block shadow-sm">
-            <UploadCloud className="w-8 h-8 mx-auto" />
-          </div>
-          <div>
-            <h3 className="font-semibold text-slate-800 text-sm sm:text-base">
-              {uploading
-                ? 'Đang tải lên và trích xuất dữ liệu...'
-                : isDragActive
-                ? 'Thả các file CV vào đây'
-                : 'Kéo thả file CV vào đây, hoặc bấm để chọn'}
-            </h3>
-            <p className="text-xs text-slate-400 mt-1">
-              Hỗ trợ định dạng .PDF, .DOCX. Dung lượng tối đa 10MB/file.
-            </p>
-          </div>
+        <div className="flex items-center gap-3">
+          {selectedCandidates.length > 0 && (
+            <div className="flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-2 rounded-xl text-xs font-semibold">
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Đã chọn {selectedCandidates.length} hồ sơ</span>
+            </div>
+          )}
+          <button
+            onClick={() => setIsUploadOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl shadow-sm transition"
+          >
+            <UploadCloud className="w-4 h-4" />
+            <span>Tải lên hồ sơ CV</span>
+          </button>
         </div>
       </div>
 
@@ -289,13 +244,22 @@ export const CandidatesPage: React.FC = () => {
                         </div>
                       </td>
                       <td className="p-4 text-right">
-                        <button
-                          onClick={() => handleDelete(c.id, c.fullName)}
-                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                          title="Xóa hồ sơ"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => setInspectCandidate(c)}
+                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                            title="Xem chi tiết hồ sơ & text trích xuất"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(c.id, c.fullName)}
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                            title="Xóa hồ sơ"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -305,6 +269,19 @@ export const CandidatesPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Modal Tải lên CV */}
+      <UploadModal
+        isOpen={isUploadOpen}
+        onClose={() => setIsUploadOpen(false)}
+        onSuccess={() => fetchCandidates()}
+      />
+
+      {/* Modal Xem chi tiết ứng viên */}
+      <CandidateDetailModal
+        candidate={inspectCandidate}
+        onClose={() => setInspectCandidate(null)}
+      />
     </div>
   );
 };

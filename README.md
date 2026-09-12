@@ -75,7 +75,7 @@ DATABASE_URL="postgresql://postgres:postgres@localhost:5432/mikiricv?schema=publ
 
 # Khóa API Google Gemini
 GEMINI_API_KEY="YOUR_GEMINI_API_KEY_HERE"
-GEMINI_MODEL="gemini-3.5-flash"
+GEMINI_MODEL="gemini-2.5-flash"
 
 # Giới hạn dung lượng tải lên
 MAX_FILE_SIZE_MB=10
