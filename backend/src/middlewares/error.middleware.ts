@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import { ApiResponse } from '../types/index.js';
 
+import multer from 'multer';
+
 export function errorHandler(
   err: unknown,
   _req: Request,
@@ -23,8 +25,22 @@ export function errorHandler(
     return;
   }
 
+  if (err instanceof multer.MulterError) {
+    res.status(400).json({
+      success: false,
+      message: `Lỗi tải tệp: ${err.message}`,
+    });
+    return;
+  }
+
   if (err instanceof Error) {
-    res.status(500).json({
+    const isClientFileError =
+      err.message.includes('Định dạng tệp') ||
+      err.message.includes('Loại nội dung file') ||
+      err.message.includes('Kiểu MIME của tệp') ||
+      err.message.includes('Nội dung tệp không hợp lệ');
+
+    res.status(isClientFileError ? 400 : 500).json({
       success: false,
       message: err.message || 'Đã xảy ra lỗi nội bộ máy chủ',
     });

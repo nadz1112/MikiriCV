@@ -107,9 +107,31 @@ const HEADER_NOISE_PATTERNS = [
   /personal\s+information/i,
 ];
 
+function validateFileContent(fileBuffer: Buffer, ext: string): void {
+  if (!fileBuffer || fileBuffer.length === 0) {
+    throw new Error('Tệp rỗng không có nội dung dữ liệu.');
+  }
+
+  if (ext === '.pdf') {
+    // Header PDF chứa '%PDF-' trong 1024 bytes đầu tiên
+    const header = fileBuffer.subarray(0, Math.min(fileBuffer.length, 1024)).toString('latin1');
+    if (!header.includes('%PDF')) {
+      throw new Error('Nội dung tệp không hợp lệ: tệp không phải là tài liệu PDF chuẩn.');
+    }
+  } else if (ext === '.docx') {
+    // DOCX là tệp zip (Office Open XML), bắt đầu bằng magic bytes 'PK' (0x50, 0x4B)
+    if (fileBuffer.length < 4 || fileBuffer[0] !== 0x50 || fileBuffer[1] !== 0x4B) {
+      throw new Error('Nội dung tệp không hợp lệ: tệp không phải là tài liệu DOCX chuẩn.');
+    }
+  }
+}
+
 export async function extractTextFromFile(filePath: string, originalName: string): Promise<string> {
   const ext = path.extname(originalName).toLowerCase();
   const fileBuffer = fs.readFileSync(filePath);
+
+  // Xác thực nội dung tệp (magic bytes) để tránh tệp giả mạo phần mở rộng
+  validateFileContent(fileBuffer, ext);
 
   if (ext === '.pdf') {
     const data = await pdfParse(fileBuffer);
@@ -182,24 +204,55 @@ export function parseCandidateInfo(rawText: string, originalName: string): Extra
   }
 
   // Pattern 2: Nếu không thấy ghi rõ, phân tích các khoảng năm (ví dụ: 2020 - 2023, 2021 - Present)
+  // Gộp các khoảng thời gian bị chồng lấn để tính đúng tổng số năm kinh nghiệm
   if (yearsOfExperience === 0) {
     const currentYear = new Date().getFullYear();
-    const yearRangeRegex = /(20\d{2})\s*[-–]\s*(20\d{2}|nay|hiện tại|present)/gi;
-    let totalYearsFromRanges = 0;
+    const yearRangeRegex = /((?:19|20)\d{2})\s*[-–—]\s*((?:19|20)\d{2}|nay|hiện tại|present)/gi;
+    const intervals: Array<{ start: number; end: number }> = [];
     let match: RegExpExecArray | null;
 
     while ((match = yearRangeRegex.exec(cleanText)) !== null) {
       const startYear = parseInt(match[1], 10);
       const endYearStr = match[2].toLowerCase();
-      const endYear = /^(nay|hiện tại|present)$/.test(endYearStr) ? currentYear : parseInt(endYearStr, 10);
+      let endYear = /^(nay|hiện tại|present)$/.test(endYearStr) ? currentYear : parseInt(endYearStr, 10);
 
-      if (endYear >= startYear && startYear >= 1990) {
-        totalYearsFromRanges += Math.max(1, endYear - startYear);
+      if (endYear > currentYear) {
+        endYear = currentYear;
+      }
+
+      if (startYear >= 1990 && endYear >= startYear && startYear <= currentYear) {
+        intervals.push({ start: startYear, end: endYear });
       }
     }
 
-    if (totalYearsFromRanges > 0) {
-      yearsOfExperience = Math.min(totalYearsFromRanges, 30);
+    if (intervals.length > 0) {
+      // Sắp xếp các khoảng theo năm bắt đầu tăng dần
+      intervals.sort((a, b) => a.start - b.start || a.end - b.end);
+
+      // Gộp các khoảng thời gian bị chồng lấn hoặc liền kề
+      const mergedIntervals: Array<{ start: number; end: number }> = [];
+      for (const interval of intervals) {
+        if (mergedIntervals.length === 0) {
+          mergedIntervals.push({ ...interval });
+        } else {
+          const last = mergedIntervals[mergedIntervals.length - 1];
+          if (interval.start <= last.end) {
+            last.end = Math.max(last.end, interval.end);
+          } else {
+            mergedIntervals.push({ ...interval });
+          }
+        }
+      }
+
+      // Tính tổng số năm kinh nghiệm từ các khoảng đã gộp
+      let totalYearsFromRanges = 0;
+      for (const interval of mergedIntervals) {
+        totalYearsFromRanges += Math.max(1, interval.end - interval.start);
+      }
+
+      if (totalYearsFromRanges > 0) {
+        yearsOfExperience = Math.min(totalYearsFromRanges, 30);
+      }
     }
   }
 

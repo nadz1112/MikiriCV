@@ -1,6 +1,6 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { UploadCloud, X, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
+import { UploadCloud, X, FileText, CheckCircle2 } from 'lucide-react';
 import { candidateApi } from '../../services/candidateApi';
 import toast from 'react-hot-toast';
 
@@ -13,6 +13,20 @@ interface UploadModalProps {
 export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+
+  // Đặt lại danh sách tệp mỗi khi modal chuyển sang trạng thái đóng
+  useEffect(() => {
+    if (!isOpen) {
+      setSelectedFiles([]);
+      setIsUploading(false);
+    }
+  }, [isOpen]);
+
+  const handleClose = () => {
+    if (isUploading) return;
+    setSelectedFiles([]);
+    onClose();
+  };
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
@@ -57,7 +71,14 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSuc
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isUploading) {
+          handleClose();
+        }
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+    >
       <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-100 p-6 space-y-4 animate-in fade-in zoom-in duration-200">
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2">
@@ -70,7 +91,8 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSuc
             </div>
           </div>
           <button
-            onClick={onClose}
+            type="button"
+            onClick={handleClose}
             disabled={isUploading}
             className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg transition"
           >
@@ -132,7 +154,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSuc
         <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             disabled={isUploading}
             className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
           >

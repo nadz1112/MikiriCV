@@ -38,7 +38,13 @@ const fileFilter = (_req: Express.Request, file: Express.Multer.File, cb: multer
     return cb(new Error(`Định dạng tệp không được chấp nhận. Hệ thống chỉ hỗ trợ ${allowedExtensions.join(', ')}`));
   }
 
-  if (file.mimetype && !allowedMimeTypes.includes(file.mimetype)) {
+  // Từ chối nếu mimetype bị thiếu hoặc rỗng
+  if (!file.mimetype || typeof file.mimetype !== 'string' || file.mimetype.trim() === '') {
+    return cb(new Error('Kiểu MIME của tệp bị thiếu hoặc rỗng. Vui lòng tải lên tệp hợp lệ.'));
+  }
+
+  const normalizedMime = file.mimetype.trim().toLowerCase();
+  if (!allowedMimeTypes.includes(normalizedMime)) {
     return cb(new Error(`Loại nội dung file không hợp lệ (${file.mimetype}). Chỉ chấp nhận tài liệu PDF và DOCX.`));
   }
 

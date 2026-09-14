@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { Request, Response, NextFunction } from 'express';
 import { candidateService } from '../services/candidate.service.js';
 import { ApiResponse } from '../types/index.js';
@@ -23,6 +24,14 @@ export class CandidateController {
           const candidate = await candidateService.processAndSaveUploadedFile(file);
           results.push(candidate);
         } catch (err) {
+          // Xóa file rác trên đĩa nếu file bị từ chối hoặc lỗi xử lý
+          if (file.path && fs.existsSync(file.path)) {
+            try {
+              fs.unlinkSync(file.path);
+            } catch {
+              // Bỏ qua lỗi xóa tệp
+            }
+          }
           errors.push({
             fileName: file.originalname,
             error: err instanceof Error ? err.message : 'Lỗi không xác định',
