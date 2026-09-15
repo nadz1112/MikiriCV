@@ -86,7 +86,7 @@ flowchart LR
 ```
 * Vì FR3 không tốn phí AI, giao diện phải phản hồi **tức thời** — không hiển thị spinner cho thao tác lọc, chỉ debounce nhẹ để tránh gọi API dồn dập khi gõ nhanh.
 
-#### d) Luồng FR4 / US-04 — AI Matching (Gemini/Claude)
+#### d) Luồng FR4 / US-04 — AI Matching (Gemini)
 ```mermaid
 flowchart TD
     A[Floating Action Bar: 'Chạy AI Matching cho N ứng viên'] --> B[Modal xác nhận: hiện JD đang chọn + số CV + ước tính thời gian]
