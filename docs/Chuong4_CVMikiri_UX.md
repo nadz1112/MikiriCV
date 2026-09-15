@@ -123,7 +123,7 @@ flowchart LR
 ```
 * Vì FR3 không tốn phí AI, giao diện phải phản hồi **tức thời** — không hiển thị spinner cho thao tác lọc, chỉ debounce nhẹ để tránh gọi API dồn dập khi gõ nhanh.
 
-#### d) Luồng FR4 / US-04 — AI Matching (Gemini/Claude)
+#### d) Luồng FR4 / US-04 — AI Matching (Google Gemini)
 > **Ghi chú khắc phục 2 vấn đề đã phát hiện ở 4.4.5**: (1) bổ sung thao tác **Dừng/Huỷ giữa chừng** ngay sau khi batch bắt đầu chạy, để không lãng phí token khi người dùng chọn nhầm một lô lớn (đúng NFR3/Mục tiêu 3 — tối ưu chi phí AI); (2) sửa lại thông báo tổng kết để **phản ánh đúng số lượng thành công/thất bại thực tế**, thay vì luôn báo "N/N" ngay cả khi có ứng viên rơi vào nhánh lỗi sau retry.
 
 ```mermaid
