@@ -33,7 +33,7 @@ flowchart TD
     L --> M[Theo dõi tiến trình xử lý theo lô]
     M --> N[US-05: Xem Bảng xếp hạng / Dashboard]
     N --> O{Ra quyết định}
-    O -- Phù hợp --> P[Đánh dấu / Xuất danh sách mời phỏng vấn]
+    O -- Phù hợp --> P[Giữ ứng viên trong Bảng xếp hạng, tiến hành liên hệ mời phỏng vấn ngoài hệ thống]
     O -- Chưa đạt --> Q[US-06: Xoá ứng viên không phù hợp]
     O -- Cần xem thêm --> N
     P --> R([Kết thúc phiên làm việc])
