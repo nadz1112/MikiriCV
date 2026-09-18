@@ -4,16 +4,18 @@
 ## 4.4 AI Đánh giá Thiết kế (AI Design Review)
 
 ### 4.4.1 Mục đích
-Trước khi chuyển Prototype (4.3) thành sản phẩm code chính thức, nhóm sử dụng AI (Claude) như một **"reviewer thiết kế cấp hai"** — độc lập với người đã tự thiết kế — nhằm phát hiện sớm các vấn đề về khả dụng (usability), khả năng tiếp cận (accessibility) và tính nhất quán trước khi tốn công sức phát triển.
+Trước khi chuyển Prototype (4.3) thành sản phẩm code chính thức, nhóm sử dụng AI (Google Gemini) như một **"reviewer thiết kế cấp hai"** — độc lập với người đã tự thiết kế — nhằm phát hiện sớm các vấn đề về khả dụng (usability), khả năng tiếp cận (accessibility) và tính nhất quán trước khi tốn công sức phát triển.
 
 > **Lưu ý phạm vi**: AI Design Review đóng vai trò **bổ sung**, không thay thế việc test người dùng thật với Persona 1 & 2. AI giỏi ở việc quét lỗi có tính hệ thống (thiếu trạng thái, vi phạm heuristic phổ biến) nhưng không thay được cảm nhận trải nghiệm thực tế của HR/Recruiter.
+>
+> **Ghi chú khắc phục nhà cung cấp AI (bug-risk, đã sửa)**: Bản trước dùng "Claude" làm công cụ review, trong khi PRD Chương 3 (3.2.1) chỉ định **Google Gemini** là AI Engine chính thức của sản phẩm — dùng nhà cung cấp khác cho quy trình review dễ gây nhầm lẫn rằng đây là một phần của hợp đồng AI sản phẩm. Mục này nay dùng thống nhất **Google Gemini** làm ví dụ mặc định, đồng thời làm rõ: AI Design Review là một **công cụ quy trình nội bộ** (dùng để chấm UX của wireframe/prototype), hoàn toàn tách biệt khỏi **AI Matching Engine trong FR4** (dùng để chấm điểm CV ↔ JD khi sản phẩm chạy thật). Nếu về sau nhóm muốn dùng một nhà cung cấp LLM khác riêng cho việc review thiết kế (không ảnh hưởng tới hợp đồng AI của sản phẩm), cần ghi chú rõ đây là lựa chọn công cụ nội bộ, không phải thay đổi AI Engine của CVMikiri.
 
 ### 4.4.2 Quy trình đưa thiết kế vào AI Review
 
 ```mermaid
 flowchart TD
     A[Chụp ảnh / xuất mô tả từng màn hình Wireframe-Prototype] --> B[Đóng gói kèm ngữ cảnh: Persona, FR liên quan, Luồng ở 4.1]
-    B --> C[Gửi Prompt review tới Claude API]
+    B --> C[Gửi Prompt review tới Google Gemini API]
     C --> D[Nhận báo cáo: Điểm mạnh / Vấn đề / Mức độ nghiêm trọng / Đề xuất sửa]
     D --> E[Đội Product/Design phân loại: Sửa ngay - Backlog - Bỏ qua có lý do]
     E --> F[Cập nhật Wireframe/Prototype]
@@ -36,7 +38,7 @@ AI được yêu cầu chấm từng màn hình theo khung 10 nguyên tắc kh�
 | 9 | Giúp người dùng nhận diện, chẩn đoán, phục hồi lỗi | Thông báo lỗi "429 Too Many Requests" có được dịch thành ngôn ngữ nghiệp vụ dễ hiểu không? |
 | 10 | Trợ giúp & tài liệu | Có tooltip giải thích ý nghĩa điểm số 0-100 ngay lần đầu người dùng thấy không? |
 
-### 4.4.4 Mẫu Prompt gửi AI Review (đưa vào Claude API)
+### 4.4.4 Mẫu Prompt gửi AI Review (đưa vào Google Gemini API)
 
 ```text
 Bạn là một chuyên gia UX Reviewer cấp cao, có kinh nghiệm đánh giá sản phẩm B2B SaaS
@@ -67,7 +69,7 @@ Trả lời bằng tiếng Việt, súc tích, dùng bảng cho phần chấm đ
 | 9. Nhận diện & phục hồi lỗi | 3 | Thông báo "sai định dạng" tốt, nhưng khi AI lỗi 429 cần thông điệp kiểu "Hệ thống đang xử lý quá nhiều hồ sơ cùng lúc, vui lòng thử lại sau ít phút" thay vì mã lỗi kỹ thuật |
 
 **Vấn đề nghiêm trọng nhất được AI gắn cờ (Critical):**
-> *"Floating Action Bar hiện chỉ có nút 'Chạy AI Matching', không có cách nào huỷ một tác vụ AI Matching đang chạy dở cho hàng loạt CV. Với NFR2 (tối ưu chi phí AI), việc gọi nhầm 1 lô lớn không thể huỷ giữa chừng gây lãng phí token trực tiếp — nên bổ sung nút 'Dừng' xuất hiện thay thế nút Chạy trong lúc xử lý."*
+> *"Floating Action Bar hiện chỉ có nút 'Chạy AI Matching', không có cách nào huỷ một tác vụ AI Matching đang chạy dở cho hàng loạt CV. Với **Product Goal 3 / KR3.1** (tối ưu chi phí AI, PRD 3.1.5), việc gọi nhầm 1 lô lớn không thể huỷ giữa chừng gây lãng phí token trực tiếp — nên bổ sung nút 'Dừng' xuất hiện thay thế nút Chạy trong lúc xử lý."*
 
 > **Cập nhật trạng thái xử lý**: Vấn đề Critical này đã được đưa ngược lại vào luồng chính ở mục 4.1.3(d) — bổ sung nút "Dừng" thay thế nút "Chạy AI Matching" trong lúc xử lý, cùng với việc sửa lại thông báo tổng kết để phản ánh đúng số ứng viên thành công/lỗi/đã huỷ thay vì luôn báo "N/N". Đây là ví dụ cho quy tắc ở 4.4.6: một phát hiện Critical từ AI Review **phải** được đưa ngược lại vào bản luồng chính thức trước khi coi là "đã đóng", không chỉ dừng ở mức ghi nhận trong báo cáo.
 

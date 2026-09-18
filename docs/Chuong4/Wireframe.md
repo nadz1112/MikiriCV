@@ -65,7 +65,7 @@ Grid hệ thống: **Bố cục 12-cột**, sidebar cố định 240px (desktop)
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│  Bảng xếp hạng: Senior Fullstack Developer        [Xuất báo cáo]  │
+│  Bảng xếp hạng: Senior Fullstack Developer                        │
 ├──────────────────────────────────────────────────────────────────┤
 │ [Biểu đồ cột: phân bổ điểm  <50 | 50-70 | 70-85 | >85]  (Recharts)│
 ├──────────────────────────────────────────────────────────────────┤
@@ -73,6 +73,8 @@ Grid hệ thống: **Bố cục 12-cột**, sidebar cố định 240px (desktop)
 │  #2  🟡 62  Trần Thị Bình    React, TS                  [Xem >]   │
 └──────────────────────────────────────────────────────────────────┘
 ```
+> **Ghi chú khắc phục CTA ngoài phạm vi MVP (broader-impact, đã sửa)**: Bản trước hiển thị nút **"Xuất báo cáo"** ở góc phải header như một hành động đang hoạt động (active CTA). Đây là mâu thuẫn trực tiếp với quyết định đã chốt ở Master Flow (4.1.2) và Phần 3.2.2.B của PRD: chức năng Export **không có FR, không có API endpoint**, và được xếp vào roadmap mở rộng (Wave 3). Nếu Frontend code thẳng theo wireframe có nút này, sẽ tạo ra một CTA không có hành vi/backend hỗ trợ. Nút đã được **gỡ khỏi wireframe MVP**; khi Wave 3 (Export) được chính thức đặc tả (FR mới + endpoint `GET /api/jobs/:id/export?format=xlsx|pdf` hoặc tương đương), nút này mới được thêm lại vào đúng vị trí này kèm trạng thái loading/lỗi riêng.
+>
 > **Ghi chú khắc phục mâu thuẫn hợp đồng (bug-risk, đã sửa lại)**: Bản trước đổi bucket biểu đồ thành 3 nhóm `<50 / 50–79 / ≥80` để "khớp" badge, nhưng làm sai lệch với **hợp đồng FR5.5 và endpoint `GET /api/jobs/:id/stats` đã đặc tả** ở PRD Chương 3 (3.3.1), vốn trả về đúng **4 nhóm**: `Dưới 50`, `50-70`, `70-85`, `Trên 85`. Nếu chỉ sửa phía wireframe mà không sửa API thật, backend triển khai theo PRD sẽ trả 4 nhóm nhưng UI chỉ có chỗ hiển thị 3 nhóm → dữ liệu bị dồn sai hoặc mất mát khi vẽ biểu đồ.
 >
 > **Hướng xử lý đã chọn**: theo phương án *"giữ 4 nhóm trong wireframe và ánh xạ badge riêng"* — biểu đồ phân bố quay lại đúng 4 bucket theo hợp đồng API hiện có (**không cần sửa backend**), còn **badge màu của từng dòng ứng viên** (🟢≥80 / 🟡50-79 / 🔴<50) tiếp tục dùng đúng 3 ngưỡng đã định nghĩa ở US-05/4.2.2 — đây là **hai lớp thông tin độc lập phục vụ hai mục đích khác nhau**: biểu đồ mô tả phân bố tổng thể theo đúng response `stats`, badge mô tả xếp loại nhanh cho từng cá nhân theo đúng response `leaderboard`. Hai lớp này **không bắt buộc phải trùng khớp ranh giới** — ví dụ một CV điểm 82 sẽ rơi vào bucket biểu đồ "70-85" nhưng vẫn hiển thị badge 🟢 ở dòng riêng của nó; đây là hành vi được kỳ vọng (by design), cần được ghi chú rõ trong tài liệu bàn giao Frontend để tránh hiểu nhầm là lỗi hiển thị.
@@ -88,4 +90,3 @@ Grid hệ thống: **Bố cục 12-cột**, sidebar cố định 240px (desktop)
 > **Khuyến nghị theo dõi riêng**: Biểu đồ phân bố (4 bucket, đúng FR5.5/`GET /api/jobs/:id/stats`) và badge màu từng dòng (3 ngưỡng, đúng US-05) là **hai lớp thông tin độc lập, không cần và không nên gộp chung ngưỡng** — xem phân tích chi tiết tại 4.2.4. Không cần sửa FR5.5 hay endpoint `stats` hiện có; chỉ cần ghi rõ trong tài liệu bàn giao Frontend rằng đây là hai cách phân loại khác mục đích để tránh QA/Dev hiểu nhầm là lỗi.
 
 ---
-
