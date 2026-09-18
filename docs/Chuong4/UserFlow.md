@@ -42,7 +42,7 @@ flowchart TD
 #### a) Luồng FR1 / US-01 — Tạo, Xem, Sửa & Xoá JD
 > **Ghi chú phạm vi**: FR1 không chỉ dừng ở tạo mới (FR1.1) mà còn bắt buộc phải có xem danh sách/chi tiết (FR1.2), xoá (FR1.3) và sửa (FR1.4). Luồng dưới đây bổ sung đầy đủ các nhánh Xem — Sửa — Xoá còn thiếu, để bản thiết kế cung cấp đủ hành vi cần triển khai và kịch bản QA tương ứng với các Gherkin Scenario ở US-01 (bao gồm cả kịch bản "Xoá JD đã có MatchResult").
 >
-> ⚠️ **Cảnh báo thiếu hợp đồng API (bug-risk)**: Hợp đồng RESTful hiện có ở mục 3.5.2 (`PRD_CVMikiri.md`) **chỉ đặc tả `POST /api/jobs`, `GET /api/jobs` (danh sách) và `DELETE /api/jobs/:id`** — chưa có `PUT /api/jobs/:id` (phục vụ nhánh Sửa) lẫn `GET /api/jobs/:id` (phục vụ Drawer chi tiết với mô tả đầy đủ + số ứng viên đã gắn). Hai nhánh này trong sơ đồ dưới đây **chưa có hợp đồng backend tương ứng** và **không được triển khai Frontend** cho tới khi hai endpoint được bổ sung chính thức theo đặc tả tại **Phụ lục 4.1.5**. Trước khi đó, nhánh Sửa/Xem chi tiết chỉ tồn tại ở mức thiết kế (wireframe/prototype), chưa đưa vào Sprint code thật.
+> ⚠️ **Cảnh báo thiếu hợp đồng API (bug-risk)**: Hợp đồng RESTful hiện có ở mục 3.5.2 (`PRD_CVMikiri.md`) đã đặc tả `POST /api/jobs`, `GET /api/jobs` (danh sách), `PUT /api/jobs/:id` và `DELETE /api/jobs/:id` — chỉ chưa có `GET /api/jobs/:id` (phục vụ Drawer chi tiết với mô tả đầy đủ + số ứng viên đã gắn). Nhánh Xem chi tiết trong sơ đồ dưới đây **chưa có hợp đồng backend tương ứng** và **không được triển khai Frontend** cho tới khi endpoint được bổ sung chính thức theo đặc tả tại **Phụ lục 4.1.5**. Trước khi đó, nhánh Xem chi tiết chỉ tồn tại ở mức thiết kế (wireframe/prototype), chưa đưa vào Sprint code thật.
 
 ```mermaid
 flowchart TD
@@ -78,7 +78,7 @@ flowchart TD
 ```
 * **Điểm chạm cảm xúc (Emotional touchpoint)**: Toast "Tạo Job Description thành công" xuất hiện góc phải dưới, tự ẩn sau 3s, không chặn thao tác tiếp theo — giữ nhịp làm việc liên tục cho HR đang xử lý nhiều JD cùng lúc.
 * **Ràng buộc QA quan trọng**: Modal xác nhận xoá JD **phải hiển thị rõ số lượng `MatchResult` sẽ bị cascade xoá** trước khi người dùng bấm xác nhận, đúng theo Gherkin "Xóa Job Description và các kết quả liên quan" (3.4/US-01) — tránh xoá nhầm dữ liệu chấm điểm đã tốn chi phí AI.
-* Nhánh Sửa (FR1.4) tái sử dụng cùng Modal/Form với nhánh Tạo, chỉ khác ở việc prefill dữ liệu và gọi `PUT` thay vì `POST` — giúp giảm chi phí phát triển UI trùng lặp, **với điều kiện** endpoint `PUT /api/jobs/:id` đã được bổ sung theo Phụ lục 4.1.5.
+* Nhánh Sửa (FR1.4) tái sử dụng cùng Modal/Form với nhánh Tạo, chỉ khác ở việc prefill dữ liệu và gọi `PUT` thay vì `POST` — giúp giảm chi phí phát triển UI trùng lặp qua endpoint `PUT /api/jobs/:id` đã được chuẩn hoá trong hợp đồng backend.
 
 #### b) Luồng FR2 / US-02 — Upload & Trích xuất CV hàng loạt
 > **Ghi chú rủi ro lỗi (bug risk) đã khắc phục**: Bản luồng trước chỉ xử lý lỗi validate phía client (sai định dạng/quá dung lượng) và lỗi trích xuất phía backend, nhưng **bỏ sót nhánh khi chính request `POST upload` thất bại** — do mất mạng, timeout, hoặc server trả 4xx/5xx trước khi kịp xử lý file. Khi đó một file đang ở trạng thái `uploading` sẽ không có lối chuyển tiếp, khiến progress bar treo vô thời hạn — vi phạm nguyên tắc "mỗi file là một đơn vị trạng thái độc lập". Sơ đồ dưới đây bổ sung trạng thái `failed` cho riêng lỗi request, kèm khả năng retry theo từng file.
@@ -91,6 +91,9 @@ flowchart TD
 flowchart TD
     A[Kéo-thả hoặc Click chọn nhiều file] --> B[Client kiểm tra nhanh: đuôi file + dung lượng]
     B -- File không hợp lệ --> C[failed - Đánh dấu đỏ ngay trong danh sách, lý do: 'Sai định dạng/Quá 10MB', KHÔNG gửi lên server]
+    C --> C2{Xử lý file lỗi client}
+    C2 -- Chọn file thay thế hợp lệ --> B
+    C2 -- Xoá khỏi danh sách --> CheckBatch
     B -- File hợp lệ --> B2["Client sinh clientFileId (UUID) cho mỗi file — dùng làm idempotency key"]
     B2 --> D[pending → Thêm vào hàng đợi upload]
     D --> E[uploading → hiển thị progress bar riêng từng file]
@@ -106,25 +109,24 @@ flowchart TD
     M --> N
     N --> O["Cập nhật icon theo extractionStatus: tick xanh (SUCCESS) / cảnh báo vàng (FAILED, cần xem lại thủ công)"]
 
-    %% Luồng tổng hợp tiến trình theo lô ban đầu (Khắc phục bug-risk Nhận xét 3)
-    C --> CheckBatch{"Tất cả file trong lô đã hoàn tất lượt xử lý đầu?"}
-    O --> CheckSource{Nguồn gốc file?}
-    CheckSource -- Thuộc đợt tải lên gốc --> CheckBatch
-    H --> CheckSourceH{Nguồn gốc file?}
-    CheckSourceH -- Thuộc đợt tải lên gốc --> CheckBatch
-    I --> CheckSourceI{Nguồn gốc file?}
-    CheckSourceI -- Thuộc đợt tải lên gốc --> CheckBatch
+    %% Luồng tổng hợp tiến trình theo lô ban đầu (Khắc phục bug-risk Nhận xét 3 & 4)
+    O --> CheckBatch{"Tất cả file trong lô đã đạt trạng thái dừng?"}
+    H --> CheckBatch
+    I --> CheckBatch
     CheckBatch -- Đã hoàn tất cả lô --> P["Toast tổng kết lô ban đầu: 'Đã xử lý N/M hồ sơ thành công, X thất bại, Y cần xem lại (trích xuất lỗi)'"]
 
-    %% Luồng Thử lại độc lập theo từng file (Per-file Retry)
+    %% Luồng Thử lại độc lập theo từng file (Per-file Retry - Khắc phục bug-risk Nhận xét 3)
     H -- Bấm 'Thử lại' riêng file --> R_File["Đặt lại trạng thái file: pending_retry; trừ 1 khỏi failed_count"]
     I -- Bấm 'Thử lại' riêng file --> R_File
-    R_File --> D
-    CheckSource -- Là file Thử lại --> P_RetrySuccess["Toast riêng file: 'Đã tải lên và xử lý lại thành công file' + cập nhật thanh số liệu"]
-    CheckSourceH -- Vẫn lỗi sau Thử lại --> P_RetryFail["Toast riêng file: 'Thử lại thất bại, vui lòng kiểm tra kết nối'"]
-    CheckSourceI -- Vẫn lỗi sau Thử lại --> P_RetryFail
+    R_File --> D_Retry[pending_retry → Thêm lại vào hàng đợi upload]
+    D_Retry --> E_Retry[uploading → hiển thị progress bar riêng từng file]
+    E_Retry --> F_Retry["POST /api/candidates/upload kèm clientFileId cũ (retry)"]
+    F_Retry --> G_Retry{Retry request có hoàn tất được không?}
+    G_Retry -- Mất mạng/Timeout/4xx/5xx --> P_RetryFail["Toast riêng file: 'Thử lại thất bại, vui lòng kiểm tra kết nối'"]
+    G_Retry -- 2xx thành công --> J
+    O -- Là file sau Thử lại --> P_RetrySuccess["Toast riêng file: 'Đã tải lên và xử lý lại thành công file' + cập nhật thanh số liệu"]
 ```
-* **Máy trạng thái từng file (per-file state machine)**: `pending → uploading → (parsed | warning | failed)`. Trạng thái `failed` được tách riêng theo 2 nguồn gốc (validate client vs. lỗi request/network) để thông báo đúng nguyên nhân, nhưng đều dẫn tới cùng một hành vi phục hồi: **nút "Thử lại" cho riêng file đó**, không bắt người dùng upload lại toàn bộ lô.
+* **Máy trạng thái từng file (per-file state machine)**: `pending → uploading → (parsed | warning | failed)`. Trạng thái `failed` được tách riêng theo 2 nguồn gốc: (1) validate client (file sai định dạng/quá dung lượng) cung cấp tuỳ chọn "Chọn file thay thế" hoặc "Xoá khỏi danh sách" — không bị nghẽn ở ngõ cụt; (2) lỗi request/network cung cấp nút "Thử lại" độc lập cho riêng file đó để retry mà không bắt người dùng upload lại toàn bộ lô.
 * **Chống trùng lặp khi retry (bug-risk fix)**: Mỗi file được gán `clientFileId` **ngay từ phía client trước khi gửi** và gửi kèm trong mỗi request/retry. Backend dùng `clientFileId` làm khoá `upsert` khi lưu `Candidate` + file vật lý — nếu request trước đó thực ra đã lưu thành công nhưng client không nhận được response (timeout), lần gửi lại với cùng `clientFileId` sẽ **ghi đè**, không tạo bản ghi thứ hai.
 * **Phân biệt rõ trạng thái trích xuất (bug-risk fix)**: `Candidate` được lưu kèm trường `extractionStatus` (`SUCCESS` | `FAILED`). Bản ghi `FAILED` **vẫn hiển thị trong danh sách** (để HR biết file đã upload) nhưng được đánh dấu rõ "cần xem lại thủ công" và **không được tính là "đã xử lý thành công"** trong toast tổng kết — tránh việc một CV không đọc được nội dung bị âm thầm trộn lẫn với các CV hợp lệ.
 * **Đồng bộ tổng kết lô & Luồng Thử lại độc lập (bug-risk fix - Nhận xét 3)**: Toast tổng kết lô chỉ phát ra khi **100% file trong đợt kéo-thả ban đầu** đã rời khỏi trạng thái `uploading` (rơi vào một trong các trạng thái dừng: `parsed`, `warning`, `failed`). Khi người dùng bấm "Thử lại" trên từng file lỗi, file đó chuyển trạng thái về `pending_retry` (tạm trừ khỏi số lượng thất bại hiện hữu). Kết quả retry chỉ phát toast thông báo riêng cho file đó và đồng bộ cập nhật lại số liệu thanh tiến trình, **tuyệt đối không phát lại Toast tổng kết của toàn bộ lô** để tránh xung đột dữ liệu và gây hoang mang cho người dùng.

@@ -39,6 +39,7 @@ flowchart TD
     P --> R([Kết thúc phiên làm việc])
     Q --> N
 ```
+> **Ghi chú phạm vi (đã hiệu chỉnh)**: Nhánh "Phù hợp" ở bản trước dẫn tới hành động "Đánh dấu / Xuất danh sách mời phỏng vấn" — đây là chức năng **chưa được định nghĩa** ở bất kỳ FR nào trong phạm vi MVP (3.2.2.A) và cũng không có API endpoint tương ứng ở 3.5.2. Để tránh Frontend triển khai một CTA không có backend contract, Master Flow chỉ dừng ở việc **giữ nguyên ứng viên trong Bảng xếp hạng** (hành vi mặc định, không cần thêm FR) — việc liên hệ mời phỏng vấn được thực hiện ngoài hệ thống ở giai đoạn MVP. Chức năng "Đánh dấu / Shortlist" và "Xuất báo cáo Excel/PDF" đã được đặt đúng chỗ trong roadmap mở rộng (Wave 1: Shortlist management; Wave 3: Export) và **cần được bổ sung FR, API, định dạng xuất, cùng trạng thái lỗi tương ứng** trước khi đưa vào bất kỳ luồng thiết kế nào ở các phiên bản sau.
 
 ### 4.1.3 Luồng chi tiết theo từng User Story
 
@@ -64,6 +65,9 @@ flowchart LR
 flowchart TD
     A[Kéo-thả hoặc Click chọn nhiều file] --> B[Client kiểm tra nhanh: đuôi file + dung lượng]
     B -- File không hợp lệ --> C[failed - Đánh dấu đỏ ngay trong danh sách, lý do: 'Sai định dạng/Quá 10MB', KHÔNG gửi lên server]
+    C --> C2{Xử lý file lỗi client}
+    C2 -- Chọn file thay thế hợp lệ --> B
+    C2 -- Xoá khỏi danh sách --> CheckBatch
     B -- File hợp lệ --> B2["Client sinh clientFileId (UUID) cho mỗi file — dùng làm idempotency key"]
     B2 --> D[pending → Thêm vào hàng đợi upload]
     D --> E[uploading → hiển thị progress bar riêng từng file]
@@ -79,25 +83,24 @@ flowchart TD
     M --> N
     N --> O["Cập nhật icon theo extractionStatus: tick xanh (SUCCESS) / cảnh báo vàng (FAILED, cần xem lại thủ công)"]
 
-    %% Luồng tổng hợp tiến trình theo lô ban đầu (Khắc phục bug-risk Nhận xét 3)
-    C --> CheckBatch{"Tất cả file trong lô đã hoàn tất lượt xử lý đầu?"}
-    O --> CheckSource{Nguồn gốc file?}
-    CheckSource -- Thuộc đợt tải lên gốc --> CheckBatch
-    H --> CheckSourceH{Nguồn gốc file?}
-    CheckSourceH -- Thuộc đợt tải lên gốc --> CheckBatch
-    I --> CheckSourceI{Nguồn gốc file?}
-    CheckSourceI -- Thuộc đợt tải lên gốc --> CheckBatch
+    %% Luồng tổng hợp tiến trình theo lô ban đầu (Khắc phục bug-risk Nhận xét 3 & 4)
+    O --> CheckBatch{"Tất cả file trong lô đã đạt trạng thái dừng?"}
+    H --> CheckBatch
+    I --> CheckBatch
     CheckBatch -- Đã hoàn tất cả lô --> P["Toast tổng kết lô ban đầu: 'Đã xử lý N/M hồ sơ thành công, X thất bại, Y cần xem lại (trích xuất lỗi)'"]
 
-    %% Luồng Thử lại độc lập theo từng file (Per-file Retry)
+    %% Luồng Thử lại độc lập theo từng file (Per-file Retry - Khắc phục bug-risk Nhận xét 3)
     H -- Bấm 'Thử lại' riêng file --> R_File["Đặt lại trạng thái file: pending_retry; trừ 1 khỏi failed_count"]
     I -- Bấm 'Thử lại' riêng file --> R_File
-    R_File --> D
-    CheckSource -- Là file Thử lại --> P_RetrySuccess["Toast riêng file: 'Đã tải lên và xử lý lại thành công file' + cập nhật thanh số liệu"]
-    CheckSourceH -- Vẫn lỗi sau Thử lại --> P_RetryFail["Toast riêng file: 'Thử lại thất bại, vui lòng kiểm tra kết nối'"]
-    CheckSourceI -- Vẫn lỗi sau Thử lại --> P_RetryFail
+    R_File --> D_Retry[pending_retry → Thêm lại vào hàng đợi upload]
+    D_Retry --> E_Retry[uploading → hiển thị progress bar riêng từng file]
+    E_Retry --> F_Retry["POST /api/candidates/upload kèm clientFileId cũ (retry)"]
+    F_Retry --> G_Retry{Retry request có hoàn tất được không?}
+    G_Retry -- Mất mạng/Timeout/4xx/5xx --> P_RetryFail["Toast riêng file: 'Thử lại thất bại, vui lòng kiểm tra kết nối'"]
+    G_Retry -- 2xx thành công --> J
+    O -- Là file sau Thử lại --> P_RetrySuccess["Toast riêng file: 'Đã tải lên và xử lý lại thành công file' + cập nhật thanh số liệu"]
 ```
-* **Máy trạng thái từng file (per-file state machine)**: `pending → uploading → (parsed | warning | failed)`. Trạng thái `failed` được tách riêng theo 2 nguồn gốc (validate client vs. lỗi request/network) để thông báo đúng nguyên nhân, nhưng đều dẫn tới cùng một hành vi phục hồi: **nút "Thử lại" cho riêng file đó**, không bắt người dùng upload lại toàn bộ lô.
+* **Máy trạng thái từng file (per-file state machine)**: `pending → uploading → (parsed | warning | failed)`. Trạng thái `failed` được tách riêng theo 2 nguồn gốc: (1) validate client (file sai định dạng/quá dung lượng) cung cấp tuỳ chọn "Chọn file thay thế" hoặc "Xoá khỏi danh sách" — không bị nghẽn ở ngõ cụt; (2) lỗi request/network cung cấp nút "Thử lại" độc lập cho riêng file đó để retry mà không bắt người dùng upload lại toàn bộ lô.
 * **Chống trùng lặp khi retry (bug-risk fix)**: Mỗi file được gán `clientFileId` **ngay từ phía client trước khi gửi** và gửi kèm trong mỗi request/retry. Backend dùng `clientFileId` làm khoá `upsert` khi lưu `Candidate` + file vật lý — nếu request trước đó thực ra đã lưu thành công nhưng client không nhận được response (timeout), lần gửi lại với cùng `clientFileId` sẽ **ghi đè**, không tạo bản ghi thứ hai.
 * **Phân biệt rõ trạng thái trích xuất (bug-risk fix)**: `Candidate` được lưu kèm trường `extractionStatus` (`SUCCESS` | `FAILED`). Bản ghi `FAILED` **vẫn hiển thị trong danh sách** (để HR biết file đã upload) nhưng được đánh dấu rõ "cần xem lại thủ công" và **không được tính là "đã xử lý thành công"** trong toast tổng kết — tránh việc một CV không đọc được nội dung bị âm thầm trộn lẫn với các CV hợp lệ.
 * **Đồng bộ tổng kết lô & Luồng Thử lại độc lập (bug-risk fix - Nhận xét 3)**: Toast tổng kết lô chỉ phát ra khi **100% file trong đợt kéo-thả ban đầu** đã rời khỏi trạng thái `uploading` (rơi vào một trong các trạng thái dừng: `parsed`, `warning`, `failed`). Khi người dùng bấm "Thử lại" trên từng file lỗi, file đó chuyển trạng thái về `pending_retry` (tạm trừ khỏi số lượng thất bại hiện hữu). Kết quả retry chỉ phát toast thông báo riêng cho file đó và đồng bộ cập nhật lại số liệu thanh tiến trình, **tuyệt đối không phát lại Toast tổng kết của toàn bộ lô** để tránh xung đột dữ liệu và gây hoang mang cho người dùng.
