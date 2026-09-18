@@ -121,15 +121,15 @@ flowchart TD
 #### c) Luồng FR3 / US-03 — Lọc Rule-based (real-time, < 100ms)
 ```mermaid
 flowchart LR
-    A[Người dùng gõ từ khoá / chọn kỹ năng / kéo slider kinh nghiệm] --> B[Debounce 200-300ms]
-    B --> C[Áp dụng filter tại chỗ trên state đã tải/gọi GET có query]
+    A[Người dùng gõ từ khoá / chọn kỹ năng / kéo slider kinh nghiệm] --> B[Áp dụng filter tại chỗ ngay lập tức]
+    B --> C[Debounce chỉ gọi GET có query từ xa]
     C --> D[Cập nhật bảng dữ liệu + đếm 'Tìm thấy N ứng viên phù hợp']
     D --> E{Người dùng chọn checkbox ứng viên}
     E --> F[Thanh hành động nổi (Floating Action Bar) xuất hiện: 'Đã chọn N ứng viên — Chạy AI Matching']
 ```
 * Vì FR3 không tốn phí AI, giao diện phải phản hồi **tức thời** — không hiển thị spinner cho thao tác lọc, chỉ debounce nhẹ để tránh gọi API dồn dập khi gõ nhanh.
 
-#### d) Luồng FR4 / US-04 — AI Matching (Gemini/Claude)
+#### d) Luồng FR4 / US-04 — AI Matching (Gemini)
 > **Ghi chú khắc phục 2 vấn đề đã phát hiện ở 4.4.5**: (1) bổ sung thao tác **Dừng/Huỷ giữa chừng** ngay sau khi batch bắt đầu chạy, để không lãng phí token khi người dùng chọn nhầm một lô lớn (đúng **Product Goal 3 / KR3.1** — tối ưu chi phí AI, PRD 3.1.5); (2) sửa lại thông báo tổng kết để **phản ánh đúng số lượng thành công/thất bại thực tế**, thay vì luôn báo "N/N" ngay cả khi có ứng viên rơi vào nhánh lỗi sau retry.
 >
 > ⚠️ **Cảnh báo thiếu hợp đồng API (bug-risk, Critical)**: Toàn bộ thiết kế Dừng/tiến độ theo từng dòng bên dưới giả định có một **hàng đợi phía backend, điểm dừng huỷ được, và cập nhật tiến độ theo từng CV** — nhưng hợp đồng đã đặc tả ở 3.5.2 chỉ có **`POST /api/matching/run` dạng đồng bộ**, nhận vào danh sách `candidateIds` và trả về **một mảng kết quả cuối cùng** sau khi toàn bộ đã chạy xong; không có `jobId`, không có endpoint theo dõi tiến độ, không có endpoint huỷ. Với hợp đồng hiện tại, **Frontend không thể**: (a) hiển thị kết quả tăng dần theo từng dòng trước khi cả request hoàn tất, (b) huỷ các CV chưa xử lý ở giữa chừng phía server. Sơ đồ dưới đây mô tả **hành vi mục tiêu (target UX)** — chỉ được đưa vào code khi API bất đồng bộ có `jobId` + trạng thái + endpoint huỷ (đặc tả tại Phụ lục 4.1.5) đã sẵn sàng. Trước đó, nhóm có thể triển khai tạm bằng một trong hai cách: (i) giữ `POST /api/matching/run` đồng bộ nhưng **giới hạn cứng số CV chọn mỗi lần** (ví dụ ≤10) để giảm thời gian chờ và rủi ro lãng phí token khi chưa có endpoint huỷ, hoặc (ii) hoãn tính năng "Dừng" tới khi API async sẵn sàng.
@@ -146,9 +146,10 @@ flowchart TD
     F2 --> G[Ngừng enqueue các CV chưa được gửi batch, đánh dấu 'Đã huỷ'; các batch đang chạy dở vẫn được hoàn tất bình thường]
     F -- Không --> H{Kết quả từng CV trả về qua status polling}
     H -- Thành công --> I[Cập nhật cột Điểm AI + badge màu ngay dòng đó; +1 vào success_count]
-    H -- Lỗi JSON / Timeout --> J[Retry tự động tối đa 2 lần]
-    J --> H
-    J -- Vẫn lỗi sau retry --> K["Badge 'Lỗi phân tích' + nút 'Thử lại thủ công'; +1 vào failed_count"]
+    H -- Lỗi JSON / Timeout --> J{attempt < 2?}
+    J -- Có --> R[Retry tự động; attempt += 1]
+    R --> H
+    J -- Không (attempt >= 2) --> K["Badge 'Lỗi phân tích' + nút 'Thử lại thủ công'; +1 vào failed_count"]
     G --> L[Tổng hợp: success_count / failed_count / cancelled_count]
     I --> L
     K --> L
