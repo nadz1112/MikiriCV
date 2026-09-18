@@ -104,7 +104,7 @@ flowchart TD
     G -- 2xx thành công --> J[Backend: pdf-parse / mammoth trích xuất text]
     J --> K{Trích xuất thành công?}
     K -- Có --> L["parsed → extractionStatus = SUCCESS; Regex bóc tách Họ tên/Email/SĐT/Kinh nghiệm/Kỹ năng"]
-    K -- Lỗi/PDF scan --> M["warning → extractionStatus = FAILED; vẫn lưu file gốc nhưng KHÔNG coi là bản ghi hợp lệ tương đương thành công"]
+    K -- Lỗi/PDF scan --> M["warning → extractionStatus = FAILED; fallback schema: fullName=tên file, rawText='', skills=[]"]
     L --> N[Lưu Candidate vào DB theo clientFileId - upsert nếu trùng key tránh nhân đôi khi retry]
     M --> N
     N --> O["Cập nhật icon theo extractionStatus: tick xanh (SUCCESS) / cảnh báo vàng (FAILED, cần xem lại thủ công)"]
@@ -115,21 +115,28 @@ flowchart TD
     I --> CheckBatch
     CheckBatch -- Đã hoàn tất cả lô --> P["Toast tổng kết lô ban đầu: 'Đã xử lý N/M hồ sơ thành công, X thất bại, Y cần xem lại (trích xuất lỗi)'"]
 
-    %% Luồng Thử lại độc lập theo từng file (Per-file Retry - Khắc phục bug-risk Nhận xét 3)
+    %% Luồng Thử lại độc lập theo từng file (Per-file Retry - Khắc phục triệt để Nhận xét 1 & 2)
     H -- Bấm 'Thử lại' riêng file --> R_File["Đặt lại trạng thái file: pending_retry; trừ 1 khỏi failed_count"]
     I -- Bấm 'Thử lại' riêng file --> R_File
     R_File --> D_Retry[pending_retry → Thêm lại vào hàng đợi upload]
     D_Retry --> E_Retry[uploading → hiển thị progress bar riêng từng file]
     E_Retry --> F_Retry["POST /api/candidates/upload kèm clientFileId cũ (retry)"]
     F_Retry --> G_Retry{Retry request có hoàn tất được không?}
-    G_Retry -- Mất mạng/Timeout/4xx/5xx --> P_RetryFail["Toast riêng file: 'Thử lại thất bại, vui lòng kiểm tra kết nối'"]
-    G_Retry -- 2xx thành công --> J
-    O -- Là file sau Thử lại --> P_RetrySuccess["Toast riêng file: 'Đã tải lên và xử lý lại thành công file' + cập nhật thanh số liệu"]
+    G_Retry -- Mất mạng/Timeout/4xx/5xx --> P_RetryFail["failed - Khôi phục failed_count + hiển thị lại nút Thử lại"]
+    P_RetryFail -- Bấm 'Thử lại' tiếp tục --> R_File
+    G_Retry -- 2xx thành công --> J_Retry[Backend: pdf-parse / mammoth trích xuất text]
+    J_Retry --> K_Retry{Trích xuất thành công?}
+    K_Retry -- Có --> L_Retry["parsed → extractionStatus = SUCCESS; Regex bóc tách Họ tên/Email/SĐT/Kinh nghiệm/Kỹ năng"]
+    K_Retry -- Lỗi/PDF scan --> M_Retry["warning → extractionStatus = FAILED; fallback schema: fullName=tên file, rawText='', skills=[]"]
+    L_Retry --> N_Retry[Lưu/Cập nhật Candidate DB theo clientFileId]
+    M_Retry --> N_Retry
+    N_Retry --> O_Retry["Cập nhật icon: tick xanh (SUCCESS) / cảnh báo vàng (FAILED)"]
+    O_Retry --> P_RetrySuccess["Toast riêng file: 'Đã tải lên và xử lý lại thành công file' + cập nhật thanh số liệu"]
 ```
-* **Máy trạng thái từng file (per-file state machine)**: `pending → uploading → (parsed | warning | failed)`. Trạng thái `failed` được tách riêng theo 2 nguồn gốc: (1) validate client (file sai định dạng/quá dung lượng) cung cấp tuỳ chọn "Chọn file thay thế" hoặc "Xoá khỏi danh sách" — không bị nghẽn ở ngõ cụt; (2) lỗi request/network cung cấp nút "Thử lại" độc lập cho riêng file đó để retry mà không bắt người dùng upload lại toàn bộ lô.
+* **Máy trạng thái từng file (per-file state machine)**: `pending → uploading → (parsed | warning | failed)`. Trạng thái `failed` được tách riêng theo 2 nguồn gốc: (1) validate client (file sai định dạng/quá dung lượng) cung cấp tuỳ chọn "Chọn file thay thế" hoặc "Xoá khỏi danh sách" — không bị nghẽn ở ngõ cụt; (2) lỗi request/network cung cấp nút "Thử lại" độc lập cho riêng file đó để retry. Nếu retry tiếp tục lỗi (`P_RetryFail`), file tự động quay về trạng thái `failed` và hiển thị lại nút Thử lại, không bị kẹt ở trạng thái lấp lửng.
 * **Chống trùng lặp khi retry (bug-risk fix)**: Mỗi file được gán `clientFileId` **ngay từ phía client trước khi gửi** và gửi kèm trong mỗi request/retry. Backend dùng `clientFileId` làm khoá `upsert` khi lưu `Candidate` + file vật lý — nếu request trước đó thực ra đã lưu thành công nhưng client không nhận được response (timeout), lần gửi lại với cùng `clientFileId` sẽ **ghi đè**, không tạo bản ghi thứ hai.
-* **Phân biệt rõ trạng thái trích xuất (bug-risk fix)**: `Candidate` được lưu kèm trường `extractionStatus` (`SUCCESS` | `FAILED`). Bản ghi `FAILED` **vẫn hiển thị trong danh sách** (để HR biết file đã upload) nhưng được đánh dấu rõ "cần xem lại thủ công" và **không được tính là "đã xử lý thành công"** trong toast tổng kết — tránh việc một CV không đọc được nội dung bị âm thầm trộn lẫn với các CV hợp lệ.
-* **Đồng bộ tổng kết lô & Luồng Thử lại độc lập (bug-risk fix - Nhận xét 3)**: Toast tổng kết lô chỉ phát ra khi **100% file trong đợt kéo-thả ban đầu** đã rời khỏi trạng thái `uploading` (rơi vào một trong các trạng thái dừng: `parsed`, `warning`, `failed`). Khi người dùng bấm "Thử lại" trên từng file lỗi, file đó chuyển trạng thái về `pending_retry` (tạm trừ khỏi số lượng thất bại hiện hữu). Kết quả retry chỉ phát toast thông báo riêng cho file đó và đồng bộ cập nhật lại số liệu thanh tiến trình, **tuyệt đối không phát lại Toast tổng kết của toàn bộ lô** để tránh xung đột dữ liệu và gây hoang mang cho người dùng.
+* **Phân biệt rõ trạng thái trích xuất & Quy tắc fallback schema (bug-risk fix - Nhận xét 4)**: `Candidate` được lưu kèm trường `extractionStatus` (`SUCCESS` | `FAILED`). Khi trích xuất thất bại (PDF scan / file khoá mật khẩu / file rỗng), hệ thống vẫn lưu bản ghi để giữ file vật lý cho HR tải lại, nhưng áp dụng các giá trị fallback để thỏa mãn ràng buộc NOT NULL của Prisma model (`fullName` = tên file bỏ đuôi hoặc `'Ứng viên chưa rõ tên'`, `rawText` = `''`, `skills` = `[]`, `yearsOfExperience` = `0`). Bản ghi `FAILED` hiển thị cảnh báo vàng "cần xem lại thủ công", không được tính là thành công trong toast tổng kết và bị loại khỏi danh sách có thể chạy AI Matching.
+* **Đồng bộ tổng kết lô & Luồng Thử lại độc lập (bug-risk fix - Nhận xét 2 & 3)**: Toast tổng kết lô chỉ phát ra khi **100% file trong đợt kéo-thả ban đầu** đã rời khỏi trạng thái `uploading`. Quá trình retry sau đó chạy trên pipeline riêng (`J_Retry → O_Retry`), tuyệt đối không nối vào `CheckBatch` của đợt ban đầu, chỉ phát toast thông báo riêng cho từng file và đồng bộ cập nhật thanh số liệu.
 * ⚠️ **Rủi ro hợp đồng API bổ sung thứ 3 (bug-risk, mới phát hiện)**: Với Candidate ở trạng thái `FAILED` (trích xuất lỗi), hành vi hợp lý là cho phép "Thử lại trích xuất" **mà không cần upload lại file** (vì file vật lý đã lưu trên server). Tuy nhiên hợp đồng 3.5.2 **chưa có endpoint nào để trích xuất lại một Candidate đã tồn tại** (chỉ có `POST /api/candidates/upload` nhận file mới). Cần bổ sung `POST /api/candidates/:id/reextract` theo đặc tả tại **Phụ lục 4.1.5 (E)** trước khi gắn nút "Thử lại trích xuất" vào các bản ghi `FAILED`; nếu chưa có endpoint này, nút "Thử lại" ở nhóm `FAILED` chỉ nên cho phép **xoá và upload lại file mới** thay vì ngụ ý trích xuất lại file cũ.
 * **Nguyên tắc UX quan trọng**: mỗi file trong hàng đợi là một **đơn vị trạng thái độc lập**, tránh tình huống 1 file lỗi (dù lỗi định dạng, lỗi trích xuất, hay lỗi mạng/server) làm treo hoặc chặn toàn bộ lô 50 file.
 * **Ràng buộc QA bổ sung**: Toast tổng kết ở bước cuối phải phản ánh đúng cả 3 nhóm: **thành công**, **thất bại do request**, và **cần xem lại do lỗi trích xuất** (vd: "Đã xử lý 40/50 hồ sơ thành công, 8 thất bại, 2 cần xem lại") — tránh việc chỉ đếm theo FR2.6 (báo lỗi định dạng) mà bỏ sót lỗi tầng network hoặc gộp nhầm Candidate `FAILED` vào nhóm thành công.
@@ -146,51 +153,73 @@ flowchart LR
 * Vì FR3 không tốn phí AI, giao diện phải phản hồi **tức thời** — không hiển thị spinner cho thao tác lọc, chỉ debounce nhẹ để tránh gọi API dồn dập khi gõ nhanh.
 
 #### d) Luồng FR4 / US-04 — AI Matching (Gemini)
-> **Ghi chú khắc phục 2 vấn đề đã phát hiện ở 4.4.5**: (1) bổ sung thao tác **Dừng/Huỷ giữa chừng** ngay sau khi batch bắt đầu chạy, để không lãng phí token khi người dùng chọn nhầm một lô lớn (đúng **Product Goal 3 / KR3.1** — tối ưu chi phí AI, PRD 3.1.5); (2) sửa lại thông báo tổng kết để **phản ánh đúng số lượng thành công/thất bại thực tế**, thay vì luôn báo "N/N" ngay cả khi có ứng viên rơi vào nhánh lỗi sau retry.
->
-> ⚠️ **Cảnh báo thiếu hợp đồng API (bug-risk, Critical)**: Toàn bộ thiết kế Dừng/tiến độ theo từng dòng bên dưới giả định có một **hàng đợi phía backend, điểm dừng huỷ được, và cập nhật tiến độ theo từng CV** — nhưng hợp đồng đã đặc tả ở 3.5.2 chỉ có **`POST /api/matching/run` dạng đồng bộ**, nhận vào danh sách `candidateIds` và trả về **một mảng kết quả cuối cùng** sau khi toàn bộ đã chạy xong; không có `jobId`, không có endpoint theo dõi tiến độ, không có endpoint huỷ. Với hợp đồng hiện tại, **Frontend không thể**: (a) hiển thị kết quả tăng dần theo từng dòng trước khi cả request hoàn tất, (b) huỷ các CV chưa xử lý ở giữa chừng phía server. Sơ đồ dưới đây mô tả **hành vi mục tiêu (target UX)** — chỉ được đưa vào code khi API bất đồng bộ có `jobId` + trạng thái + endpoint huỷ (đặc tả tại Phụ lục 4.1.5) đã sẵn sàng. Trước đó, nhóm có thể triển khai tạm bằng một trong hai cách: (i) giữ `POST /api/matching/run` đồng bộ nhưng **giới hạn cứng số CV chọn mỗi lần** (ví dụ ≤10) để giảm thời gian chờ và rủi ro lãng phí token khi chưa có endpoint huỷ, hoặc (ii) hoãn tính năng "Dừng" tới khi API async sẵn sàng.
+
+##### Luồng 1: Baseline MVP (Đồng bộ qua endpoint hiện có `POST /api/matching/run`)
+> Áp dụng ngay cho phiên bản hiện tại theo đúng hợp đồng mục 3.5.2 (`PRD_CVMikiri.md`) và backend đã triển khai.
+
+```mermaid
+flowchart TD
+    A[Floating Action Bar: 'Chạy AI Matching cho N ứng viên'] --> B[Modal xác nhận: hiện JD đang chọn + số lượng CV]
+    B --> C[Xác nhận chạy]
+    C --> D[Modal Loading toàn màn hình / Spinner: 'Đang gửi N hồ sơ tới Gemini AI...']
+    D --> E["POST /api/matching/run (đồng bộ, hợp đồng hiện tại 3.5.2)"]
+    E --> F{Request hoàn tất?}
+    F -- 200 OK --> G[Nhận mảng MatchResult đầy đủ]
+    G --> H[Cập nhật toàn bộ điểm AI + badge vào bảng dữ liệu]
+    H --> I["Toast: 'Hoàn tất đánh giá N ứng viên' + Đóng modal loading"]
+    F -- Lỗi 429/5xx/Timeout --> J["Toast lỗi tiếng Việt + Giữ nguyên bảng cũ + Nút 'Thử lại'"]
+```
+
+##### Luồng 2: Target UX (Bất đồng bộ qua `POST /api/matching/jobs` — Đề xuất Phụ lục 4.1.5)
+> **Mục tiêu tương lai**: Khi backend bổ sung hàng đợi async theo Phụ lục 4.1.5, giao diện chuyển sang hỗ trợ progressive rendering từng dòng, dừng/huỷ giữa chừng (Product Goal 3 / KR3.1 — tối ưu chi phí AI) và tổng kết chính xác số lượng thực tế.
 
 ```mermaid
 flowchart TD
     A[Floating Action Bar: 'Chạy AI Matching cho N ứng viên'] --> B[Modal xác nhận: hiện JD đang chọn + số CV + ước tính thời gian]
     B --> C[Xác nhận chạy]
-    C --> D["POST /api/matching/jobs ⚠️ endpoint async đề xuất, chưa có trong hợp đồng hiện tại — trả về jobId"]
+    C --> D["POST /api/matching/jobs ⚠️ endpoint async đề xuất — trả về jobId"]
     D --> D2[Backend chia batch 3-5 CV/lượt để tránh Rate Limit, chạy nền theo jobId]
-    D2 --> E["Client poll/subscribe GET /api/matching/jobs/:jobId/status ⚠️ đề xuất — UI hiển thị 'Đang phân tích...' theo từng dòng + nút 'Dừng'"]
+    D2 --> E["Client poll/subscribe GET /api/matching/jobs/:jobId/status — UI hiển thị 'Đang phân tích...' theo từng dòng + nút 'Dừng'"]
     E --> F{Người dùng bấm 'Dừng'?}
     F -- Có --> F2["POST /api/matching/jobs/:jobId/cancel ⚠️ đề xuất"]
-    F2 --> G[Ngừng enqueue các CV chưa được gửi batch, đánh dấu 'Đã huỷ'; các batch đang chạy dở vẫn được hoàn tất bình thường]
+    F2 --> G[Backend ngừng nhận batch mới; đánh dấu 'Đã huỷ' các CV chưa gửi; các batch đang chạy dở vẫn tiếp tục xử lý]
+    G --> H_Wait{Tiếp tục polling status cho tới khi các batch dở báo cáo xong}
     F -- Không --> H{Kết quả từng CV trả về qua status polling}
-    H -- Thành công --> I[Cập nhật cột Điểm AI + badge màu ngay dòng đó; +1 vào success_count]
-    H -- Lỗi JSON / Timeout --> J{attempt < 2?}
+    H --> ProcessItem{Xử lý kết quả từng CV}
+    H_Wait --> ProcessItem
+    ProcessItem -- Thành công --> I[Cập nhật cột Điểm AI + badge màu ngay dòng đó; +1 vào success_count]
+    ProcessItem -- Lỗi JSON / Timeout --> J{attempt < 2?}
     J -- Có --> R[Retry tự động; attempt += 1]
-    R --> H
+    R --> E
     J -- Không (attempt >= 2) --> K["Badge 'Lỗi phân tích' + nút 'Thử lại thủ công'; +1 vào failed_count"]
-    G --> L[Tổng hợp: success_count / failed_count / cancelled_count]
-    I --> L
-    K --> L
+    I --> CheckJobEnd{Job đã terminal (hoàn tất/huỷ) & mọi batch dở đã báo cáo hết?}
+    K --> CheckJobEnd
+    CheckJobEnd -- Chưa xong hết batch --> E
+    CheckJobEnd -- Đã hoàn tất toàn bộ --> L[Tổng hợp: success_count / failed_count / cancelled_count]
     L --> M{failed_count > 0 hoặc cancelled_count > 0?}
     M -- Không --> N["Toast: 'Hoàn tất đánh giá N/N ứng viên'"]
     M -- Có --> O["Toast: 'Đã đánh giá success_count/tổng; failed_count hồ sơ lỗi, cancelled_count đã huỷ' + nút 'Thử lại các hồ sơ lỗi'"]
 ```
 * **Thiết kế chống chờ đợi vô nghĩa**: vì việc chấm điểm hàng loạt có thể mất 10-30 giây, UI cập nhật **theo từng dòng** ngay khi có kết quả (progressive rendering) thay vì bắt người dùng nhìn một spinner toàn màn hình — **điều kiện tiên quyết**: đã có API async theo Phụ lục 4.1.5.
-* **Thao tác Dừng/Huỷ (Critical fix, phụ thuộc API mới)**: nút "Dừng" chỉ ngăn các CV **chưa được đưa vào batch** — các CV thuộc batch đang gọi API dở dang vẫn hoàn tất để tránh trạng thái nửa vời khó xử lý phía backend. Giao diện cần phân biệt rõ 3 trạng thái cuối cùng của một ứng viên sau khi dừng: đã chấm xong (thành công/lỗi) hoặc "Đã huỷ" (chưa kịp gọi AI). Thao tác này **không thể triển khai đáng tin cậy** trên hợp đồng đồng bộ hiện tại — xem cảnh báo đầu mục.
-* **Toast tổng kết chính xác (bug-risk fix)**: không còn cố định là "N/N" — công thức hiển thị luôn dựa trên `success_count`, `failed_count`, `cancelled_count` thực tế, ví dụ: *"Đã đánh giá 8/10; 2 hồ sơ lỗi"* hoặc *"Đã đánh giá 6/10; 3 hồ sơ lỗi, 1 đã huỷ"*. Nút "Thử lại các hồ sơ lỗi" cho phép gom chạy lại đồng thời tất cả CV đang ở trạng thái lỗi mà không cần chọn lại thủ công từng dòng. Với hợp đồng đồng bộ hiện tại (chưa nâng cấp), phần này vẫn áp dụng được ngay vì `POST /api/matching/run` đã trả mảng kết quả có thể đếm `success/failed` sau khi hoàn tất — chỉ riêng phần "Dừng" và "hiển thị tiến độ từng dòng trước khi xong" là phụ thuộc API mới.
+* **Thao tác Dừng/Huỷ & Polling cạn batch đang chạy (bug-risk fix - Nhận xét 3)**: nút "Dừng" chỉ ngăn các CV **chưa được đưa vào batch** — các CV thuộc batch đang gọi API dở dang vẫn hoàn tất. Client **tiếp tục polling** cho đến khi backend trả về trạng thái job là terminal (`CANCELLED`), đảm bảo mọi batch in-flight đã báo cáo hết kết quả trước khi phát Toast tổng kết.
+* **Toast tổng kết chính xác (bug-risk fix)**: không còn cố định là "N/N" — công thức hiển thị luôn dựa trên `success_count`, `failed_count`, `cancelled_count` thực tế, ví dụ: *"Đã đánh giá 8/10; 2 hồ sơ lỗi"* hoặc *"Đã đánh giá 6/10; 3 hồ sơ lỗi, 1 đã huỷ"*. Nút "Thử lại các hồ sơ lỗi" cho phép gom chạy lại đồng thời tất cả CV đang ở trạng thái lỗi mà không cần chọn lại thủ công từng dòng.
 
 #### e) Luồng FR5 / US-05, US-06 — Dashboard, Chi tiết & Xoá
 ```mermaid
 flowchart TD
     A[Vào Bảng xếp hạng của 1 JD] --> B[Danh sách sắp xếp giảm dần theo score]
     B --> C[Click vào 1 ứng viên]
-    C --> D[Mở Drawer chi tiết: Summary AI + Matched/Missing skills + xem lại file gốc]
+    C --> D[Mở Drawer chi tiết: nạp candidate kèm matchResults qua GET /api/candidates/:id + xem file gốc]
     D --> E{Hành động tiếp theo}
     E -- Đóng --> B
-    E -- Xoá ứng viên --> F[Modal xác nhận cảnh báo: sẽ xoá N MatchResult liên quan]
+    E -- Xoá ứng viên --> E2["Lấy số lượng N MatchResult liên quan từ candidate.matchResults (đã nạp sẵn)"]
+    E2 --> F[Modal xác nhận cảnh báo: 'Hành động này sẽ xoá vĩnh viễn ứng viên và N kết quả matching liên quan']
     F -- Huỷ --> D
     F -- Xác nhận --> G[DELETE /api/candidates/:id]
     G --> H[Xoá file vật lý + cascade DB]
     H --> I[Toast xác nhận + Cập nhật lại danh sách + Drawer tự đóng]
 ```
+* **Hiển thị số lượng cascade xoá (bug-risk fix - Nhận xét 7)**: Giá trị `N MatchResult liên quan` được lấy trực tiếp từ mảng `candidate.matchResults` đã được backend trả về đầy đủ trong endpoint `GET /api/candidates/:id` khi mở Drawer chi tiết (hoặc từ response danh sách), đảm bảo UI luôn hiển thị số lượng chính xác trước khi người dùng bấm xác nhận xoá.
 
 ### 4.1.4 Bảng ánh xạ Luồng ↔ Màn hình ↔ FR
 | Luồng | Màn hình chính | FR liên quan | Trạng thái lỗi cần xử lý |
