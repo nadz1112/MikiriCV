@@ -335,7 +335,14 @@ export function sanitizeAndParseGeminiResponse(rawText: string) {
     const parsed = JSON.parse(cleaned);
 
     // 3. Validate kiểu dữ liệu đầu ra
-    if (typeof parsed.score !== 'number' || !Array.isArray(parsed.matchedSkills)) {
+    if (
+      typeof parsed.score !== 'number' ||
+      typeof parsed.summary !== 'string' ||
+      !Array.isArray(parsed.matchedSkills) ||
+      parsed.matchedSkills.some((skill: unknown) => typeof skill !== 'string') ||
+      !Array.isArray(parsed.missingSkills) ||
+      parsed.missingSkills.some((skill: unknown) => typeof skill !== 'string')
+    ) {
       throw new Error('Định dạng dữ liệu JSON không khớp schema mong đợi');
     }
 
