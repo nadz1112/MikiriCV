@@ -4,24 +4,27 @@ import { RunMatchingDto } from '../types/index.js';
 import { sanitizeAndParseGeminiResponse } from '../utils/geminiParser.js';
 
 export class MatchingService {
-  async runMatching(dto: RunMatchingDto) {
+  async runMatching(dto: RunMatchingDto, ownerId?: string) {
     const { jobDescriptionId, candidateIds } = dto;
 
     const job = await prisma.jobDescription.findUnique({
-      where: { id: jobDescriptionId },
+      where: { id: jobDescriptionId, ...(ownerId ? { ownerId } : {}) },
     });
 
     if (!job) {
+      throw Object.assign(new Error('Không tìm thấy Job Description'), { status: 404, code: 'JOB_NOT_FOUND' });
       throw new Error(`Không tìm thấy Job Description với ID: ${jobDescriptionId}`);
     }
 
     const candidates = await prisma.candidate.findMany({
       where: {
         id: { in: candidateIds },
+        ...(ownerId ? { ownerId } : {}),
       },
     });
 
-    if (candidates.length === 0) {
+    if (candidates.length !== candidateIds.length) {
+      throw Object.assign(new Error('Không tìm thấy một hoặc nhiều tài nguyên'), { status: 404, code: 'CANDIDATE_NOT_FOUND' });
       throw new Error('Không tìm thấy ứng viên nào để thực hiện đối soát');
     }
 
@@ -92,7 +95,7 @@ Hãy đánh giá mức độ phù hợp và trả về kết quả JSON theo đ�
 
         results.push(savedMatch);
       } catch (err) {
-        console.error(`Lỗi khi chấm điểm ứng viên ${candidate.fullName}:`, err);
+        console.error('Lỗi khi xử lý kết quả matching với AI');
         // Lưu kết quả fallback tạm thời nếu AI gặp sự cố
         const fallbackMatch = await prisma.matchResult.upsert({
           where: {
@@ -123,9 +126,9 @@ Hãy đánh giá mức độ phù hợp và trả về kết quả JSON theo đ�
     return results;
   }
 
-  async getLeaderboardByJobId(jobDescriptionId: string) {
+  async getLeaderboardByJobId(jobDescriptionId: string, ownerId?: string) {
     const job = await prisma.jobDescription.findUnique({
-      where: { id: jobDescriptionId },
+      where: { id: jobDescriptionId, ...(ownerId ? { ownerId } : {}) },
       include: {
         matchResults: {
           include: {
@@ -137,6 +140,7 @@ Hãy đánh giá mức độ phù hợp và trả về kết quả JSON theo đ�
     });
 
     if (!job) {
+      throw Object.assign(new Error('Không tìm thấy Job Description'), { status: 404, code: 'JOB_NOT_FOUND' });
       throw new Error(`Không tìm thấy Job Description với ID: ${jobDescriptionId}`);
     }
 

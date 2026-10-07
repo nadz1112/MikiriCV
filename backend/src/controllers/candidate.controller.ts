@@ -1,8 +1,19 @@
 import { Request, Response, NextFunction } from 'express';
 import { candidateService } from '../services/candidate.service.js';
 import { ApiResponse } from '../types/index.js';
+import path from 'path';
+import fs from 'fs/promises';
 
 export class CandidateController {
+  async getCandidateFile(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const candidate = await candidateService.getCandidateById(req.params.id, req.user?.role === 'ADMIN' ? undefined : req.user?.id);
+      const filePath = path.resolve(process.cwd(), candidate.fileUrl.replace(/^\//, ''));
+      await fs.access(filePath).catch(() => { throw Object.assign(new Error('Không tìm thấy tệp CV gốc'), { status: 404, code: 'FILE_NOT_FOUND' }); });
+      res.sendFile(filePath, (error) => { if (error) next(error); });
+    } catch (error) { next(error); }
+  }
+
   async uploadCandidates(req: Request, res: Response<ApiResponse>, next: NextFunction): Promise<void> {
     try {
       const files = req.files as Express.Multer.File[];
@@ -20,7 +31,7 @@ export class CandidateController {
 
       for (const file of files) {
         try {
-          const candidate = await candidateService.processAndSaveUploadedFile(file);
+          const candidate = await candidateService.processAndSaveUploadedFile(file, req.user!.id);
           results.push(candidate);
         } catch (err) {
           errors.push({
@@ -43,7 +54,7 @@ export class CandidateController {
 
   async getCandidates(req: Request, res: Response<ApiResponse>, next: NextFunction): Promise<void> {
     try {
-      const candidates = await candidateService.getFilteredCandidates(req.query);
+      const candidates = await candidateService.getFilteredCandidates(req.query, req.user?.role === 'ADMIN' ? undefined : req.user?.id);
       res.json({
         success: true,
         data: candidates,
@@ -55,7 +66,7 @@ export class CandidateController {
 
   async getCandidateById(req: Request, res: Response<ApiResponse>, next: NextFunction): Promise<void> {
     try {
-      const candidate = await candidateService.getCandidateById(req.params.id);
+      const candidate = await candidateService.getCandidateById(req.params.id, req.user?.role === 'ADMIN' ? undefined : req.user?.id);
       res.json({
         success: true,
         data: candidate,
@@ -67,7 +78,7 @@ export class CandidateController {
 
   async deleteCandidate(req: Request, res: Response<ApiResponse>, next: NextFunction): Promise<void> {
     try {
-      await candidateService.deleteCandidate(req.params.id);
+      await candidateService.deleteCandidate(req.params.id, req.user?.role === 'ADMIN' ? undefined : req.user?.id);
       res.json({
         success: true,
         message: 'Đã xóa ứng viên và giải phóng tệp tin thành công',
