@@ -69,6 +69,8 @@ npm --prefix backend run prisma:seed
 
 Đăng nhập ADMIN bằng email/mật khẩu đã đặt trong `SEED_ADMIN_EMAIL` và `SEED_ADMIN_PASSWORD`. Tạo ENTERPRISE trong mục **Quản lý tài khoản**; tài khoản này phải đổi mật khẩu tạm ở lần đăng nhập đầu. Các bản ghi JD/CV mới do ENTERPRISE tạo được gắn owner ở backend. ADMIN xem dữ liệu tổng thể và chỉ có giao diện quản lý tài khoản trong phiên bản này.
 
+Để tạo 2 tài khoản ENTERPRISE và JD/CV mẫu khi phát triển, đặt `SEED_DEMO_PASSWORD` rồi chạy seed trong `NODE_ENV=development` hoặc `test`. Tài khoản demo `hr.alpha@example.test` và `hr.beta@example.test` dùng mật khẩu đó và bắt buộc đổi mật khẩu lần đầu. Seed không tạo tài khoản demo trong production.
+
 Mọi lần đăng nhập và request ghi cần header `X-Requested-With: CVMikiri`; frontend tự gửi header này. `docker-compose.yml` chỉ khởi chạy PostgreSQL; API vẫn chạy qua `npm run dev`.
 
 ### 1. Cài đặt Dependencies
