@@ -106,6 +106,16 @@ mindmap
 | **FR5.1-5.3** | Dashboard & Chi tiết | US-05 | `Candidate`, `MatchResult` | `GET /api/candidates/:id` | Must-have |
 | **FR5.4** | Xóa ứng viên Cascade | US-06 | `Candidate`, `MatchResult` | `DELETE /api/candidates/:id` | Must-have |
 | **FR5.5** | Biểu đồ thống kê | US-05 | `MatchResult` | `GET /api/jobs/:id/stats` | Could-have |
+| **FR6** | Xác thực và phân quyền ADMIN/ENTERPRISE | US-07 | `User` | `/api/auth/*` | Must-have |
+| **FR7** | Quản lý tài khoản doanh nghiệp | US-08 | `User`, `JobDescription`, `Candidate` | `/api/users/*` | Must-have |
+
+#### FR6 — Xác thực và phân quyền
+
+Chỉ tài khoản do ADMIN cấp được đăng nhập; phiên dùng JWT trong cookie HTTP-only. ADMIN có thể xem dữ liệu toàn hệ thống, ENTERPRISE chỉ truy vấn JD/CV/matching theo owner của mình. Tài khoản khóa và token cũ bị từ chối.
+
+#### FR7 — Quản lý tài khoản doanh nghiệp
+
+ADMIN tạo, sửa, khóa/mở khóa, đặt lại mật khẩu và xóa tài khoản ENTERPRISE. Tài khoản mới/đặt lại mật khẩu phải đổi mật khẩu khi đăng nhập lần đầu.
 
 ---
 

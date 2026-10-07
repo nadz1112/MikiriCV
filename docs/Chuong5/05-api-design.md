@@ -40,6 +40,14 @@
 
 | Method | Đường dẫn | FR | Mô tả | Nguồn | Ưu tiên |
 | :--- | :--- | :--- | :--- | :--- | :--- |
+| POST | `/api/auth/login` | FR6 | Đăng nhập, đặt cookie HTTP-only | Mới | Must |
+| POST | `/api/auth/logout` | FR6 | Thu hồi phiên và xóa cookie | Mới | Must |
+| POST | `/api/auth/refresh` | FR6 | Xoay refresh token | Mới | Must |
+| GET | `/api/auth/me` | FR6 | Khôi phục phiên hiện tại | Mới | Must |
+| POST | `/api/auth/change-password` | FR6 | Đổi mật khẩu | Mới | Must |
+| GET/POST | `/api/users` | FR7 | Liệt kê/tạo tài khoản doanh nghiệp (ADMIN) | Mới | Must |
+| GET/PUT/PATCH/DELETE | `/api/users/:id` | FR7 | Xem/sửa/khóa/xóa tài khoản (ADMIN) | Mới | Must |
+| POST | `/api/users/:id/reset-password` | FR7 | Đặt mật khẩu tạm (ADMIN) | Mới | Must |
 | POST | `/api/jobs` | FR1.1 | Tạo JD | Chương 3 | Must |
 | GET | `/api/jobs` | FR1.2 | Danh sách JD | Chương 3 | Must |
 | GET | `/api/jobs/:id` | FR1.4 | Chi tiết JD (nạp form sửa) | Phụ lục 4.1.5 | Should |
@@ -285,6 +293,17 @@ Giữ nguyên hợp đồng Chương 3; trường `evaluatedAt` lấy từ `Matc
 
 | Mã lỗi | HTTP | Thông điệp tiếng Việt (mặc định) | Ngữ cảnh |
 | :--- | :--- | :--- | :--- |
+| `INVALID_CREDENTIALS` | 401 | Email hoặc mật khẩu không đúng | Đăng nhập |
+| `UNAUTHENTICATED` | 401 | Vui lòng đăng nhập để tiếp tục | Thiếu/không hợp lệ phiên |
+| `TOKEN_EXPIRED` | 401 | Phiên đăng nhập đã hết hạn | Refresh thất bại |
+| `FORBIDDEN` | 403 | Bạn không có quyền thực hiện thao tác này | Sai vai trò/CSRF |
+| `ACCOUNT_DISABLED` | 403 | Tài khoản đã bị khóa, vui lòng liên hệ quản trị viên | Đăng nhập |
+| `ACCOUNT_TEMP_LOCKED` | 429 | Tài khoản tạm khóa; thông báo kèm số phút còn lại | Brute force |
+| `PASSWORD_CHANGE_REQUIRED` | 403 | Vui lòng đổi mật khẩu để tiếp tục | Mật khẩu tạm |
+| `EMAIL_ALREADY_EXISTS` | 409 | Email đã tồn tại | Tạo doanh nghiệp |
+| `USER_NOT_FOUND` | 404 | Không tìm thấy tài khoản | Quản lý doanh nghiệp |
+| `WEAK_PASSWORD` | 400 | Mật khẩu cần ít nhất 8 ký tự, gồm chữ và số | Tạo/đổi mật khẩu |
+| `CANNOT_MODIFY_SELF` | 409 | Không thể sửa trạng thái hoặc xóa tài khoản của bạn | Quản trị |
 | `VALIDATION_ERROR` | 400 | Dữ liệu gửi lên không hợp lệ | Zod thất bại |
 | `NO_FILES` | 400 | Chưa chọn file nào để tải lên | Upload rỗng |
 | `JOB_NOT_FOUND` | 404 | Không tìm thấy Job Description | |
@@ -356,5 +375,7 @@ export const runMatchingSchema = z.object({
 | FR5.1–5.3 | `candidates`, `matching` | `GET /api/candidates`, `GET /api/candidates/:id`, `GET /api/matching/leaderboard/:id` | `candidates`, `match_results` |
 | FR5.4 | `candidates` | `DELETE /api/candidates/:id` | `candidates` (cascade) |
 | FR5.5 | `stats` | `GET /api/jobs/:id/stats` | `match_results` |
+| FR6 | `auth`, middleware | `/api/auth/login`, `/logout`, `/refresh`, `/me`, `/change-password` | `users` |
+| FR7 | `users` | `GET/POST/PUT/PATCH/DELETE /api/users/*` | `users`, `job_descriptions`, `candidates` |
 
 ---

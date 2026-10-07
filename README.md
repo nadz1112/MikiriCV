@@ -55,6 +55,22 @@ MikiriCV/
 
 ## 🚀 Hướng Dẫn Cài Đặt & Khởi Chạy
 
+### Xác thực và seed quản trị viên
+
+Đăng nhập bằng cookie HTTP-only, vì vậy frontend và API cần cùng site hoặc CORS origin phải được cấu hình chính xác. Sao chép `backend/.env.example` thành `backend/.env`, rồi đặt hai secret JWT ngẫu nhiên khác nhau (ít nhất 32 ký tự), `COOKIE_SECURE=true` khi chạy HTTPS, cùng `SEED_ADMIN_EMAIL` và `SEED_ADMIN_PASSWORD` riêng của môi trường. Không dùng các giá trị ví dụ ở production.
+
+Migration mới tạo tài khoản hệ thống `legacy-owner@system.invalid` đã bị vô hiệu hóa và gán JD/CV hiện có cho tài khoản này. Những dữ liệu cũ chỉ được tài khoản ADMIN đang hoạt động xem; chúng không tự động được trao cho doanh nghiệp mới.
+
+```bash
+npm --prefix backend run prisma:generate
+npm --prefix backend run prisma:migrate
+npm --prefix backend run prisma:seed
+```
+
+Đăng nhập ADMIN bằng email/mật khẩu đã đặt trong `SEED_ADMIN_EMAIL` và `SEED_ADMIN_PASSWORD`. Tạo ENTERPRISE trong mục **Quản lý tài khoản**; tài khoản này phải đổi mật khẩu tạm ở lần đăng nhập đầu. Các bản ghi JD/CV mới do ENTERPRISE tạo được gắn owner ở backend. ADMIN xem dữ liệu tổng thể và chỉ có giao diện quản lý tài khoản trong phiên bản này.
+
+Mọi lần đăng nhập và request ghi cần header `X-Requested-With: CVMikiri`; frontend tự gửi header này. `docker-compose.yml` chỉ khởi chạy PostgreSQL; API vẫn chạy qua `npm run dev`.
+
 ### 1. Cài đặt Dependencies
 Từ thư mục gốc dự án:
 ```bash
