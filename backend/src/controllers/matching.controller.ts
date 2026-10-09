@@ -5,7 +5,7 @@ import { ApiResponse } from '../types/index.js';
 export class MatchingController {
   async runMatching(req: Request, res: Response<ApiResponse>, next: NextFunction): Promise<void> {
     try {
-      const results = await matchingService.runMatching(req.body);
+      const results = await matchingService.runMatching(req.body, req.user?.role === 'ADMIN' ? undefined : req.user?.id);
       res.json({
         success: true,
         message: `Hoàn tất đối soát và chấm điểm AI cho ${results.length} ứng viên`,
@@ -18,7 +18,7 @@ export class MatchingController {
 
   async getLeaderboard(req: Request, res: Response<ApiResponse>, next: NextFunction): Promise<void> {
     try {
-      const leaderboard = await matchingService.getLeaderboardByJobId(req.params.jobDescriptionId);
+      const leaderboard = await matchingService.getLeaderboardByJobId(req.params.jobDescriptionId, req.user?.role === 'ADMIN' ? undefined : req.user?.id);
       res.json({
         success: true,
         data: leaderboard,

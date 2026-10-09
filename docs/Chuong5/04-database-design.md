@@ -1,5 +1,7 @@
 ## 5.4 Thiết kế Cơ sở Dữ liệu (Database Design)
 
+> **Cập nhật FR6–FR7:** Prisma `User` lưu email, bcrypt hash, vai trò, trạng thái, token version và trạng thái bắt buộc đổi mật khẩu. `JobDescription` và `Candidate` có `ownerId` FK tới `users` (`ON DELETE CASCADE`) cùng index; MatchResult thừa kế phạm vi qua JD/Candidate. Migration `20261007000000_auth_tenant` backfill bản ghi MVP về user hệ thống đã vô hiệu hóa; xem [ADR-08](ADR-08-authentication-tenant.md).
+
 ### 5.4.1 Nguyên tắc thiết kế
 
 1. **PostgreSQL + Prisma** là nguồn duy nhất của schema; mọi thay đổi đi qua `prisma migrate`.
