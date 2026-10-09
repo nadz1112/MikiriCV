@@ -105,6 +105,7 @@ UPLOAD_DIR="./uploads"
 ### 3. Đồng bộ Cơ sở dữ liệu PostgreSQL (Prisma)
 Sau khi cấu hình `DATABASE_URL` trong `backend/.env`:
 ```bash
+docker compose up -d postgres
 # Tạo các bảng trong PostgreSQL
 npm run prisma:migrate
 

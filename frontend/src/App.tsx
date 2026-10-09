@@ -27,7 +27,8 @@ function AppRoutes() {
     <Route path="/login" element={<LoginPage/>}/>
     <Route element={<ProtectedRoute/>}><Route path="/change-password" element={<ChangePasswordPage/>}/></Route>
     <Route element={<ProtectedRoute roles={['ADMIN']}/>}><Route path="/admin/users" element={<UsersPage/>}/></Route>
-    <Route element={<ProtectedRoute roles={['ENTERPRISE']}/>}><Route path="/" element={user?.role === 'ADMIN' ? <Navigate to="/admin/users" replace/> : <DashboardPage/>}/><Route path="/jobs" element={<JobsPage/>}/><Route path="/candidates" element={<CandidatesPage/>}/><Route path="/matching" element={<MatchingPage/>}/></Route>
+    <Route element={<ProtectedRoute/>}><Route path="/" element={user?.role === 'ADMIN' ? <Navigate to="/admin/users" replace/> : <DashboardPage/>}/></Route>
+    <Route element={<ProtectedRoute roles={['ENTERPRISE']}/>}><Route path="/jobs" element={<JobsPage/>}/><Route path="/candidates" element={<CandidatesPage/>}/><Route path="/matching" element={<MatchingPage/>}/></Route>
     <Route path="*" element={<Navigate to={user?.role === 'ADMIN' ? '/admin/users' : user ? '/' : '/login'} replace/>}/>
   </Routes></main><footer className="border-t border-slate-200 bg-white py-4 text-center text-xs text-slate-400">© 2026 CVMikiri — Trợ lý AI Sàng lọc Hồ sơ Tuyển dụng.</footer></div>;
 }
