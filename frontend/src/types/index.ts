@@ -6,6 +6,12 @@ export interface JobDescription {
   minExperience: number;
   createdAt: string;
   updatedAt: string;
+  createdById?: string | null;
+  createdBy?: {
+    id: string;
+    fullName: string;
+    email: string;
+  } | null;
   _count?: {
     matchResults: number;
   };

@@ -7,7 +7,7 @@ export const Navbar: React.FC = () => {
   const { user, logout } = useAuthStore(); const [open, setOpen] = useState(false); const navigate = useNavigate();
   if (!user) return null;
   const navItems = user.role === 'ADMIN'
-    ? [{ to: '/admin/users', label: 'Quản lý tài khoản', icon: Shield }]
+    ? [{ to: '/admin/users', label: 'Quản lý tài khoản', icon: Shield }, { to: '/jobs', label: 'Quản lý JD', icon: Briefcase }]
     : [{ to: '/', label: 'Bảng điều khiển', icon: LayoutDashboard }, { to: '/jobs', label: 'Job Descriptions', icon: Briefcase }, { to: '/candidates', label: 'Quản lý CV', icon: Users }, { to: '/matching', label: 'AI Matching Studio', icon: Sparkles }];
   return <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
     <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8"><NavLink to={user.role === 'ADMIN' ? '/admin/users' : '/'} className="flex items-center gap-2"><span className="rounded-xl bg-blue-700 p-2 text-white"><FileCheck size={21}/></span><span className="text-xl font-bold text-blue-700">CVMikiri</span></NavLink>

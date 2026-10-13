@@ -1,234 +1,276 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Trash2, Calendar, Award, AlertCircle } from 'lucide-react';
-import { useJobStore } from '../store/useJobStore';
-import { jobApi } from '../services/jobApi';
+import { AlertCircle, Award, Calendar, Pencil, Plus, Trash2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useJobStore } from '../store/useJobStore';
+import { jobApi, JobPayload } from '../services/jobApi';
+import { JobDescription } from '../types';
+import { useAuthStore } from '../features/auth/authStore';
+
+const emptyForm = { title: '', description: '', skillsInput: '', minExperience: '0' };
 
 export const JobsPage: React.FC = () => {
-  const { jobs, isLoading, fetchJobs, deleteJob } = useJobStore();
+  const { jobs, isLoading, fetchJobs, updateJob, deleteJob } = useJobStore();
+  const user = useAuthStore((state) => state.user);
+  const isAdmin = user?.role === 'ADMIN';
+  const [editingJob, setEditingJob] = useState<JobDescription | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-
-  // Form states
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [skillsInput, setSkillsInput] = useState('');
-  const [minExp, setMinExp] = useState(1);
+  const [form, setForm] = useState(emptyForm);
 
   useEffect(() => {
-    fetchJobs();
+    void fetchJobs();
   }, [fetchJobs]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const skills = skillsInput
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
+  const openCreateModal = () => {
+    setEditingJob(null);
+    setForm(emptyForm);
+    setIsModalOpen(true);
+  };
 
-    if (skills.length === 0) {
+  const openEditModal = (job: JobDescription) => {
+    setEditingJob(job);
+    setForm({
+      title: job.title,
+      description: job.description,
+      skillsInput: job.requiredSkills.join(', '),
+      minExperience: String(job.minExperience),
+    });
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    if (submitting) return;
+    setIsModalOpen(false);
+    setEditingJob(null);
+    setForm(emptyForm);
+  };
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const requiredSkills = form.skillsInput.split(',').map((skill) => skill.trim()).filter(Boolean);
+    if (requiredSkills.length === 0) {
       toast.error('Vui lòng nhập ít nhất một kỹ năng');
       return;
     }
 
+    const payload: JobPayload = {
+      title: form.title.trim(),
+      description: form.description.trim(),
+      requiredSkills,
+      minExperience: Number(form.minExperience),
+    };
+
     setSubmitting(true);
     try {
-      await jobApi.create({
-        title,
-        description,
-        requiredSkills: skills,
-        minExperience: Number(minExp),
-      });
-      toast.success('Tạo Job Description thành công');
+      if (editingJob) {
+        const updated = await jobApi.update(editingJob.id, payload);
+        if (updated) updateJob(updated);
+        toast.success('Cập nhật JD thành công');
+      } else {
+        await jobApi.create(payload);
+        await fetchJobs();
+        toast.success('Tạo JD thành công');
+      }
       setIsModalOpen(false);
-      setTitle('');
-      setDescription('');
-      setSkillsInput('');
-      setMinExp(1);
-      fetchJobs();
+      setEditingJob(null);
+      setForm(emptyForm);
     } catch {
-      // lỗi đã được axios interceptor hiển thị toast
+      // The API interceptor displays request errors.
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleDelete = async (id: string, jobTitle: string) => {
-    if (window.confirm(`Bạn có chắc chắn muốn xóa vị trí "${jobTitle}"? Các kết quả đánh giá liên quan sẽ bị xóa theo.`)) {
-      try {
-        await deleteJob(id);
-        toast.success('Đã xóa Job Description');
-      } catch {
-        toast.error('Xóa thất bại');
-      }
+  const handleDelete = async (job: JobDescription) => {
+    const confirmed = window.confirm(
+      `Bạn có chắc chắn muốn xóa JD “${job.title}”? Các kết quả matching liên quan cũng sẽ bị xóa.`,
+    );
+    if (!confirmed) return;
+
+    try {
+      await deleteJob(job.id);
+      toast.success('Đã xóa JD');
+    } catch {
+      toast.error('Xóa JD thất bại');
     }
   };
 
   return (
     <div className="space-y-6">
-      {/* Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Job Descriptions (Mô tả Công việc)</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Quản lý các vị trí tuyển dụng làm chuẩn đối soát cho AI Matching
-          </p>
+          <h1 className="text-2xl font-bold text-slate-900">Quản lý Job Description</h1>
+          <p className="mt-1 text-sm text-slate-500">Tạo và quản lý tiêu chí tuyển dụng cho AI Matching.</p>
         </div>
         <button
-          onClick={() => setIsModalOpen(true)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-md shadow-blue-500/20 transition"
+          onClick={openCreateModal}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700"
         >
-          <Plus className="w-4 h-4" />
-          <span>Tạo JD mới</span>
+          <Plus className="h-4 w-4" />
+          Tạo JD mới
         </button>
       </div>
 
-      {/* Loading state */}
       {isLoading ? (
-        <div className="py-16 text-center text-slate-400">Đang tải danh sách vị trí...</div>
+        <div className="py-16 text-center text-slate-400">Đang tải danh sách JD...</div>
       ) : jobs.length === 0 ? (
-        /* Empty State */
-        <div className="glass-panel text-center py-16 px-4 rounded-2xl border border-dashed border-slate-300">
-          <AlertCircle className="w-12 h-12 text-slate-400 mx-auto mb-3" />
-          <h3 className="text-base font-semibold text-slate-700">Chưa có Job Description nào</h3>
-          <p className="text-sm text-slate-500 mt-1 max-w-sm mx-auto">
-            Bấm &quot;Tạo JD mới&quot; để thiết lập tiêu chí kỹ thuật và số năm kinh nghiệm tuyển dụng.
+        <div className="glass-panel rounded-2xl border border-dashed border-slate-300 px-4 py-16 text-center">
+          <AlertCircle className="mx-auto mb-3 h-12 w-12 text-slate-400" />
+          <h2 className="text-base font-semibold text-slate-700">Chưa có JD nào</h2>
+          <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">
+            Tạo JD để lưu mô tả công việc, kỹ năng yêu cầu và kinh nghiệm tối thiểu.
           </p>
         </div>
       ) : (
-        /* Job Cards Grid */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
           {jobs.map((job) => (
-            <div
-              key={job.id}
-              className="glass-panel p-6 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between"
-            >
+            <article key={job.id} className="glass-panel flex flex-col justify-between rounded-2xl p-6 shadow-sm transition-shadow hover:shadow-md">
               <div className="space-y-3">
-                <div className="flex items-start justify-between gap-2">
-                  <h3 className="font-bold text-base text-slate-900 line-clamp-1">{job.title}</h3>
-                  <button
-                    onClick={() => handleDelete(job.id, job.title)}
-                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                    title="Xóa JD"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                <div className="flex items-start justify-between gap-3">
+                  <h2 className="line-clamp-2 font-bold text-slate-900">{job.title}</h2>
+                  {(isAdmin || job.createdById === user?.id) && (
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        onClick={() => openEditModal(job)}
+                        aria-label={`Chỉnh sửa ${job.title}`}
+                        title="Chỉnh sửa JD"
+                        className="rounded-lg p-1.5 text-slate-400 transition hover:bg-blue-50 hover:text-blue-700"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => void handleDelete(job)}
+                        aria-label={`Xóa ${job.title}`}
+                        title="Xóa JD"
+                        className="rounded-lg p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
-                <p className="text-xs text-slate-500 line-clamp-3 leading-relaxed">
-                  {job.description}
-                </p>
+                {isAdmin && (
+                  <p className="text-xs text-slate-500">
+                    Người tạo: {job.createdBy?.fullName || job.createdBy?.email || 'Không xác định'}
+                  </p>
+                )}
 
-                {/* Skills tags */}
-                <div className="flex flex-wrap gap-1.5 pt-2">
-                  {job.requiredSkills.map((skill, i) => (
-                    <span
-                      key={i}
-                      className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-100 rounded-md text-[11px] font-medium"
-                    >
+                <p className="line-clamp-4 whitespace-pre-line text-sm leading-relaxed text-slate-500">{job.description}</p>
+
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {job.requiredSkills.map((skill, index) => (
+                    <span key={`${skill}-${index}`} className="rounded-md border border-blue-100 bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">
                       {skill}
                     </span>
                   ))}
                 </div>
               </div>
 
-              <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+              <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-4 text-xs text-slate-400">
                 <span className="flex items-center gap-1 font-medium text-slate-600">
-                  <Award className="w-3.5 h-3.5 text-amber-500" />
+                  <Award className="h-3.5 w-3.5 text-amber-500" />
                   Tối thiểu: {job.minExperience} năm
                 </span>
-                <span className="flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5" />
+                <time className="flex items-center gap-1" dateTime={job.createdAt}>
+                  <Calendar className="h-3.5 w-3.5" />
                   {new Date(job.createdAt).toLocaleDateString('vi-VN')}
-                </span>
+                </time>
               </div>
-            </div>
+            </article>
           ))}
         </div>
       )}
 
-      {/* Modal Tạo JD Mới */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-100 p-6 space-y-4 animate-in fade-in zoom-in duration-200">
-            <h2 className="text-lg font-bold text-slate-900">Tạo Job Description Mới</h2>
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4 backdrop-blur-sm">
+          <section role="dialog" aria-modal="true" aria-labelledby="job-form-title" className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-100 bg-white p-6 shadow-2xl">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h2 id="job-form-title" className="text-lg font-bold text-slate-900">
+                  {editingJob ? 'Chỉnh sửa JD' : 'Tạo Job Description mới'}
+                </h2>
+                {editingJob && (
+                  <p className="mt-1 text-xs leading-5 text-amber-700">
+                    Kết quả matching đã có sẽ không tự chấm lại theo nội dung JD mới.
+                  </p>
+                )}
+              </div>
+              <button type="button" onClick={closeModal} aria-label="Đóng" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Tiêu đề công việc <span className="text-red-500">*</span>
-                </label>
+                <label htmlFor="job-title" className="mb-1 block text-xs font-semibold text-slate-700">Tiêu đề công việc</label>
                 <input
+                  id="job-title"
                   type="text"
                   required
-                  placeholder="Ví dụ: Senior Backend NodeJS Developer"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  minLength={5}
+                  maxLength={150}
+                  value={form.title}
+                  onChange={(event) => setForm({ ...form, title: event.target.value })}
+                  placeholder="Ví dụ: Senior Backend Developer"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+                <p className="mt-1 text-right text-xs text-slate-400">{form.title.length}/150</p>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Số năm kinh nghiệm tối thiểu <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  max="30"
-                  required
-                  value={minExp}
-                  onChange={(e) => setMinExp(Number(e.target.value))}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Danh sách kỹ năng yêu cầu (ngăn cách bởi dấu phẩy){' '}
-                  <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ví dụ: React, TypeScript, Node.js, PostgreSQL"
-                  value={skillsInput}
-                  onChange={(e) => setSkillsInput(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Mô tả chi tiết vị trí <span className="text-red-500">*</span>
-                </label>
+                <label htmlFor="job-description" className="mb-1 block text-xs font-semibold text-slate-700">Mô tả công việc</label>
                 <textarea
+                  id="job-description"
                   required
-                  rows={4}
-                  placeholder="Mô tả trách nhiệm công việc, quyền lợi và yêu cầu chuyên môn..."
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  minLength={10}
+                  rows={5}
+                  value={form.description}
+                  onChange={(event) => setForm({ ...form, description: event.target.value })}
+                  placeholder="Mô tả trách nhiệm, quyền lợi và yêu cầu chuyên môn..."
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition"
-                >
+              <div>
+                <label htmlFor="job-skills" className="mb-1 block text-xs font-semibold text-slate-700">Kỹ năng yêu cầu</label>
+                <input
+                  id="job-skills"
+                  type="text"
+                  required
+                  value={form.skillsInput}
+                  onChange={(event) => setForm({ ...form, skillsInput: event.target.value })}
+                  placeholder="React, TypeScript, Node.js, PostgreSQL"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="mt-1 text-xs text-slate-400">Nhập các kỹ năng, phân tách bằng dấu phẩy.</p>
+              </div>
+
+              <div>
+                <label htmlFor="job-experience" className="mb-1 block text-xs font-semibold text-slate-700">Số năm kinh nghiệm tối thiểu</label>
+                <input
+                  id="job-experience"
+                  type="number"
+                  required
+                  min={0}
+                  max={30}
+                  step={1}
+                  value={form.minExperience}
+                  onChange={(event) => setForm({ ...form, minExperience: event.target.value })}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={closeModal} disabled={submitting} className="rounded-xl px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100">
                   Hủy
                 </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md shadow-blue-500/20 transition disabled:opacity-50"
-                >
-                  {submitting ? 'Đang lưu...' : 'Lưu Job Description'}
+                <button type="submit" disabled={submitting} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 disabled:opacity-50">
+                  {submitting ? 'Đang lưu...' : editingJob ? 'Lưu thay đổi' : 'Tạo JD'}
                 </button>
               </div>
             </form>
-          </div>
+          </section>
         </div>
       )}
     </div>

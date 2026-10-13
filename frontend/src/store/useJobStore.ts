@@ -8,6 +8,7 @@ interface JobState {
   isLoading: boolean;
   fetchJobs: () => Promise<void>;
   selectJob: (job: JobDescription | null) => void;
+  updateJob: (job: JobDescription) => void;
   deleteJob: (id: string) => Promise<void>;
 }
 
@@ -27,6 +28,11 @@ export const useJobStore = create<JobState>((set) => ({
   },
 
   selectJob: (job) => set({ selectedJob: job }),
+
+  updateJob: (job) => set((state) => ({
+    jobs: state.jobs.map((item) => item.id === job.id ? { ...item, ...job } : item),
+    selectedJob: state.selectedJob?.id === job.id ? { ...state.selectedJob, ...job } : state.selectedJob,
+  })),
 
   deleteJob: async (id: string) => {
     await jobApi.delete(id);

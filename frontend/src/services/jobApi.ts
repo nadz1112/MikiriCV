@@ -1,6 +1,13 @@
 import { api } from './api';
 import { ApiResponse, JobDescription } from '../types';
 
+export interface JobPayload {
+  title: string;
+  description: string;
+  requiredSkills: string[];
+  minExperience: number;
+}
+
 export const jobApi = {
   getAll: async () => {
     const res = await api.get<ApiResponse<JobDescription[]>>('/jobs');
@@ -12,12 +19,12 @@ export const jobApi = {
     return res.data.data;
   },
 
-  create: async (data: { title: string; description: string; requiredSkills: string[]; minExperience?: number }) => {
+  create: async (data: JobPayload) => {
     const res = await api.post<ApiResponse<JobDescription>>('/jobs', data);
     return res.data.data;
   },
 
-  update: async (id: string, data: Partial<JobDescription>) => {
+  update: async (id: string, data: JobPayload) => {
     const res = await api.put<ApiResponse<JobDescription>>(`/jobs/${id}`, data);
     return res.data.data;
   },
