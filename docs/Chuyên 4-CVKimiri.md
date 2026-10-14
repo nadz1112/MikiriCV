@@ -158,7 +158,7 @@ UPLOAD\_DIR=./uploads
 
 **8\. Giới hạn & phạm vi ngoài dự án (Out of scope — bản đầu)**
 
-* Không bao gồm xác thực/phân quyền người dùng (đăng nhập) ở phiên bản đầu.  
+* Phiên bản đầu chưa có xác thực; hiện đã bổ sung đăng nhập ADMIN/ENTERPRISE và tenant isolation (FR6–FR7). OAuth/social login vẫn ngoài phạm vi.
 * Không bao gồm gửi email tự động cho ứng viên.  
 * Không bao gồm xử lý CV dạng ảnh scan (OCR) — chỉ hỗ trợ PDF text-based và DOCX.  
 * Không bao gồm tích hợp với các nền tảng tuyển dụng bên thứ ba (LinkedIn, VietnamWorks...).

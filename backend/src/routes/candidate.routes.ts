@@ -13,6 +13,7 @@ router.post('/upload', upload.array('files', 20), (req, res, next) =>
 router.get('/', (req, res, next) => candidateController.getCandidates(req, res, next));
 
 // Xem chi tiết ứng viên
+router.get('/:id/file', (req, res, next) => candidateController.getCandidateFile(req, res, next));
 router.get('/:id', (req, res, next) => candidateController.getCandidateById(req, res, next));
 
 // Xóa ứng viên

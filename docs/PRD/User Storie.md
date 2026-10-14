@@ -159,5 +159,13 @@ Scenario: Xóa ứng viên thành công
   And Giao diện cập nhật lại không còn ứng viên đó
 ```
 
+## US-07 — Đăng nhập và phân quyền
+
+Là quản trị viên hoặc nhân sự doanh nghiệp, tôi muốn đăng nhập bằng tài khoản được cấp để chỉ truy cập các chức năng và dữ liệu phù hợp với vai trò của mình.
+
+## US-08 — Quản lý tài khoản doanh nghiệp
+
+Là quản trị viên, tôi muốn tạo, cập nhật, khóa, đặt lại mật khẩu và xóa tài khoản doanh nghiệp để quản lý quyền truy cập tập trung.
+
 ---
 

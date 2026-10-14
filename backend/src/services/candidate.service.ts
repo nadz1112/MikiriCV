@@ -1,11 +1,12 @@
 import fs from 'fs';
 import path from 'path';
 import { prisma } from '../config/database.js';
+import { Prisma } from '@prisma/client';
 import { CandidateFilterQuery } from '../types/index.js';
 import { extractTextFromFile, parseCandidateInfo } from '../utils/textParser.js';
 
 export class CandidateService {
-  async processAndSaveUploadedFile(file: Express.Multer.File) {
+  async processAndSaveUploadedFile(file: Express.Multer.File, ownerId: string) {
     const rawText = await extractTextFromFile(file.path, file.originalname);
     const parsed = parseCandidateInfo(rawText, file.originalname);
 
@@ -22,16 +23,18 @@ export class CandidateService {
         rawText: parsed.rawText,
         fileName: file.originalname,
         fileUrl: relativeUrl,
+        ownerId,
       },
     });
   }
 
-  async getFilteredCandidates(filters: CandidateFilterQuery) {
+  async getFilteredCandidates(filters: CandidateFilterQuery, ownerId?: string) {
     const { search, skills, minExp } = filters;
 
     // Chuẩn bị điều kiện truy vấn Prisma
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const where: any = {};
+    const where: Prisma.CandidateWhereInput = {};
+    if (ownerId) where.ownerId = ownerId;
 
     if (minExp) {
       const expNumber = parseInt(minExp, 10);
@@ -76,9 +79,9 @@ export class CandidateService {
     });
   }
 
-  async getCandidateById(id: string) {
+  async getCandidateById(id: string, ownerId?: string) {
     const candidate = await prisma.candidate.findUnique({
-      where: { id },
+      where: { id, ...(ownerId ? { ownerId } : {}) },
       include: {
         matchResults: {
           include: {
@@ -90,14 +93,15 @@ export class CandidateService {
     });
 
     if (!candidate) {
+      throw Object.assign(new Error('Không tìm thấy ứng viên'), { status: 404, code: 'CANDIDATE_NOT_FOUND' });
       throw new Error(`Không tìm thấy ứng viên với ID: ${id}`);
     }
 
     return candidate;
   }
 
-  async deleteCandidate(id: string) {
-    const candidate = await this.getCandidateById(id);
+  async deleteCandidate(id: string, ownerId?: string) {
+    const candidate = await this.getCandidateById(id, ownerId);
 
     // Xóa file vật lý nếu tồn tại
     try {

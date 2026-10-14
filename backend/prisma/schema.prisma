@@ -7,6 +7,32 @@ generator client {
   provider = "prisma-client-js"
 }
 
+enum UserRole {
+  ADMIN
+  ENTERPRISE
+}
+
+model User {
+  id                 String    @id @default(uuid())
+  email              String    @unique
+  passwordHash       String
+  fullName           String
+  companyName        String?
+  role               UserRole
+  isActive           Boolean   @default(true)
+  mustChangePassword Boolean   @default(false)
+  tokenVersion       Int       @default(0)
+  failedLoginCount   Int       @default(0)
+  lockedUntil        DateTime?
+  lastLoginAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  jobs               JobDescription[]
+  candidates         Candidate[]
+
+  @@map("users")
+}
+
 model JobDescription {
   id             String        @id @default(uuid())
   title          String
@@ -16,8 +42,11 @@ model JobDescription {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   matchResults   MatchResult[]
+  ownerId        String
+  owner          User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@map("job_descriptions")
+  @@index([ownerId])
 }
 
 model Candidate {
@@ -33,8 +62,11 @@ model Candidate {
   fileUrl           String
   createdAt         DateTime      @default(now())
   matchResults      MatchResult[]
+  ownerId           String
+  owner             User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@map("candidates")
+  @@index([ownerId])
 }
 
 model MatchResult {

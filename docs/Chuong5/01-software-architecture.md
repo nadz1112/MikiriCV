@@ -167,6 +167,16 @@ MATCH_BATCH_DELAY_MS=1000   # độ trễ giữa các đợt
 AI_MAX_RETRIES=2            # theo FR4.5
 CV_MAX_CHARS=60000          # cắt rawText trước khi gửi AI để kiểm soát token
 CORS_ORIGIN=http://localhost:5173
+JWT_ACCESS_SECRET=<random-secret-at-least-32-chars>
+JWT_ACCESS_EXPIRES_IN=15m
+JWT_REFRESH_SECRET=<different-random-secret-at-least-32-chars>
+JWT_REFRESH_EXPIRES_IN=7d
+COOKIE_SECURE=false            # true in production HTTPS
+BCRYPT_ROUNDS=12
+LOGIN_MAX_ATTEMPTS=5
+LOGIN_LOCK_MINUTES=15
+SEED_ADMIN_EMAIL=admin@example.com
+SEED_ADMIN_PASSWORD=<set-out-of-band>
 ```
 
 ### 5.1.7 Kiến trúc Bảo mật (Security Architecture)
@@ -204,7 +214,8 @@ Do MVP **không có xác thực** (mục 3.2.2-B), các biện pháp dưới đ�
 | **ADR-03** | **Gemini Structured Output** (`responseSchema` + Zod kiểm lại) sau interface `AIMatchingProvider` | Ép đầu ra JSON, giảm lỗi parse (KR 2.2); đổi nhà cung cấp không đụng nghiệp vụ | Cần kiểm tra tình trạng SDK (`@google/genai` được ưu tiên hơn `@google/generative-ai`) và tên model hiện hành khi triển khai |
 | **ADR-04** | **Lưu tệp ở filesystem cục bộ** sau interface `FileStorage` | Đúng phạm vi MVP, không phụ thuộc cloud | Chạy nhiều instance `api` → chuyển sang S3/MinIO bằng adapter mới |
 | **ADR-05** | **Matching lai**: đồng bộ cho ≤ `SYNC_MATCH_MAX`, **job bất đồng bộ in-process** cho lô lớn; trạng thái job lưu DB để khôi phục sau restart | Hỗ trợ tiến độ + hủy (Chương 4) mà không cần Redis | Khi cần chịu tải cao/nhiều instance → thay runner bằng BullMQ + Redis, giữ nguyên API |
-| **ADR-06** | **Không phục vụ `/uploads` công khai** | CV là dữ liệu cá nhân; MVP chưa có auth | Khi có RBAC → kiểm quyền trong endpoint tải file |
+| **ADR-06** | **Không phục vụ `/uploads` công khai** | CV là dữ liệu cá nhân; mọi tệp chỉ được tải qua endpoint có xác thực và kiểm tra owner | Giữ quyết định; ADMIN truy cập toàn hệ thống, ENTERPRISE chỉ truy cập owner của mình |
 | **ADR-07** | **Chuẩn hóa tìm kiếm bằng cột `searchText`** (không dấu, chữ thường) + trigram index | Đáp ứng "gõ `nguyen van an` vẫn khớp `Nguyễn Văn An`" (US-03) và < 100ms | Tốn thêm dung lượng ≈ kích thước `rawText` |
+| **ADR-08** | **JWT access/refresh trong cookie HTTP-only + tenant isolation theo `ownerId`** | Không lưu token trong JS storage; mọi truy vấn nghiệp vụ Enterprise giới hạn owner ở backend | Xem [ADR-08](ADR-08-authentication-tenant.md); JWT bí mật khác nhau, CSRF header riêng và CORS whitelist là bắt buộc |
 
 ---

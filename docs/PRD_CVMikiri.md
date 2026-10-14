@@ -119,7 +119,7 @@ Trong kỷ nguyên tuyển dụng số, mỗi chiến dịch tuyển dụng cho 
    * Xóa ứng viên và tự động cascade xóa toàn bộ kết quả matching liên quan.
 
 #### B. Ngoài phạm vi (Out-of-Scope — Bản đầu)
-* Không triển khai hệ thống xác thực người dùng (Login/OAuth2) và phân quyền (RBAC) ở giai đoạn MVP.
+* MVP ban đầu không có xác thực; hiện đã bổ sung đăng nhập, phân quyền ADMIN/ENTERPRISE và cô lập dữ liệu theo tenant (FR6–FR7). OAuth/social login vẫn ngoài phạm vi.
 * Không hỗ trợ nhận dạng ký tự quang học (OCR) cho các CV dạng ảnh chụp, file scan bitmap.
 * Không gửi email tự động trực tiếp từ hệ thống đến ứng viên.
 * Không tích hợp API của các nền tảng tuyển dụng bên ngoài (LinkedIn, TopCV, VietnamWorks,...).
@@ -266,6 +266,8 @@ mindmap
 | **FR5.1-5.3** | Dashboard & Chi tiết | US-05 | `Candidate`, `MatchResult` | `GET /api/candidates/:id` | Must-have |
 | **FR5.4** | Xóa ứng viên Cascade | US-06 | `Candidate`, `MatchResult` | `DELETE /api/candidates/:id` | Must-have |
 | **FR5.5** | Biểu đồ thống kê | US-05 | `MatchResult` | `GET /api/jobs/:id/stats` | Could-have |
+| **FR6** | Xác thực và phân quyền ADMIN/ENTERPRISE | US-07 | `User` | `/api/auth/*` | Must-have |
+| **FR7** | Quản lý tài khoản doanh nghiệp | US-08 | `User`, `JobDescription`, `Candidate` | `/api/users/*` | Must-have |
 
 ---
 
