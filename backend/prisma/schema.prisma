@@ -28,6 +28,7 @@ model User {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
   jobs               JobDescription[]
+  createdJobs        JobDescription[] @relation("JobCreator")
   candidates         Candidate[]
 
   @@map("users")
@@ -44,9 +45,12 @@ model JobDescription {
   matchResults   MatchResult[]
   ownerId        String
   owner          User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdById    String?
+  createdBy      User?         @relation("JobCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@map("job_descriptions")
   @@index([ownerId])
+  @@index([createdById])
 }
 
 model Candidate {
