@@ -24,10 +24,7 @@ export interface Candidate {
   fileName: string;
   fileUrl: string;
   createdAt: string;
-  matchResults?: {
-    jobDescriptionId: string;
-    score: number;
-  }[];
+  matchResults?: MatchResult[];
 }
 
 export interface MatchResult {
