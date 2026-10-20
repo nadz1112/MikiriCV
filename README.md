@@ -67,7 +67,7 @@ npm --prefix backend run prisma:migrate
 npm --prefix backend run prisma:seed
 ```
 
-Đăng nhập ADMIN bằng email/mật khẩu đã đặt trong `SEED_ADMIN_EMAIL` và `SEED_ADMIN_PASSWORD`. Tạo ENTERPRISE trong mục **Quản lý tài khoản**; tài khoản này phải đổi mật khẩu tạm ở lần đăng nhập đầu. Các bản ghi JD/CV mới do ENTERPRISE tạo được gắn owner ở backend. ADMIN xem dữ liệu tổng thể và chỉ có giao diện quản lý tài khoản trong phiên bản này.
+Đăng nhập ADMIN bằng email/mật khẩu đã đặt trong `SEED_ADMIN_EMAIL` và `SEED_ADMIN_PASSWORD`. Tạo ENTERPRISE trong mục **Quản lý tài khoản**; tài khoản này phải đổi mật khẩu tạm ở lần đăng nhập đầu. Các bản ghi JD/CV mới do ENTERPRISE tạo được gắn owner ở backend. ADMIN xem dữ liệu tổng thể, bao gồm danh sách CV và người tải lên.
 
 Để tạo 2 tài khoản ENTERPRISE và JD/CV mẫu khi phát triển, đặt `SEED_DEMO_PASSWORD` rồi chạy seed trong `NODE_ENV=development` hoặc `test`. Tài khoản demo `hr.alpha@example.test` và `hr.beta@example.test` dùng mật khẩu đó và bắt buộc đổi mật khẩu lần đầu. Seed không tạo tài khoản demo trong production.
 
@@ -97,6 +97,7 @@ GEMINI_MODEL="gemini-3.5-flash"
 
 # Giới hạn dung lượng tải lên
 MAX_FILE_SIZE_MB=10
+MAX_FILES_PER_REQUEST=20
 UPLOAD_DIR="./uploads"
 ```
 
@@ -124,3 +125,38 @@ npm run dev
 - **Frontend Client**: [http://localhost:5173](http://localhost:5173)
 - **Backend API**: [http://localhost:4000](http://localhost:4000)
 - **Health Check API**: [http://localhost:4000/api/health](http://localhost:4000/api/health)
+
+---
+
+## 🔁 Chạy dự án trong những lần sau
+
+Sau khi đã cài dependencies, tạo `backend/.env`, seed tài khoản ban đầu và chạy migration lần đầu, các lần phát triển tiếp theo chỉ cần:
+
+```bash
+# Từ thư mục gốc dự án
+docker compose up -d postgres
+npm run dev
+```
+
+Mở frontend tại [http://localhost:5173](http://localhost:5173). Không cần chạy lại `npm run install:all` hoặc `npm run prisma:seed` mỗi lần khởi động. PostgreSQL chạy nền trong Docker và dữ liệu được giữ trong volume `mikiricv-postgres`.
+
+Để dừng frontend/backend, nhấn `Ctrl+C` ở terminal chạy `npm run dev`. Có thể để PostgreSQL chạy nền; nếu muốn dừng cả database:
+
+```bash
+docker compose stop postgres
+```
+
+Khi có thay đổi schema hoặc pull code có migration mới, chạy các lệnh sau trước khi khởi động app:
+
+```bash
+npm run prisma:migrate
+npm run prisma:generate
+```
+
+Nếu cần tạo lại tài khoản hoặc dữ liệu mẫu trong môi trường phát triển, chạy `npm --prefix backend run prisma:seed` theo hướng dẫn cấu hình seed ở trên. Lệnh seed không cần thiết cho các lần chạy thường ngày.
+
+Để dọn các khóa idempotency đã hết hạn, chạy tùy chọn:
+
+```bash
+npm --prefix backend run cleanup:idempotency
+```

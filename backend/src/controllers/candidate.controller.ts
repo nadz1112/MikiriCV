@@ -1,91 +1,38 @@
 import { Request, Response, NextFunction } from 'express';
+import path from 'path';
+import { randomUUID } from 'crypto';
 import { candidateService } from '../services/candidate.service.js';
 import { ApiResponse } from '../types/index.js';
-import path from 'path';
-import fs from 'fs/promises';
 
 export class CandidateController {
-  async getCandidateFile(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async uploadCandidates(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const candidate = await candidateService.getCandidateById(req.params.id, req.user?.role === 'ADMIN' ? undefined : req.user?.id);
-      const filePath = path.resolve(process.cwd(), candidate.fileUrl.replace(/^\//, ''));
-      await fs.access(filePath).catch(() => { throw Object.assign(new Error('Không tìm thấy tệp CV gốc'), { status: 404, code: 'FILE_NOT_FOUND' }); });
-      res.sendFile(filePath, (error) => { if (error) next(error); });
+      const files = req.files as Express.Multer.File[] | undefined;
+      if (!files?.length) { res.status(400).json({ success: false, error: { code: 'NO_FILES', message: 'Vui lòng chọn ít nhất một tệp PDF hoặc DOCX' }, requestId: randomUUID() }); return; }
+      const result = await candidateService.upload(files, req.get('Idempotency-Key')!, req.user!);
+      res.status(result.status).json(result.body);
     } catch (error) { next(error); }
-  }
-
-  async uploadCandidates(req: Request, res: Response<ApiResponse>, next: NextFunction): Promise<void> {
-    try {
-      const files = req.files as Express.Multer.File[];
-
-      if (!files || files.length === 0) {
-        res.status(400).json({
-          success: false,
-          message: 'Vui lòng chọn ít nhất một file CV (.pdf hoặc .docx) để tải lên',
-        });
-        return;
-      }
-
-      const results = [];
-      const errors = [];
-
-      for (const file of files) {
-        try {
-          const candidate = await candidateService.processAndSaveUploadedFile(file, req.user!.id);
-          results.push(candidate);
-        } catch (err) {
-          errors.push({
-            fileName: file.originalname,
-            error: err instanceof Error ? err.message : 'Lỗi không xác định',
-          });
-        }
-      }
-
-      res.status(201).json({
-        success: results.length > 0,
-        message: `Đã xử lý thành công ${results.length}/${files.length} hồ sơ`,
-        data: results,
-        errors: errors.length > 0 ? errors : undefined,
-      });
-    } catch (error) {
-      next(error);
-    }
   }
 
   async getCandidates(req: Request, res: Response<ApiResponse>, next: NextFunction): Promise<void> {
     try {
-      const candidates = await candidateService.getFilteredCandidates(req.query, req.user?.role === 'ADMIN' ? undefined : req.user?.id);
-      res.json({
-        success: true,
-        data: candidates,
-      });
-    } catch (error) {
-      next(error);
-    }
+      const page = Number(req.query.page ?? 1); const limit = Number(req.query.limit ?? 50);
+      res.json({ success: true, ...await candidateService.list(page, limit, req.user!) });
+    } catch (error) { next(error); }
   }
 
-  async getCandidateById(req: Request, res: Response<ApiResponse>, next: NextFunction): Promise<void> {
+  async getCandidateFile(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const candidate = await candidateService.getCandidateById(req.params.id, req.user?.role === 'ADMIN' ? undefined : req.user?.id);
-      res.json({
-        success: true,
-        data: candidate,
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async deleteCandidate(req: Request, res: Response<ApiResponse>, next: NextFunction): Promise<void> {
-    try {
-      await candidateService.deleteCandidate(req.params.id, req.user?.role === 'ADMIN' ? undefined : req.user?.id);
-      res.json({
-        success: true,
-        message: 'Đã xóa ứng viên và giải phóng tệp tin thành công',
-      });
-    } catch (error) {
-      next(error);
-    }
+      const file = await candidateService.getFile(req.params.id, req.user!);
+      const disposition = req.query.download === '1' ? 'attachment' : 'inline';
+      const encoded = encodeURIComponent(file.fileName).replace(/[!'()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
+      const fallbackName = path.basename(file.fileName).replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+      res.setHeader('Content-Type', file.contentType);
+      res.setHeader('Content-Disposition', `${disposition}; filename="${fallbackName}"; filename*=UTF-8''${encoded}`);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.sendFile(file.filePath, (error) => { if (error && !res.headersSent) next(error); });
+    } catch (error) { next(error); }
   }
 }
 

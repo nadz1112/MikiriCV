@@ -23,18 +23,23 @@ export interface Candidate {
   fullName: string;
   email: string | null;
   phone: string | null;
-  rawText: string;
+  rawText?: string;
   skills: string[];
   yearsOfExperience: number;
   education: string | null;
   fileName: string;
-  fileUrl: string;
+  fileUrl?: string;
   createdAt: string;
+  extractionStatus?: 'SUCCESS' | 'WARNING' | 'FAILED';
+  extractionMessage?: string | null;
+  uploadedBy?: { id: string; fullName: string; email: string } | null;
   matchResults?: {
     jobDescriptionId: string;
     score: number;
   }[];
 }
+
+export interface CandidatePage { data: Candidate[]; total: number; page: number; limit: number }
 
 export interface MatchResult {
   id: string;

@@ -17,27 +17,20 @@ const storage = multer.diskStorage({
   filename: (_req, file, cb) => {
     // Giữ tên file gốc có gắn UUID phía trước để tránh trùng lặp
     const uniqueId = uuidv4();
-    const ext = path.extname(file.originalname).toLowerCase();
-    const baseName = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_\u00C0-\u024F\u1EA0-\u1EF9-]/g, '_');
-    cb(null, `${uniqueId}_${baseName}${ext}`);
+    const safeOriginal = path.basename(file.originalname.replace(/\\/g, '/'));
+    const ext = path.extname(safeOriginal).toLowerCase();
+    const baseName = path.basename(safeOriginal, ext).replace(/[\x00-\x1f\x7f]/g, '').replace(/[\\/:*?"<>|]/g, '_').trim() || 'ho-so';
+    cb(null, `${uniqueId}-${baseName}${ext}`);
   },
 });
 
-const fileFilter = (_req: Express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  const allowedExtensions = ['.pdf', '.docx'];
-  const ext = path.extname(file.originalname).toLowerCase();
-
-  if (!allowedExtensions.includes(ext)) {
-    return cb(new Error(`Định dạng tệp không được chấp nhận. Hệ thống chỉ hỗ trợ ${allowedExtensions.join(', ')}`));
-  }
-
-  cb(null, true);
-};
+const fileFilter = (_req: Express.Request, _file: Express.Multer.File, cb: multer.FileFilterCallback) => cb(null, true);
 
 export const upload = multer({
   storage,
   fileFilter,
   limits: {
     fileSize: env.MAX_FILE_SIZE_MB * 1024 * 1024,
+    files: env.MAX_FILES_PER_REQUEST,
   },
 });

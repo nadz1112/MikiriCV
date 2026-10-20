@@ -1,0 +1,3 @@
+export function toCandidateUploadDto(candidate: { id: string; fullName: string; email: string | null; phone: string | null; yearsOfExperience: number; skills: string[]; fileName: string; extractionStatus: string; extractionMessage: string | null; createdAt: Date }) {
+  return { id: candidate.id, fullName: candidate.fullName, email: candidate.email, phone: candidate.phone, yearsOfExperience: candidate.yearsOfExperience, skills: candidate.skills, fileName: candidate.fileName, extractionStatus: candidate.extractionStatus, extractionMessage: candidate.extractionMessage, createdAt: candidate.createdAt };
+}

@@ -1,310 +1,137 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { UploadCloud, Search, Trash2, Mail, Phone, Clock, FileText, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, CloudUpload, ExternalLink, FileText, LoaderCircle, RotateCcw, XCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useCandidateStore } from '../store/useCandidateStore';
 import { candidateApi } from '../services/candidateApi';
-import toast from 'react-hot-toast';
+import { useAuthStore } from '../features/auth/authStore';
+import type { Candidate } from '../types';
+
+type UploadState = 'pending' | 'uploading' | 'parsed' | 'warning' | 'failed' | 'rejected';
+interface UploadItem { id: string; file: File; state: UploadState; message?: string; progress: number; candidate?: Candidate; retryable?: boolean }
+const MAX_BYTES = 10 * 1024 * 1024;
+const ACCEPTED = new Set(['.pdf', '.docx']);
+const extOf = (name: string) => name.toLowerCase().slice(name.lastIndexOf('.'));
 
 export const CandidatesPage: React.FC = () => {
-  const {
-    candidates,
-    isLoading,
-    filter,
-    selectedCandidates,
-    fetchCandidates,
-    setFilter,
-    toggleSelectCandidate,
-    selectAllCandidates,
-    clearSelection,
-    deleteCandidate,
-  } = useCandidateStore();
+  const { candidates, isLoading, page, total, fetchPage } = useCandidateStore();
+  const user = useAuthStore((state) => state.user);
+  const [items, setItems] = useState<UploadItem[]>([]);
+  const [batch, setBatch] = useState<{ files: File[]; key: string } | null>(null);
+  const [sending, setSending] = useState(false);
 
-  const [uploading, setUploading] = useState(false);
-  const [searchInput, setSearchInput] = useState(filter.search || '');
-  const [skillsInput, setSkillsInput] = useState(filter.skills || '');
-  const [minExpInput, setMinExpInput] = useState(filter.minExp || '');
+  useEffect(() => { void fetchPage(1); }, [fetchPage]);
 
-  useEffect(() => {
-    fetchCandidates();
-  }, [fetchCandidates]);
+  const onDrop = useCallback((accepted: File[], rejections: Array<{ file: File; errors: Array<{ code: string }> }>) => {
+    setItems((current) => [...current,
+      ...accepted.map((file) => ({ id: crypto.randomUUID(), file, state: 'pending' as const, progress: 0 })),
+      ...rejections.map(({ file, errors }) => ({ id: crypto.randomUUID(), file, state: 'rejected' as const, progress: 0, message: errors.some((error) => error.code === 'file-too-large') ? 'Tệp vượt quá 10 MB' : errors.some((error) => error.code === 'too-many-files') ? 'Vượt quá số lượng tệp được chọn cho một lần' : `Chỉ chấp nhận tệp PDF hoặc DOCX (${extOf(file.name) || 'không rõ định dạng'})` })),
+    ]);
+  }, []);
 
-  // Dropzone handling
-  const onDrop = useCallback(
-    async (acceptedFiles: File[]) => {
-      if (acceptedFiles.length === 0) return;
-      setUploading(true);
-      try {
-        const res = await candidateApi.upload(acceptedFiles);
-        toast.success(res.message || 'Tải lên CV thành công!');
-        fetchCandidates();
-      } catch {
-        // lỗi đã được xử lý bởi api interceptor
-      } finally {
-        setUploading(false);
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, multiple: true, maxFiles: 20, maxSize: MAX_BYTES, accept: { 'application/pdf': ['.pdf'], 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'] } });
+
+  const uploadFiles = async (files: File[], key: string, itemIds: string[]) => {
+    if (sending) return;
+    setSending(true);
+    setBatch({ files, key });
+    setItems((current) => current.map((item) => itemIds.includes(item.id) ? { ...item, state: 'uploading', progress: 0, message: undefined, retryable: false } : item));
+    try {
+      const response = await candidateApi.upload(files, key, (progress) => setItems((current) => current.map((item) => itemIds.includes(item.id) ? { ...item, progress } : item)));
+      const successes = response.data.filter((candidate) => candidate.extractionStatus === 'SUCCESS').length;
+      const review = response.data.filter((candidate) => candidate.extractionStatus === 'WARNING').length;
+      const failed = response.data.filter((candidate) => candidate.extractionStatus === 'FAILED').length + response.errors.length;
+      setItems((current) => {
+        const unmatched = [...response.data];
+        const errors = [...response.errors];
+        return current.map((item) => {
+        if (!itemIds.includes(item.id)) return item;
+        const index = unmatched.findIndex((candidate) => candidate.fileName === item.file.name);
+        if (index >= 0) {
+          const [candidate] = unmatched.splice(index, 1);
+          if (candidate.extractionStatus === 'SUCCESS') return { ...item, state: 'parsed', progress: 100, candidate, message: undefined };
+          if (candidate.extractionStatus === 'WARNING') return { ...item, state: 'warning', progress: 100, candidate, message: candidate.extractionMessage || 'Cần xem lại thông tin trích xuất' };
+          return { ...item, state: 'failed', progress: 100, candidate, message: candidate.extractionMessage || 'Không thể đọc nội dung CV' };
+        }
+        const errorIndex = errors.findIndex((error) => error.fileName === item.file.name);
+        if (errorIndex >= 0) { const [error] = errors.splice(errorIndex, 1); return { ...item, state: 'failed', progress: 100, message: error.message }; }
+        return item;
+      });
+      });
+      toast.success(`Đã xử lý ${successes}/${files.length} hồ sơ thành công, ${failed} thất bại, ${review} cần xem lại`);
+      setBatch(null);
+      await fetchPage(1);
+    } catch (error) {
+      const payload = (error as { response?: { data?: { error?: { message?: string }; errors?: Array<{ fileName: string; message: string }>; data?: Candidate[] } } }).response?.data;
+      const requestErrors = payload?.errors || [];
+      const requestMessage = payload?.error?.message;
+      if (requestErrors.length) {
+        const failed = requestErrors.length;
+        setItems((current) => {
+          const remainingErrors = [...requestErrors];
+          return current.map((item) => {
+          if (!itemIds.includes(item.id)) return item;
+          const index = remainingErrors.findIndex((entry) => entry.fileName === item.file.name);
+          if (index < 0) return item;
+          const [entry] = remainingErrors.splice(index, 1);
+          return { ...item, state: 'failed', progress: 100, message: entry.message, retryable: false };
+        });
+        });
+        setBatch(null);
+        toast.error(`Không xử lý được ${failed}/${files.length} tệp. ${requestMessage || 'Hãy kiểm tra định dạng và dung lượng.'}`);
+      } else {
+        const message = requestMessage || 'Không thể kết nối máy chủ. Vui lòng thử lại.';
+        setItems((current) => current.map((item) => itemIds.includes(item.id) ? { ...item, state: 'failed', progress: 0, message, retryable: true } : item));
+        setBatch({ files, key });
+        toast.error(message);
       }
-    },
-    [fetchCandidates]
-  );
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      'application/pdf': ['.pdf'],
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-    },
-    maxSize: 10 * 1024 * 1024, // 10MB
-  });
-
-  const handleApplyFilter = (e: React.FormEvent) => {
-    e.preventDefault();
-    setFilter({
-      search: searchInput,
-      skills: skillsInput,
-      minExp: minExpInput,
-    });
+    } finally { setSending(false); }
   };
 
-  const handleResetFilter = () => {
-    setSearchInput('');
-    setSkillsInput('');
-    setMinExpInput('');
-    setFilter({});
+  const handleUpload = () => {
+    const valid = items.filter((item) => item.state === 'pending' && ACCEPTED.has(extOf(item.file.name)) && item.file.size <= MAX_BYTES);
+    if (!valid.length) { toast.error('Hãy chọn ít nhất một tệp PDF hoặc DOCX hợp lệ'); return; }
+    const key = crypto.randomUUID();
+    void uploadFiles(valid.map((item) => item.file), key, valid.map((item) => item.id));
   };
 
-  const handleSelectAll = () => {
-    if (selectedCandidates.length === candidates.length) {
-      clearSelection();
-    } else {
-      selectAllCandidates(candidates.map((c) => c.id));
-    }
+  const retry = () => {
+    if (!batch) return;
+    const failed = items.filter((item) => item.retryable && item.state === 'failed');
+    if (failed.length) void uploadFiles(batch.files, batch.key, failed.map((item) => item.id));
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (window.confirm(`Xóa ứng viên "${name}" khỏi hệ thống?`)) {
-      try {
-        await deleteCandidate(id);
-        toast.success('Đã xóa hồ sơ ứng viên');
-      } catch {
-        toast.error('Xóa ứng viên thất bại');
-      }
-    }
+  const statusIcon = (item: UploadItem) => {
+    if (item.state === 'uploading') return <LoaderCircle className="h-4 w-4 animate-spin text-blue-600"/>;
+    if (item.state === 'parsed') return <CheckCircle2 className="h-4 w-4 text-emerald-600"/>;
+    if (item.state === 'warning') return <AlertTriangle className="h-4 w-4 text-amber-600"/>;
+    if (item.state === 'failed' || item.state === 'rejected') return <XCircle className="h-4 w-4 text-red-600"/>;
+    return <FileText className="h-4 w-4 text-slate-400"/>;
   };
 
-  return (
-    <div className="space-y-6">
-      {/* Title & Stats */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Hồ sơ Ứng viên (Candidates)</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Tự động bóc tách thông tin từ PDF/DOCX và lọc nhanh bằng quy tắc (Rule-based)
-          </p>
-        </div>
-        {selectedCandidates.length > 0 && (
-          <div className="flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-xl text-xs font-semibold">
-            <CheckCircle2 className="w-4 h-4" />
-            <span>Đã chọn {selectedCandidates.length} ứng viên</span>
-          </div>
-        )}
-      </div>
+  return <div className="space-y-6">
+    <div><h1 className="text-2xl font-bold text-slate-900">Quản lý CV</h1><p className="mt-1 text-sm text-slate-500">Tải lên nhiều hồ sơ PDF hoặc DOCX để trích xuất thông tin ứng viên.</p></div>
 
-      {/* Upload Drag & Drop Area */}
-      <div
-        {...getRootProps()}
-        className={`glass-panel border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
-          isDragActive
-            ? 'border-blue-500 bg-blue-50/50 scale-[1.01]'
-            : 'border-slate-300 hover:border-blue-400 hover:bg-slate-50/50'
-        }`}
-      >
-        <input {...getInputProps()} />
-        <div className="max-w-md mx-auto space-y-3">
-          <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl inline-block shadow-sm">
-            <UploadCloud className="w-8 h-8 mx-auto" />
-          </div>
-          <div>
-            <h3 className="font-semibold text-slate-800 text-sm sm:text-base">
-              {uploading
-                ? 'Đang tải lên và trích xuất dữ liệu...'
-                : isDragActive
-                ? 'Thả các file CV vào đây'
-                : 'Kéo thả file CV vào đây, hoặc bấm để chọn'}
-            </h3>
-            <p className="text-xs text-slate-400 mt-1">
-              Hỗ trợ định dạng .PDF, .DOCX. Dung lượng tối đa 10MB/file.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Rule-based Filter Bar */}
-      <form
-        onSubmit={handleApplyFilter}
-        className="glass-panel p-4 rounded-2xl border border-slate-200/80 grid grid-cols-1 sm:grid-cols-4 gap-3 items-end"
-      >
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 mb-1">Tìm từ khóa / Họ tên</label>
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-            <input
-              type="text"
-              placeholder="Nhập từ khóa..."
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 mb-1">Kỹ năng (ngăn cách dấu phẩy)</label>
-          <input
-            type="text"
-            placeholder="Ví dụ: React, Node.js..."
-            value={skillsInput}
-            onChange={(e) => setSkillsInput(e.target.value)}
-            className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 mb-1">Kinh nghiệm tối thiểu (năm)</label>
-          <input
-            type="number"
-            min="0"
-            placeholder="Ví dụ: 2"
-            value={minExpInput}
-            onChange={(e) => setMinExpInput(e.target.value)}
-            className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            type="submit"
-            className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-sm transition"
-          >
-            Lọc hồ sơ
-          </button>
-          <button
-            type="button"
-            onClick={handleResetFilter}
-            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-semibold transition"
-          >
-            Đặt lại
-          </button>
-        </div>
-      </form>
-
-      {/* Candidate Table */}
-      <div className="glass-panel rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm">
-        {isLoading ? (
-          <div className="py-16 text-center text-slate-400 text-sm">Đang tải danh sách hồ sơ...</div>
-        ) : candidates.length === 0 ? (
-          <div className="py-16 text-center text-slate-400 text-sm">
-            Không tìm thấy ứng viên nào phù hợp với điều kiện lọc.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-100/70 border-b border-slate-200 text-slate-600 font-semibold uppercase tracking-wider text-[10px]">
-                <tr>
-                  <th className="p-4 w-10 text-center">
-                    <input
-                      type="checkbox"
-                      checked={
-                        candidates.length > 0 && selectedCandidates.length === candidates.length
-                      }
-                      onChange={handleSelectAll}
-                      className="rounded text-blue-600 focus:ring-blue-500"
-                    />
-                  </th>
-                  <th className="p-4">Ứng viên</th>
-                  <th className="p-4">Liên hệ</th>
-                  <th className="p-4">Kinh nghiệm</th>
-                  <th className="p-4">Kỹ năng trích xuất</th>
-                  <th className="p-4 text-right">Thao tác</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {candidates.map((c) => {
-                  const isSelected = selectedCandidates.includes(c.id);
-                  return (
-                    <tr
-                      key={c.id}
-                      className={`hover:bg-blue-50/40 transition-colors ${
-                        isSelected ? 'bg-blue-50/60' : ''
-                      }`}
-                    >
-                      <td className="p-4 text-center">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleSelectCandidate(c.id)}
-                          className="rounded text-blue-600 focus:ring-blue-500"
-                        />
-                      </td>
-                      <td className="p-4">
-                        <div className="font-semibold text-slate-800 text-sm">{c.fullName}</div>
-                        <div className="text-slate-400 flex items-center gap-1 mt-0.5">
-                          <FileText className="w-3 h-3" />
-                          <span className="truncate max-w-xs">{c.fileName}</span>
-                        </div>
-                      </td>
-                      <td className="p-4 space-y-1 text-slate-600">
-                        {c.email && (
-                          <div className="flex items-center gap-1.5">
-                            <Mail className="w-3 h-3 text-slate-400" />
-                            <span>{c.email}</span>
-                          </div>
-                        )}
-                        {c.phone && (
-                          <div className="flex items-center gap-1.5">
-                            <Phone className="w-3 h-3 text-slate-400" />
-                            <span>{c.phone}</span>
-                          </div>
-                        )}
-                      </td>
-                      <td className="p-4 font-medium text-slate-700">
-                        <div className="flex items-center gap-1">
-                          <Clock className="w-3.5 h-3.5 text-slate-400" />
-                          <span>{c.yearsOfExperience} năm</span>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="flex flex-wrap gap-1 max-w-md">
-                          {c.skills.slice(0, 5).map((s, i) => (
-                            <span
-                              key={i}
-                              className="px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-medium"
-                            >
-                              {s}
-                            </span>
-                          ))}
-                          {c.skills.length > 5 && (
-                            <span className="text-[10px] text-slate-400 self-center">
-                              +{c.skills.length - 5}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-4 text-right">
-                        <button
-                          onClick={() => handleDelete(c.id, c.fullName)}
-                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                          title="Xóa hồ sơ"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+    <div {...getRootProps()} className={`cursor-pointer rounded-2xl border-2 border-dashed p-8 text-center transition ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-slate-300 bg-white hover:border-blue-400'}`}>
+      <input {...getInputProps()}/><CloudUpload className="mx-auto h-9 w-9 text-blue-600"/>
+      <p className="mt-3 font-semibold text-slate-800">Kéo thả file PDF/DOCX vào đây, hoặc bấm để chọn (tối đa 10MB/file)</p>
+      <p className="mt-1 text-xs text-slate-500">Có thể chọn nhiều tệp cùng lúc.</p>
     </div>
-  );
+
+    {items.length > 0 && <section className="rounded-2xl border border-slate-200 bg-white p-4">
+      <ul className="divide-y divide-slate-100">{items.map((item) => <li key={item.id} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
+        {statusIcon(item)}<div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{item.file.name}</div>{item.state === 'uploading' && <div className="mt-1 h-1.5 overflow-hidden rounded bg-slate-100"><div className="h-full bg-blue-600 transition-all" style={{ width: `${item.progress}%` }}/></div>}{item.message && <p className={`mt-1 text-xs ${item.state === 'warning' ? 'text-amber-700' : 'text-red-700'}`}>{item.message}</p>}</div>
+        <span className="text-xs text-slate-500">{item.state === 'pending' ? 'Chờ tải lên' : item.state === 'uploading' ? 'Đang tải lên' : item.state === 'parsed' ? 'Đã trích xuất' : item.state === 'warning' ? 'Cần xem lại' : item.state === 'rejected' ? 'Bị từ chối' : 'Thất bại'}</span>
+        {item.retryable && <button type="button" disabled={sending} onClick={retry} className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs text-blue-700 disabled:opacity-50"><RotateCcw size={13}/>Thử lại</button>}
+        {(item.state === 'pending' || item.state === 'rejected') && <button type="button" onClick={() => setItems((current) => current.filter(({ id }) => id !== item.id))} className="rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100">Xóa khỏi danh sách</button>}
+      </li>)}</ul>
+      <div className="mt-4 flex flex-wrap justify-end gap-2 border-t pt-4"><button type="button" onClick={() => setItems([])} disabled={sending} className="rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100">Xóa danh sách</button><button type="button" onClick={handleUpload} disabled={sending || !items.some((item) => item.state === 'pending')} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{sending ? 'Đang xử lý…' : 'Tải CV lên'}</button></div>
+    </section>}
+
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b px-4 py-4"><div><h2 className="font-semibold">Danh sách ứng viên</h2><p className="text-xs text-slate-500">{total} hồ sơ</p></div></div>
+      {isLoading ? <div className="p-12 text-center text-sm text-slate-500">Đang tải danh sách hồ sơ…</div> : candidates.length === 0 ? <div className="p-12 text-center"><FileText className="mx-auto h-8 w-8 text-slate-300"/><p className="mt-3 font-medium text-slate-700">Chưa có hồ sơ CV</p><p className="mt-1 text-sm text-slate-500">Kéo thả PDF hoặc DOCX vào khu vực phía trên để bắt đầu.</p></div> : <div className="overflow-x-auto"><table className="w-full min-w-[960px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Họ tên</th><th className="p-3">Email</th><th className="p-3">SĐT</th><th className="p-3">Kinh nghiệm</th><th className="p-3">Kỹ năng</th><th className="p-3">Trích xuất</th>{user?.role === 'ADMIN' && <th className="p-3">Người upload</th>}<th className="p-3">Ngày tải lên</th><th className="p-3">CV gốc</th></tr></thead><tbody className="divide-y divide-slate-100">{candidates.map((candidate) => <tr key={candidate.id} className="align-top hover:bg-slate-50"><td className="p-3 font-medium">{candidate.fullName}{candidate.extractionStatus === 'FAILED' && <div className="mt-1 text-xs font-normal text-amber-700">Cần xem lại thủ công</div>}</td><td className="p-3">{candidate.email || '—'}</td><td className="p-3">{candidate.phone || '—'}</td><td className="p-3">{candidate.yearsOfExperience} năm</td><td className="p-3"><div className="flex max-w-56 flex-wrap gap-1">{candidate.skills.map((skill) => <span key={skill} className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">{skill}</span>)}</div></td><td className="p-3"><span title={candidate.extractionMessage || undefined} className={`rounded-full px-2 py-1 text-[10px] font-bold ${candidate.extractionStatus === 'SUCCESS' ? 'bg-emerald-50 text-emerald-700' : candidate.extractionStatus === 'WARNING' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>{candidate.extractionStatus || 'SUCCESS'}</span>{candidate.extractionMessage && <span className="ml-1 cursor-help text-slate-400" title={candidate.extractionMessage}>ⓘ</span>}</td>{user?.role === 'ADMIN' && <td className="p-3">{candidate.uploadedBy?.fullName || '—'}</td>}<td className="whitespace-nowrap p-3">{new Date(candidate.createdAt).toLocaleDateString('vi-VN')}</td><td className="p-3"><button type="button" onClick={() => window.open(`/api/candidates/${candidate.id}/file`, '_blank', 'noopener,noreferrer')} className="inline-flex items-center gap-1 whitespace-nowrap text-blue-700 hover:underline"><ExternalLink size={14}/>Xem CV gốc</button></td></tr>)}</tbody></table></div>}
+      {total > 50 && <div className="flex items-center justify-between border-t px-4 py-3 text-sm"><span className="text-slate-500">Trang {page} / {Math.ceil(total / 50)}</span><div className="flex gap-2"><button type="button" disabled={page <= 1 || isLoading} onClick={() => void fetchPage(page - 1)} className="rounded-lg border p-2 disabled:opacity-40"><ChevronLeft size={16}/></button><button type="button" disabled={page >= Math.ceil(total / 50) || isLoading} onClick={() => void fetchPage(page + 1)} className="rounded-lg border p-2 disabled:opacity-40"><ChevronRight size={16}/></button></div></div>}
+    </section>
+  </div>;
 };

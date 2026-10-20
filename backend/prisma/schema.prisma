@@ -12,6 +12,12 @@ enum UserRole {
   ENTERPRISE
 }
 
+enum ExtractionStatus {
+  SUCCESS
+  WARNING
+  FAILED
+}
+
 model User {
   id                 String    @id @default(uuid())
   email              String    @unique
@@ -30,6 +36,7 @@ model User {
   jobs               JobDescription[]
   createdJobs        JobDescription[] @relation("JobCreator")
   candidates         Candidate[]
+  uploadedCandidates Candidate[] @relation("CandidateUploader")
 
   @@map("users")
 }
@@ -58,19 +65,43 @@ model Candidate {
   fullName          String
   email             String?
   phone             String?
-  rawText           String        @db.Text
+  rawText           String        @default("") @db.Text
+  searchText        String        @default("") @db.Text
   skills            String[]
   yearsOfExperience Int           @default(0)
   education         String?
   fileName          String
   fileUrl           String
+  extractionStatus  ExtractionStatus @default(SUCCESS)
+  extractionMessage String?
+  contentHash       String?
   createdAt         DateTime      @default(now())
   matchResults      MatchResult[]
   ownerId           String
   owner             User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  uploadedById      String?
+  uploadedBy        User?         @relation("CandidateUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
 
   @@map("candidates")
   @@index([ownerId])
+  @@index([createdAt(sort: Desc)])
+  @@index([yearsOfExperience])
+  @@index([skills], type: Gin)
+  @@index([contentHash])
+  @@index([uploadedById])
+}
+
+model IdempotencyKey {
+  key          String   @id
+  endpoint     String
+  requestHash  String
+  statusCode   Int?
+  responseBody Json?
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+
+  @@index([expiresAt])
+  @@map("idempotency_keys")
 }
 
 model MatchResult {

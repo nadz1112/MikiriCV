@@ -1,17 +1,20 @@
 import { api } from './api';
-import { ApiResponse, Candidate, CandidateFilter } from '../types';
+import { ApiResponse, Candidate, CandidateFilter, CandidatePage } from '../types';
 
 export const candidateApi = {
-  upload: async (files: File[]) => {
+  upload: async (files: File[], idempotencyKey: string, onUploadProgress?: (progress: number) => void) => {
     const formData = new FormData();
     files.forEach((file) => {
       formData.append('files', file);
     });
 
-    const res = await api.post<ApiResponse<Candidate[]>>('/candidates/upload', formData, {
+    const res = await api.post<{ success: boolean; message: string; data: Candidate[]; errors: Array<{ fileName: string; code: string; message: string }> }>('/candidates/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
+        'Idempotency-Key': idempotencyKey,
       },
+      timeout: 120000,
+      onUploadProgress: (event) => onUploadProgress?.(event.total ? Math.round((event.loaded / event.total) * 100) : 0),
     });
     return res.data;
   },
@@ -24,6 +27,11 @@ export const candidateApi = {
 
     const res = await api.get<ApiResponse<Candidate[]>>(`/candidates?${params.toString()}`);
     return res.data.data || [];
+  },
+
+  getPage: async (page: number, limit = 50): Promise<CandidatePage> => {
+    const res = await api.get<CandidatePage & { success: boolean }>(`/candidates?page=${page}&limit=${limit}`);
+    return res.data;
   },
 
   getById: async (id: string) => {
