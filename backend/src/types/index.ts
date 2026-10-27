@@ -13,10 +13,10 @@ export interface CreateJobDto {
 }
 
 export interface UpdateJobDto {
-  title?: string;
-  description?: string;
-  requiredSkills?: string[];
-  minExperience?: number;
+  title: string;
+  description: string;
+  requiredSkills: string[];
+  minExperience: number;
 }
 
 export interface CandidateFilterQuery {

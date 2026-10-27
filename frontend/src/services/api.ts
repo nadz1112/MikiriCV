@@ -17,6 +17,6 @@ api.interceptors.response.use((response) => response, async (error) => {
     }
   }
   const message = error.response?.data?.error?.message || error.response?.data?.message || error.message || 'Đã xảy ra lỗi kết nối máy chủ';
-  if (error.response?.status === 403 || !/\/auth\//.test(url)) toast.error(message);
+  if ((error.response?.status === 403 || !/\/auth\//.test(url)) && !url.endsWith('/candidates/upload')) toast.error(message);
   return Promise.reject(error);
 });

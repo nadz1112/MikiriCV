@@ -11,6 +11,13 @@ async function main() {
   const email = config.SEED_ADMIN_EMAIL.trim().toLowerCase();
   const passwordHash = await bcrypt.hash(config.SEED_ADMIN_PASSWORD, config.BCRYPT_ROUNDS);
   await prisma.user.upsert({ where: { email }, update: {}, create: { email, passwordHash, fullName: 'Quản trị viên', role: 'ADMIN' } });
+  const backfilledJobs = await prisma.$executeRaw`
+    UPDATE "job_descriptions" AS jobs
+    SET "createdById" = jobs."ownerId"
+    FROM "users" AS owners
+    WHERE jobs."createdById" IS NULL AND owners."id" = jobs."ownerId"
+  `;
+  if (backfilledJobs > 0) console.info(`Đã gán người tạo cho ${backfilledJobs} JD cũ theo tài khoản sở hữu hiện tại.`);
   console.info('Đã bảo đảm tài khoản ADMIN được tạo.');
   if (config.NODE_ENV !== 'production' && config.SEED_DEMO_PASSWORD) {
     const demoPasswordHash = await bcrypt.hash(config.SEED_DEMO_PASSWORD, config.BCRYPT_ROUNDS);
@@ -24,7 +31,7 @@ async function main() {
     for (const demo of demos) {
       const user = await prisma.user.upsert({ where: { email: demo.email }, update: {}, create: { ...demo, passwordHash: demoPasswordHash, role: 'ENTERPRISE', mustChangePassword: true } });
       if (!(await prisma.jobDescription.findFirst({ where: { ownerId: user.id } }))) {
-        await prisma.jobDescription.create({ data: { ownerId: user.id, title: 'Chuyên viên tuyển dụng (demo)', description: 'Quản lý quy trình tuyển dụng, sàng lọc hồ sơ và phối hợp với các bộ phận.', requiredSkills: ['tuyển dụng', 'giao tiếp', 'nhân sự'], minExperience: 1 } });
+        await prisma.jobDescription.create({ data: { ownerId: user.id, createdById: user.id, title: 'Chuyên viên tuyển dụng (demo)', description: 'Quản lý quy trình tuyển dụng, sàng lọc hồ sơ và phối hợp với các bộ phận.', requiredSkills: ['tuyển dụng', 'giao tiếp', 'nhân sự'], minExperience: 1 } });
       }
       if (!(await prisma.candidate.findFirst({ where: { ownerId: user.id } }))) {
         await prisma.candidate.create({ data: { ownerId: user.id, fullName: `Ứng viên ${demo.companyName}`, email: `candidate@${demo.email.split('@')[0]}.test`, rawText: 'Hồ sơ demo: có kinh nghiệm tuyển dụng, giao tiếp và quản lý quy trình nhân sự.', skills: ['tuyển dụng', 'giao tiếp'], yearsOfExperience: 2, education: 'Đại học (dữ liệu demo)', fileName: 'seed-demo-cv.pdf', fileUrl: '/uploads/seed-demo-cv.pdf' } });

@@ -7,6 +7,9 @@ interface CandidateState {
   selectedCandidates: string[];
   filter: CandidateFilter;
   isLoading: boolean;
+  page: number;
+  total: number;
+  fetchPage: (page: number) => Promise<void>;
   fetchCandidates: (filter?: CandidateFilter) => Promise<void>;
   setFilter: (filter: CandidateFilter) => void;
   toggleSelectCandidate: (id: string) => void;
@@ -20,13 +23,22 @@ export const useCandidateStore = create<CandidateState>((set, get) => ({
   selectedCandidates: [],
   filter: {},
   isLoading: false,
+  page: 1,
+  total: 0,
+  fetchPage: async (page) => {
+    set({ isLoading: true });
+    try {
+      const result = await candidateApi.getPage(page);
+      set({ candidates: result.data, page: result.page, total: result.total, isLoading: false });
+    } catch { set({ isLoading: false }); }
+  },
 
   fetchCandidates: async (filter) => {
     set({ isLoading: true });
     try {
       const activeFilter = filter || get().filter;
       const data = await candidateApi.getAll(activeFilter);
-      set({ candidates: data, isLoading: false });
+      set({ candidates: data, total: data.length, isLoading: false });
     } catch {
       set({ isLoading: false });
     }

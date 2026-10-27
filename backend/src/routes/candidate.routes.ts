@@ -1,22 +1,17 @@
 import { Router } from 'express';
 import { candidateController } from '../controllers/candidate.controller.js';
 import { upload } from '../middlewares/upload.middleware.js';
+import { validateRequest } from '../middlewares/validate.middleware.js';
+import { env } from '../config/env.js';
+import { candidateFileParamsSchema, candidateFileQuerySchema, candidatePaginationSchema, uploadHeadersSchema } from '../modules/candidates/candidate.schema.js';
 
 const router = Router();
-
-// Upload danh sách CV (multipart/form-data)
-router.post('/upload', upload.array('files', 20), (req, res, next) =>
-  candidateController.uploadCandidates(req, res, next)
-);
-
-// Lọc và lấy danh sách ứng viên (hỗ trợ query: search, skills, minExp)
-router.get('/', (req, res, next) => candidateController.getCandidates(req, res, next));
-
-// Xem chi tiết ứng viên
-router.get('/:id/file', (req, res, next) => candidateController.getCandidateFile(req, res, next));
-router.get('/:id', (req, res, next) => candidateController.getCandidateById(req, res, next));
-
-// Xóa ứng viên
-router.delete('/:id', (req, res, next) => candidateController.deleteCandidate(req, res, next));
+router.post('/upload', validateRequest({}), (req, _res, next) => {
+  const parsed = uploadHeadersSchema.safeParse({ idempotencyKey: req.get('Idempotency-Key') });
+  if (!parsed.success) { next(parsed.error); return; }
+  next();
+}, upload.array('files', env.MAX_FILES_PER_REQUEST), (req, res, next) => candidateController.uploadCandidates(req, res, next));
+router.get('/', validateRequest({ query: candidatePaginationSchema }), (req, res, next) => candidateController.getCandidates(req, res, next));
+router.get('/:id/file', validateRequest({ params: candidateFileParamsSchema, query: candidateFileQuerySchema }), (req, res, next) => candidateController.getCandidateFile(req, res, next));
 
 export default router;
