@@ -2,6 +2,7 @@ import { Router } from 'express';
 import jobRoutes from './job.routes.js';
 import candidateRoutes from './candidate.routes.js';
 import matchingRoutes from './matching.routes.js';
+import dashboardRoutes from './dashboard.routes.js';
 
 const apiRouter = Router();
 
@@ -16,5 +17,6 @@ apiRouter.get('/health', (_req, res) => {
 apiRouter.use('/jobs', jobRoutes);
 apiRouter.use('/candidates', candidateRoutes);
 apiRouter.use('/matching', matchingRoutes);
+apiRouter.use('/dashboard', dashboardRoutes);
 
 export default apiRouter;

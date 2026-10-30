@@ -9,12 +9,13 @@ import {
   Cell,
   CartesianGrid,
 } from 'recharts';
-import { MatchResult } from '../../types';
+import { MatchResult, JobStats } from '../../types';
 import { TrendingUp, Target } from 'lucide-react';
 
 interface ScoreDistributionChartProps {
   matchResults: MatchResult[];
   jobTitle?: string;
+  jobStats?: JobStats | null;
 }
 
 interface BucketData {
@@ -28,6 +29,7 @@ interface BucketData {
 export const ScoreDistributionChart: React.FC<ScoreDistributionChartProps> = ({
   matchResults,
   jobTitle,
+  jobStats,
 }) => {
   // Chuẩn hóa 4 khoảng điểm theo hợp đồng FR5.5 và Wireframe 4.2.4
   // 1. Dưới 50
@@ -38,42 +40,60 @@ export const ScoreDistributionChart: React.FC<ScoreDistributionChartProps> = ({
     {
       range: '< 50',
       label: 'Dưới 50',
-      count: matchResults.filter((m) => m.score < 50).length,
+      count: jobStats
+        ? jobStats.distribution.under50
+        : matchResults.filter((m) => m.score < 50).length,
       color: '#f43f5e', // rose-500
       bgLight: 'bg-rose-50 border-rose-200 text-rose-700',
     },
     {
       range: '50 - 70',
       label: '50 - 70',
-      count: matchResults.filter((m) => m.score >= 50 && m.score <= 70).length,
+      count: jobStats
+        ? jobStats.distribution.range50to70
+        : matchResults.filter((m) => m.score >= 50 && m.score <= 70).length,
       color: '#f59e0b', // amber-500
       bgLight: 'bg-amber-50 border-amber-200 text-amber-700',
     },
     {
       range: '71 - 85',
       label: '70 - 85',
-      count: matchResults.filter((m) => m.score > 70 && m.score <= 85).length,
+      count: jobStats
+        ? jobStats.distribution.range71to85
+        : matchResults.filter((m) => m.score > 70 && m.score <= 85).length,
       color: '#0ea5e9', // sky-500
       bgLight: 'bg-sky-50 border-sky-200 text-sky-700',
     },
     {
       range: '> 85',
       label: 'Trên 85',
-      count: matchResults.filter((m) => m.score > 85).length,
+      count: jobStats
+        ? jobStats.distribution.over85
+        : matchResults.filter((m) => m.score > 85).length,
       color: '#10b981', // emerald-500
       bgLight: 'bg-emerald-50 border-emerald-200 text-emerald-700',
     },
   ];
 
-  const total = matchResults.length;
-  const qualifiedCount = matchResults.filter((m) => m.score >= 70).length;
-  const qualifiedRate = total > 0 ? Math.round((qualifiedCount / total) * 100) : 0;
-  const avgScore =
-    total > 0
-      ? Math.round(matchResults.reduce((acc, curr) => acc + curr.score, 0) / total)
-      : 0;
-  const topScore =
-    total > 0 ? Math.max(...matchResults.map((m) => m.score)) : 0;
+  const total = jobStats ? jobStats.totalEvaluated : matchResults.length;
+  const qualifiedCount = jobStats
+    ? jobStats.qualifiedCount
+    : matchResults.filter((m) => m.score >= 70).length;
+  const qualifiedRate = jobStats
+    ? jobStats.qualifiedRate
+    : total > 0
+    ? Math.round((qualifiedCount / total) * 100)
+    : 0;
+  const avgScore = jobStats
+    ? jobStats.avgScore
+    : total > 0
+    ? Math.round(matchResults.reduce((acc, curr) => acc + curr.score, 0) / total)
+    : 0;
+  const topScore = jobStats
+    ? jobStats.topScore
+    : total > 0
+    ? Math.max(...matchResults.map((m) => m.score))
+    : 0;
 
   // Custom tooltip for Recharts
   const CustomTooltip = ({ active, payload }: any) => {

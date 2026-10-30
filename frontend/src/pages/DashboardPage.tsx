@@ -17,7 +17,8 @@ import { Link } from 'react-router-dom';
 import { jobApi } from '../services/jobApi';
 import { candidateApi } from '../services/candidateApi';
 import { matchingApi } from '../services/matchingApi';
-import { JobDescription, Candidate, MatchResult } from '../types';
+import { JobDescription, Candidate, MatchResult, JobStats, DashboardStats } from '../types';
+import { dashboardApi } from '../services/dashboardApi';
 import { ScoreDistributionChart } from '../components/dashboard/ScoreDistributionChart';
 import { CandidateInsightDrawer } from '../components/dashboard/CandidateInsightDrawer';
 import { DeleteConfirmModal } from '../components/dashboard/DeleteConfirmModal';
@@ -29,6 +30,8 @@ export const DashboardPage: React.FC = () => {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string>('');
   const [selectedJobLeaderboard, setSelectedJobLeaderboard] = useState<MatchResult[]>([]);
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
+  const [currentJobStats, setCurrentJobStats] = useState<JobStats | null>(null);
 
   // UI & Loading State
   const [isLoading, setIsLoading] = useState(true);
@@ -48,12 +51,16 @@ export const DashboardPage: React.FC = () => {
   // Load Initial Dashboard Data
   const loadDashboardData = async () => {
     try {
-      const [jobsData, candidatesData] = await Promise.all([
+      const [jobsData, candidatesData, statsData] = await Promise.all([
         jobApi.getAll(),
         candidateApi.getAll(),
+        dashboardApi.getStats().catch(() => null),
       ]);
       setJobs(jobsData);
       setCandidates(candidatesData);
+      if (statsData) {
+        setDashboardStats(statsData);
+      }
 
       // Mặc định chọn JD đầu tiên nếu có
       if (jobsData.length > 0 && !selectedJobId) {
@@ -73,22 +80,34 @@ export const DashboardPage: React.FC = () => {
     loadDashboardData();
   }, []);
 
-  // Tải bảng xếp hạng cho một JD cụ thể
+  // Tải bảng xếp hạng và thống kê cho một JD cụ thể
   const loadJobLeaderboard = async (jobId: string) => {
     if (!jobId) {
       setSelectedJobLeaderboard([]);
+      setCurrentJobStats(null);
       return;
     }
     try {
-      const res = await matchingApi.getLeaderboard(jobId);
-      if (res && res.matchResults) {
-        setSelectedJobLeaderboard(res.matchResults);
+      const [leaderboardRes, statsRes] = await Promise.all([
+        matchingApi.getLeaderboard(jobId).catch(() => null),
+        jobApi.getStats(jobId).catch(() => null),
+      ]);
+
+      if (leaderboardRes && leaderboardRes.matchResults) {
+        setSelectedJobLeaderboard(leaderboardRes.matchResults);
       } else {
         setSelectedJobLeaderboard([]);
+      }
+
+      if (statsRes) {
+        setCurrentJobStats(statsRes);
+      } else {
+        setCurrentJobStats(null);
       }
     } catch (err) {
       console.error('Lỗi khi tải leaderboard:', err);
       setSelectedJobLeaderboard([]);
+      setCurrentJobStats(null);
     }
   };
 
@@ -106,8 +125,17 @@ export const DashboardPage: React.FC = () => {
     toast.success('Dữ liệu đã được làm mới');
   };
 
-  // Tính toán số liệu thống kê toàn hệ thống
+  // Tính toán số liệu thống kê toàn hệ thống (ưu tiên dùng API BE /api/dashboard/stats)
   const systemStats = useMemo(() => {
+    if (dashboardStats) {
+      return {
+        totalJobs: dashboardStats.totalJobs,
+        totalCandidates: dashboardStats.totalCandidates,
+        totalMatches: dashboardStats.totalMatches,
+        highRate: dashboardStats.qualifiedRate,
+      };
+    }
+
     const totalJobs = jobs.length;
     const totalCandidates = candidates.length;
 
@@ -131,7 +159,7 @@ export const DashboardPage: React.FC = () => {
       totalMatches,
       highRate,
     };
-  }, [jobs, candidates]);
+  }, [jobs, candidates, dashboardStats]);
 
   // JD đang được chọn
   const currentJob = useMemo(() => {
@@ -531,6 +559,7 @@ export const DashboardPage: React.FC = () => {
                 <ScoreDistributionChart
                   matchResults={selectedJobLeaderboard}
                   jobTitle={currentJob.title}
+                  jobStats={currentJobStats}
                 />
 
                 {/* Leaderboard Table (FR5.2 & Wireframe 4.2.4) */}

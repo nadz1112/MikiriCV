@@ -27,6 +27,18 @@ export class JobController {
     }
   }
 
+  async getJobStats(req: Request, res: Response<ApiResponse>, next: NextFunction): Promise<void> {
+    try {
+      const stats = await jobService.getJobStats(req.params.id);
+      res.json({
+        success: true,
+        data: stats,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async createJob(req: Request, res: Response<ApiResponse>, next: NextFunction): Promise<void> {
     try {
       const newJob = await jobService.createJob(req.body);
