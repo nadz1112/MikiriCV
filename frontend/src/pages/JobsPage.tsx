@@ -96,8 +96,8 @@ export const JobsPage: React.FC = () => {
           </p>
         </div>
       ) : (
-        /* Job Cards Grid */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        /* Job Cards Grid - Responsive Full Width */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 w-full">
           {jobs.map((job) => (
             <div
               key={job.id}

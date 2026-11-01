@@ -11,9 +11,9 @@ export const Navbar: React.FC = () => {
   ];
 
   return (
-    <header className="sticky top-0 z-50 glass-panel border-b border-slate-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+    <header className="sticky top-0 z-50 glass-panel border-b border-slate-200 w-full">
+      <div className="w-full mx-auto px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 2xl:px-16 max-w-[1920px]">
+        <div className="flex items-center justify-between h-16 gap-3">
           {/* Brand Logo */}
           <NavLink to="/" className="flex items-center gap-3">
             <div className="p-2 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-xl shadow-md shadow-blue-500/20">

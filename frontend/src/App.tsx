@@ -10,7 +10,7 @@ import { MatchingPage } from './pages/MatchingPage';
 export const App: React.FC = () => {
   return (
     <BrowserRouter>
-      <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-['Inter',sans-serif]">
+      <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-['Inter',sans-serif] w-full">
         {/* Global Toast Notifications */}
         <Toaster
           position="top-right"
@@ -28,8 +28,8 @@ export const App: React.FC = () => {
         {/* Top Navigation Bar */}
         <Navbar />
 
-        {/* Main Content Area */}
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Main Content Area - Auto Responsive Full-Width */}
+        <main className="flex-1 w-full mx-auto px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 2xl:px-16 py-6 sm:py-8 max-w-[1920px]">
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/jobs" element={<JobsPage />} />
@@ -40,7 +40,7 @@ export const App: React.FC = () => {
         </main>
 
         {/* Footer */}
-        <footer className="border-t border-slate-200 bg-white py-4 text-center text-xs text-slate-400">
+        <footer className="border-t border-slate-200 bg-white py-4 text-center text-xs text-slate-400 w-full">
           <p>© 2026 CVMikiri — Trợ lý AI Sàng lọc Hồ sơ Tuyển dụng. Powered by Google Gemini & PostgreSQL.</p>
         </footer>
       </div>

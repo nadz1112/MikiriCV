@@ -297,7 +297,7 @@ export const DashboardPage: React.FC = () => {
     <div className="space-y-8 pb-12">
       {/* 1. Hero Banner with Real-time Status */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-blue-700 via-indigo-700 to-purple-800 p-8 text-white shadow-xl">
-        <div className="relative z-10 max-w-3xl space-y-4">
+        <div className="relative z-10 max-w-4xl lg:max-w-5xl space-y-4">
           <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur-md border border-white/20">
             <Sparkles className="w-3.5 h-3.5 text-amber-300" />
             <span>Màn hình Bảng điều khiển & Xếp hạng tuyển dụng • FR5 Dashboard</span>
