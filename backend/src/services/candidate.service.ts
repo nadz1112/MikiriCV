@@ -1,15 +1,17 @@
 import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
-import { Prisma } from '@prisma/client';
+import { ExtractionStatus, Prisma } from '@prisma/client';
 import type { AuthUser } from '../middlewares/auth.middleware.js';
 import { env } from '../config/env.js';
 import { normalizeForSearch } from '../common/utils/normalize-for-search.js';
 import { AppError } from '../common/errors/app-error.js';
-import { CandidateRepository, candidateListSelect } from '../modules/candidates/candidate.repository.js';
-import { toCandidateUploadDto } from '../modules/candidates/candidate.mapper.js';
+import { CandidateRepository, CandidateFilter, toWhere, candidateListSelect } from '../modules/candidates/candidate.repository.js';
+import { toCandidateListItemDto, toCandidateUploadDto } from '../modules/candidates/candidate.mapper.js';
 import { ExtractorFactory } from '../modules/candidates/text-extractor.js';
 import { FieldParser } from '../modules/candidates/field-parser.js';
+import { skillNormalizer } from '../modules/skills/skill-dictionary.js';
+import { ListCandidatesQuery } from '../modules/candidates/candidate.schema.js';
 
 const repo = new CandidateRepository();
 const parser = new FieldParser();
@@ -116,13 +118,53 @@ export class CandidateService {
     }
   }
 
-  async list(page: number, limit: number, user: AuthUser) {
-    const where = user.role === 'ADMIN' ? {} : { ownerId: user.id };
-    const [items, total] = await repo.findPage(where, (page - 1) * limit, limit);
-    return { data: items.map((item) => {
-      const { owner, ...candidate } = item;
-      return { ...candidate, uploadedBy: user.role === 'ADMIN' ? (item.uploadedBy ?? owner) : null };
-    }), total, page, limit };
+  async list(query: ListCandidatesQuery, user: AuthUser) {
+    const { page, limit, sort, search, skills, skillMode, minExp, extractionStatus, jobId } = query;
+    const filter: CandidateFilter = {
+      keyword: search,
+      skills: skills || [],
+      skillMode,
+      minExp,
+      extractionStatus: extractionStatus as ExtractionStatus | undefined,
+      ownerId: user.role === 'ADMIN' ? undefined : user.id,
+    };
+
+    const where = toWhere(filter, skillNormalizer);
+
+    const orderBy =
+      sort === 'yearsOfExperience'
+        ? { yearsOfExperience: 'desc' as const }
+        : sort === 'fullName'
+        ? { fullName: 'asc' as const }
+        : { createdAt: 'desc' as const };
+
+    const skip = (page - 1) * limit;
+    const [items, total] = await repo.findPage(where, skip, limit, orderBy, jobId);
+
+    return {
+      data: items.map((item) => toCandidateListItemDto(item, user.role === 'ADMIN')),
+      total,
+      page,
+      limit,
+    };
+  }
+
+  async getFilteredCandidates(filter: Partial<ListCandidatesQuery>, ownerId: string) {
+    const dummyUser: AuthUser = { id: ownerId, role: 'ENTERPRISE', tokenVersion: 0, mustChangePassword: false };
+    return this.list({
+      page: 1,
+      limit: 50,
+      skillMode: 'any',
+      sort: 'createdAt',
+      skills: [],
+      ...filter,
+    }, dummyUser);
+  }
+
+  async getCandidateById(id: string, ownerId?: string) {
+    const candidate = await repo.findOwned(id, ownerId);
+    if (!candidate) throw appError(404, 'CANDIDATE_NOT_FOUND', 'Không tìm thấy ứng viên');
+    return candidate;
   }
 
   async getFile(id: string, user: AuthUser) {

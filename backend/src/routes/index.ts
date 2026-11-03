@@ -3,6 +3,7 @@ import jobRoutes from './job.routes.js';
 import candidateRoutes from './candidate.routes.js';
 import matchingRoutes from './matching.routes.js';
 import authRoutes from './auth.routes.js';
+import skillRoutes from './skill.routes.js';
 import { authenticate } from '../middlewares/auth.middleware.js';
 import userRoutes from './user.routes.js';
 
@@ -17,6 +18,7 @@ apiRouter.get('/health', (_req, res) => {
 });
 
 apiRouter.use('/auth', authRoutes);
+apiRouter.use('/skills', skillRoutes);
 apiRouter.use(authenticate);
 apiRouter.use('/users', userRoutes);
 

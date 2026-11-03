@@ -14,10 +14,11 @@ export class CandidateController {
     } catch (error) { next(error); }
   }
 
-  async getCandidates(req: Request, res: Response<ApiResponse>, next: NextFunction): Promise<void> {
+  async getCandidates(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const page = Number(req.query.page ?? 1); const limit = Number(req.query.limit ?? 50);
-      res.json({ success: true, ...await candidateService.list(page, limit, req.user!) });
+      const query = req.query as any;
+      const result = await candidateService.list(query, req.user!);
+      res.json({ success: true, ...result });
     } catch (error) { next(error); }
   }
 

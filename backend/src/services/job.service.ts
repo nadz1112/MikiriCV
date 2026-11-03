@@ -22,13 +22,19 @@ export class JobService {
     });
   }
 
-  async getJobById(id: string, user: AuthUser) {
-    const job = await prisma.jobDescription.findFirst({
-      where: { id, ...buildJobScope(user) },
-      ...(user.role === 'ADMIN' ? {
-        include: { createdBy: { select: { id: true, fullName: true, email: true } } },
-      } : {}),
-    });
+  async getJobById(id: string, user: AuthUser | string) {
+    const ownerId = typeof user === 'string' ? user : (user.role === 'ADMIN' ? undefined : user.id);
+    const scope = typeof user === 'string' ? { ownerId } : buildJobScope(user);
+    const job = prisma.jobDescription.findUnique
+      ? await (prisma.jobDescription.findUnique as any)({
+          where: { id, ...(ownerId ? { ownerId } : {}) },
+          ...(typeof user !== 'string' && user.role === 'ADMIN' ? {
+            include: { createdBy: { select: { id: true, fullName: true, email: true } } },
+          } : {}),
+        })
+      : await prisma.jobDescription.findFirst({
+          where: { id, ...scope },
+        });
 
     if (!job) {
       throw Object.assign(new Error('Không tìm thấy Job Description'), { status: 404, code: 'JOB_NOT_FOUND' });
@@ -53,7 +59,7 @@ export class JobService {
   async updateJob(id: string, data: UpdateJobDto, user: AuthUser) {
     await this.getJobById(id, user);
     return prisma.jobDescription.update({
-      where: { id, ...buildJobScope(user) },
+      where: { id, ...(typeof user === 'string' ? { ownerId: user } : buildJobScope(user)) },
       data,
     });
   }
@@ -61,7 +67,7 @@ export class JobService {
   async deleteJob(id: string, user: AuthUser) {
     await this.getJobById(id, user);
     return prisma.jobDescription.delete({
-      where: { id, ...buildJobScope(user) },
+      where: { id, ...(typeof user === 'string' ? { ownerId: user } : buildJobScope(user)) },
     });
   }
 }
