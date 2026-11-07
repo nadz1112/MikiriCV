@@ -9,6 +9,9 @@ export function useCandidates(filter: CandidateQueryParams) {
   const [limit, setLimit] = useState(filter.limit ?? 50);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const refresh = () => setReloadKey((prev) => prev + 1);
 
   const filterRef = useRef(filter);
   filterRef.current = filter;
@@ -55,6 +58,7 @@ export function useCandidates(filter: CandidateQueryParams) {
     filter.page,
     filter.limit,
     filter.sort,
+    reloadKey,
   ]);
 
   return {
@@ -64,5 +68,6 @@ export function useCandidates(filter: CandidateQueryParams) {
     limit,
     isLoading,
     error,
+    refresh,
   };
 }

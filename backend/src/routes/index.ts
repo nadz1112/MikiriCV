@@ -6,6 +6,7 @@ import authRoutes from './auth.routes.js';
 import skillRoutes from './skill.routes.js';
 import { authenticate } from '../middlewares/auth.middleware.js';
 import userRoutes from './user.routes.js';
+import dashboardRoutes from './dashboard.routes.js';
 
 const apiRouter = Router();
 
@@ -25,5 +26,7 @@ apiRouter.use('/users', userRoutes);
 apiRouter.use('/jobs', jobRoutes);
 apiRouter.use('/candidates', candidateRoutes);
 apiRouter.use('/matching', matchingRoutes);
+apiRouter.use('/dashboard', dashboardRoutes);
+
 
 export default apiRouter;

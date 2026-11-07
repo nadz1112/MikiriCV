@@ -58,4 +58,9 @@ export const candidateApi = {
     const res = await httpClient.get<{ success: boolean; data: string[] }>('/skills');
     return res.data.data;
   },
+
+  delete: async (id: string): Promise<{ success: boolean; message: string }> => {
+    const res = await httpClient.delete<{ success: boolean; message: string }>(`/candidates/${id}`);
+    return res.data;
+  },
 };

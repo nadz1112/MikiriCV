@@ -1,5 +1,5 @@
 import { api } from './api';
-import { ApiResponse, JobDescription } from '../types';
+import { ApiResponse, JobDescription, JobStats } from '../types';
 
 export interface JobPayload {
   title: string;
@@ -12,6 +12,11 @@ export const jobApi = {
   getAll: async () => {
     const res = await api.get<ApiResponse<JobDescription[]>>('/jobs');
     return res.data.data || [];
+  },
+
+  getStats: async (id: string) => {
+    const res = await api.get<ApiResponse<JobStats>>(`/jobs/${id}/stats`);
+    return res.data.data;
   },
 
   getById: async (id: string) => {

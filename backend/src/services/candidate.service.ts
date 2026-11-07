@@ -161,10 +161,31 @@ export class CandidateService {
     }, dummyUser);
   }
 
-  async getCandidateById(id: string, ownerId?: string) {
-    const candidate = await repo.findOwned(id, ownerId);
+  async getCandidateById(id: string, user?: AuthUser | string) {
+    const ownerId = typeof user === 'string' ? user : (user && user.role !== 'ADMIN' ? user.id : undefined);
+    const candidate = await repo.findDetail(id, ownerId);
     if (!candidate) throw appError(404, 'CANDIDATE_NOT_FOUND', 'Không tìm thấy ứng viên');
     return candidate;
+  }
+
+  async deleteCandidate(id: string, user?: AuthUser | string) {
+    const ownerId = typeof user === 'string' ? user : (user && user.role !== 'ADMIN' ? user.id : undefined);
+    const candidate = await repo.findOwned(id, ownerId);
+    if (!candidate) throw appError(404, 'CANDIDATE_NOT_FOUND', 'Không tìm thấy ứng viên');
+
+    // Xóa file vật lý nếu tồn tại (không để lỗi xóa file chặn xóa record)
+    try {
+      const uploadRoot = path.resolve(process.cwd(), env.UPLOAD_DIR);
+      const filePath = candidate.fileUrl.startsWith('/uploads/')
+        ? path.resolve(uploadRoot, path.basename(candidate.fileUrl))
+        : path.resolve(candidate.fileUrl);
+      await fs.unlink(filePath).catch(() => undefined);
+    } catch (err) {
+      console.warn('Không thể xóa tệp vật lý của ứng viên:', err);
+    }
+
+    await repo.delete(id, ownerId);
+    return { success: true, message: 'Đã xóa ứng viên thành công' };
   }
 
   async getFile(id: string, user: AuthUser) {

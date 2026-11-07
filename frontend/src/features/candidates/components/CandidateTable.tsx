@@ -1,7 +1,9 @@
-import React, { useRef, useEffect } from 'react';
-import { AlertTriangle, AlertCircle, FileText, ExternalLink, ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-react';
-import { CandidateItem } from '../api/candidateApi';
+import React, { useRef, useEffect, useState } from 'react';
+import { AlertTriangle, AlertCircle, FileText, ExternalLink, ChevronLeft, ChevronRight, ArrowUpDown, Trash2 } from 'lucide-react';
+import { CandidateItem, candidateApi } from '../api/candidateApi';
 import { useCandidateFeatureStore } from '../store/candidateStore';
+import { DeleteConfirmModal } from '../../../components/dashboard/DeleteConfirmModal';
+import toast from 'react-hot-toast';
 
 interface CandidateTableProps {
   candidates: CandidateItem[];
@@ -10,6 +12,7 @@ interface CandidateTableProps {
   limit: number;
   isLoading: boolean;
   onPageChange: (newPage: number) => void;
+  onCandidateDeleted?: () => void;
 }
 
 export const CandidateTable: React.FC<CandidateTableProps> = ({
@@ -19,6 +22,7 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
   limit,
   isLoading,
   onPageChange,
+  onCandidateDeleted,
 }) => {
   const {
     selectedCandidateIds,
@@ -28,6 +32,26 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
     setSort,
     resetFilter,
   } = useCandidateFeatureStore();
+
+  const [candidateToDelete, setCandidateToDelete] = useState<CandidateItem | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleConfirmDelete = async () => {
+    if (!candidateToDelete) return;
+    setIsDeleting(true);
+    try {
+      await candidateApi.delete(candidateToDelete.id);
+      toast.success(`Đã xóa hồ sơ ứng viên ${candidateToDelete.fullName}`);
+      setCandidateToDelete(null);
+      if (onCandidateDeleted) {
+        onCandidateDeleted();
+      }
+    } catch {
+      toast.error('Xóa ứng viên thất bại');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const headerCheckboxRef = useRef<HTMLInputElement>(null);
 
@@ -240,14 +264,25 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
                       {renderStatusBadge(candidate.extractionStatus, candidate.extractionMessage)}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => window.open(`/api/candidates/${candidate.id}/file`, '_blank', 'noopener,noreferrer')}
-                        className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                        <span>Xem CV</span>
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => window.open(`/api/candidates/${candidate.id}/file`, '_blank', 'noopener,noreferrer')}
+                          className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                          title="Xem tệp CV gốc"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          <span>Xem CV</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCandidateToDelete(candidate)}
+                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                          title="Xóa ứng viên"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -286,6 +321,15 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
           </div>
         </div>
       )}
+
+      {/* Delete Cascade Confirmation Modal */}
+      <DeleteConfirmModal
+        isOpen={Boolean(candidateToDelete)}
+        onClose={() => setCandidateToDelete(null)}
+        candidate={candidateToDelete as any}
+        onConfirm={handleConfirmDelete}
+        isDeleting={isDeleting}
+      />
     </div>
   );
 };

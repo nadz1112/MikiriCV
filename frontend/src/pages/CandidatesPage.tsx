@@ -6,7 +6,7 @@ import { useCandidates } from '../features/candidates/hooks/useCandidates';
 
 export const CandidatesPage: React.FC = () => {
   const { filter, setPage } = useCandidateFeatureStore();
-  const { candidates, total, page, limit, isLoading } = useCandidates(filter);
+  const { candidates, total, page, limit, isLoading, refresh } = useCandidates(filter);
 
   return (
     <div className="space-y-5 pb-12">
@@ -29,6 +29,7 @@ export const CandidatesPage: React.FC = () => {
         limit={limit}
         isLoading={isLoading}
         onPageChange={setPage}
+        onCandidateDeleted={refresh}
       />
     </div>
   );

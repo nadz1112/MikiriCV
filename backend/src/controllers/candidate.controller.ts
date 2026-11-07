@@ -35,6 +35,30 @@ export class CandidateController {
       res.sendFile(file.filePath, (error) => { if (error && !res.headersSent) next(error); });
     } catch (error) { next(error); }
   }
+
+  async getCandidateById(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const candidate = await candidateService.getCandidateById(req.params.id, req.user!);
+      res.json({
+        success: true,
+        data: candidate,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteCandidate(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await candidateService.deleteCandidate(req.params.id, req.user!);
+      res.json({
+        success: true,
+        message: result.message || 'Đã xóa ứng viên và giải phóng tệp tin thành công',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export const candidateController = new CandidateController();

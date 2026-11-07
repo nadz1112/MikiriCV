@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, X, ChevronDown, Check, RotateCcw, Filter } from 'lucide-react';
+import { Search, X, ChevronDown, Check, RotateCcw } from 'lucide-react';
 import { candidateApi } from '../api/candidateApi';
 import { useCandidateFeatureStore } from '../store/candidateStore';
+
+const POPULAR_SKILLS = ['React', 'Node.js', 'TypeScript', 'PostgreSQL', 'Docker', 'Python', 'Tailwind'];
 
 export const FilterBar: React.FC = () => {
   const {
@@ -232,9 +234,31 @@ export const FilterBar: React.FC = () => {
         )}
       </div>
 
+      {/* Gợi ý kỹ năng phổ biến */}
+      <div className="mt-2.5 flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100 text-xs">
+        <span className="text-[11px] font-medium text-slate-400">Gợi ý kỹ năng:</span>
+        {POPULAR_SKILLS.map((skill) => {
+          const isSelected = filter.skills.includes(skill);
+          return (
+            <button
+              key={skill}
+              type="button"
+              onClick={() => toggleSkill(skill)}
+              className={`px-2 py-0.5 rounded-md text-xs font-medium transition ${
+                isSelected
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+              }`}
+            >
+              {skill}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Tags kỹ năng đang được chọn */}
       {filter.skills.length > 0 && (
-        <div className="mt-2.5 flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100">
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 pt-1.5">
           <span className="text-[11px] font-medium text-slate-400">Đang lọc kỹ năng:</span>
           {filter.skills.map((skill) => (
             <span

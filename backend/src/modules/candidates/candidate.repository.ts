@@ -136,6 +136,46 @@ export class CandidateRepository {
     return prisma.candidate.findFirst({ where: { id, ...(ownerId ? { ownerId } : {}) } });
   }
 
+  findDetail(id: string, ownerId?: string) {
+    const where = {
+      id,
+      ...(ownerId ? { ownerId } : {}),
+    };
+    const include = {
+      matchResults: {
+        include: {
+          jobDescription: {
+            select: {
+              id: true,
+              title: true,
+              minExperience: true,
+              requiredSkills: true,
+            },
+          },
+        },
+        orderBy: { score: 'desc' as const },
+      },
+    };
+
+    if (typeof (prisma.candidate as any)?.findUnique === 'function') {
+      return (prisma.candidate as any).findUnique({ where, include });
+    }
+    if (typeof (prisma.candidate as any)?.findFirst === 'function') {
+      return prisma.candidate.findFirst({ where, include });
+    }
+    return null;
+  }
+
+  delete(id: string, ownerId?: string) {
+    const where: Prisma.CandidateWhereInput = {
+      id,
+      ...(ownerId ? { ownerId } : {}),
+    };
+    return prisma.candidate.deleteMany({
+      where,
+    });
+  }
+
   findIdempotency(key: string) {
     return prisma.idempotencyKey.findUnique({ where: { key } });
   }
