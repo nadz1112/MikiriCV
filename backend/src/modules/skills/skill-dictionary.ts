@@ -7,9 +7,21 @@ const entries: Array<[string, string[]]> = [
 ];
 
 export class SkillNormalizer {
+  private clean(val: string): string {
+    return val.trim().toLowerCase().replace(/[._-]/g, ' ').replace(/\s+/g, ' ');
+  }
+
   normalize(value: string): string | undefined {
-    const normalized = value.trim().toLowerCase().replace(/[._-]/g, ' ').replace(/\s+/g, ' ');
-    return entries.find(([label, aliases]) => label.toLowerCase() === normalized || aliases.some((alias) => alias.toLowerCase().replace(/[._-]/g, ' ').replace(/\s+/g, ' ') === normalized))?.[0];
+    if (!value || typeof value !== 'string') return undefined;
+    const normalized = this.clean(value);
+    return entries.find(([label, aliases]) => 
+      this.clean(label) === normalized || 
+      aliases.some((alias) => this.clean(alias) === normalized)
+    )?.[0];
+  }
+
+  getAllCanonicalSkills(): string[] {
+    return entries.map(([label]) => label).sort((a, b) => a.localeCompare(b));
   }
 
   detect(text: string): string[] {

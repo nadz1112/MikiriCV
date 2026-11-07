@@ -10,7 +10,11 @@ const prisma = new PrismaClient();
 async function main() {
   const email = config.SEED_ADMIN_EMAIL.trim().toLowerCase();
   const passwordHash = await bcrypt.hash(config.SEED_ADMIN_PASSWORD, config.BCRYPT_ROUNDS);
-  await prisma.user.upsert({ where: { email }, update: {}, create: { email, passwordHash, fullName: 'Quản trị viên', role: 'ADMIN' } });
+  await prisma.user.upsert({
+    where: { email },
+    update: { passwordHash, failedLoginCount: 0, lockedUntil: null },
+    create: { email, passwordHash, fullName: 'Quản trị viên', role: 'ADMIN' },
+  });
   const backfilledJobs = await prisma.$executeRaw`
     UPDATE "job_descriptions" AS jobs
     SET "createdById" = jobs."ownerId"
@@ -29,7 +33,11 @@ async function main() {
     await fs.mkdir(path.dirname(pdfPath), { recursive: true });
     await fs.writeFile(pdfPath, makeDemoPdf());
     for (const demo of demos) {
-      const user = await prisma.user.upsert({ where: { email: demo.email }, update: {}, create: { ...demo, passwordHash: demoPasswordHash, role: 'ENTERPRISE', mustChangePassword: true } });
+      const user = await prisma.user.upsert({
+        where: { email: demo.email },
+        update: { passwordHash: demoPasswordHash, failedLoginCount: 0, lockedUntil: null },
+        create: { ...demo, passwordHash: demoPasswordHash, role: 'ENTERPRISE', mustChangePassword: true },
+      });
       if (!(await prisma.jobDescription.findFirst({ where: { ownerId: user.id } }))) {
         await prisma.jobDescription.create({ data: { ownerId: user.id, createdById: user.id, title: 'Chuyên viên tuyển dụng (demo)', description: 'Quản lý quy trình tuyển dụng, sàng lọc hồ sơ và phối hợp với các bộ phận.', requiredSkills: ['tuyển dụng', 'giao tiếp', 'nhân sự'], minExperience: 1 } });
       }

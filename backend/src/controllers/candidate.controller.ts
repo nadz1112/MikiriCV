@@ -14,10 +14,11 @@ export class CandidateController {
     } catch (error) { next(error); }
   }
 
-  async getCandidates(req: Request, res: Response<ApiResponse>, next: NextFunction): Promise<void> {
+  async getCandidates(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const page = Number(req.query.page ?? 1); const limit = Number(req.query.limit ?? 50);
-      res.json({ success: true, ...await candidateService.list(page, limit, req.user!) });
+      const query = req.query as any;
+      const result = await candidateService.list(query, req.user!);
+      res.json({ success: true, ...result });
     } catch (error) { next(error); }
   }
 
@@ -33,6 +34,30 @@ export class CandidateController {
       res.setHeader('Cache-Control', 'private, no-store');
       res.sendFile(file.filePath, (error) => { if (error && !res.headersSent) next(error); });
     } catch (error) { next(error); }
+  }
+
+  async getCandidateById(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const candidate = await candidateService.getCandidateById(req.params.id, req.user!);
+      res.json({
+        success: true,
+        data: candidate,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteCandidate(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await candidateService.deleteCandidate(req.params.id, req.user!);
+      res.json({
+        success: true,
+        message: result.message || 'Đã xóa ứng viên và giải phóng tệp tin thành công',
+      });
+    } catch (error) {
+      next(error);
+    }
   }
 }
 
