@@ -14,7 +14,7 @@ router.post('/run', validateRequest({ body: runMatchingSchema }), (req, res, nex
   matchingController.runMatching(req, res, next)
 );
 
-router.get('/leaderboard/:jobDescriptionId', (req, res, next) =>
+router.get('/leaderboard/:jobDescriptionId', validateRequest({ params: z.object({ jobDescriptionId: z.string().uuid() }) }), (req, res, next) =>
   matchingController.getLeaderboard(req, res, next)
 );
 

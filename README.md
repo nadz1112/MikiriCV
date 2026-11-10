@@ -1,5 +1,7 @@
 # CVMikiri — Hệ Thống Kiểm Tra, Sàng Lọc & Chấm Điểm CV Bằng AI
 
+Dashboard đã tích hợp trên nền FR2 (đăng nhập, phân quyền, upload CV). Xem [API, kiểm thử và lưu ý migration với database có dữ liệu](docs/dashboard-fr2-integration.md). Chạy `npm run prisma:preflight` để kiểm tra chỉ đọc trước khi áp dụng migration; database từ nhánh dashboard cũ cần đối soát lịch sử trước.
+
 Hệ thống sàng lọc hồ sơ tuyển dụng thông minh 2 tầng:
 1. **Tầng 1 (Rule-based Filtering)**: Lọc tức thời (<100ms) dựa trên kỹ năng, số năm kinh nghiệm và từ khóa tự do, chi phí $0.
 2. **Tầng 2 (Gemini Generative AI Matching)**: Đối soát ngữ nghĩa sâu sắc giữa CV và Job Description (JD) bằng Google Gemini AI, chấm điểm 0–100, chỉ rõ điểm mạnh và kỹ năng còn thiếu.

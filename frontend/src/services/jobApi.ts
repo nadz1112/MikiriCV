@@ -1,4 +1,5 @@
-import { api } from './api';
+import { httpClient as api } from '../shared/api/httpClient';
+import type { JobStats } from '../types';
 import { ApiResponse, JobDescription } from '../types';
 
 export interface JobPayload {
@@ -9,6 +10,10 @@ export interface JobPayload {
 }
 
 export const jobApi = {
+  getStats: async (id: string) => {
+    const response = await api.get<ApiResponse<JobStats>>(`/jobs/${encodeURIComponent(id)}/stats`);
+    return response.data.data;
+  },
   getAll: async () => {
     const res = await api.get<ApiResponse<JobDescription[]>>('/jobs');
     return res.data.data || [];

@@ -120,6 +120,9 @@ export class CandidateService {
 
   async list(query: ListCandidatesQuery, user: AuthUser) {
     const { page, limit, sort, search, skills, skillMode, minExp, extractionStatus, jobId } = query;
+    if (jobId && !await repo.findAccessibleJob(jobId, user)) {
+      throw appError(404, 'JOB_NOT_FOUND', 'Không tìm thấy Job Description');
+    }
     const filter: CandidateFilter = {
       keyword: search,
       skills: skills || [],
@@ -165,6 +168,31 @@ export class CandidateService {
     const candidate = await repo.findOwned(id, ownerId);
     if (!candidate) throw appError(404, 'CANDIDATE_NOT_FOUND', 'Không tìm thấy ứng viên');
     return candidate;
+  }
+
+  async getDetail(id: string, user: AuthUser) {
+    const candidate = await repo.findDetail(id, user);
+    if (!candidate) throw appError(404, 'CANDIDATE_NOT_FOUND', 'Không tìm thấy ứng viên');
+    return { ...toCandidateListItemDto(candidate, user.role === 'ADMIN'),
+      rawText: candidate.rawText, matchResults: candidate.matchResults };
+  }
+
+  async deleteCandidate(id: string, user: AuthUser) {
+    // Delete the database record first; its match results are removed by cascade.
+    let deleted: { fileUrl: string };
+    try { deleted = await repo.deleteOwned(id, user); }
+    catch (error) {
+      if ((error as { code?: string }).code === 'P2025') throw appError(404, 'CANDIDATE_NOT_FOUND', 'Không tìm thấy ứng viên');
+      throw error;
+    }
+    const uploadRoot = path.resolve(process.cwd(), env.UPLOAD_DIR);
+    const filePath = deleted.fileUrl.startsWith('/uploads/')
+      ? path.resolve(uploadRoot, path.basename(deleted.fileUrl)) : path.resolve(deleted.fileUrl);
+    if (filePath.startsWith(`${uploadRoot}${path.sep}`)) {
+      await fs.unlink(filePath).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== 'ENOENT') console.warn('Không thể dọn tệp CV sau khi xóa bản ghi');
+      });
+    }
   }
 
   async getFile(id: string, user: AuthUser) {

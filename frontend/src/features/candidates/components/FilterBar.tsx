@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, X, ChevronDown, Check, RotateCcw, Filter } from 'lucide-react';
+import { Search, X, ChevronDown, Check, RotateCcw } from 'lucide-react';
 import { candidateApi } from '../api/candidateApi';
 import { useCandidateFeatureStore } from '../store/candidateStore';
 

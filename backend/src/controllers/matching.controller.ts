@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { matchingService } from '../services/matching.service.js';
 import { ApiResponse } from '../types/index.js';
+import { dashboardService } from '../services/dashboard.service.js';
 
 export class MatchingController {
   async runMatching(req: Request, res: Response<ApiResponse>, next: NextFunction): Promise<void> {
@@ -17,8 +18,9 @@ export class MatchingController {
   }
 
   async getLeaderboard(req: Request, res: Response<ApiResponse>, next: NextFunction): Promise<void> {
+    res.setHeader('Cache-Control', 'private, no-store');
     try {
-      const leaderboard = await matchingService.getLeaderboardByJobId(req.params.jobDescriptionId, req.user?.role === 'ADMIN' ? undefined : req.user?.id);
+      const leaderboard = await dashboardService.getLeaderboard(req.params.jobDescriptionId, req.user!);
       res.json({
         success: true,
         data: leaderboard,

@@ -5,6 +5,19 @@ import { candidateService } from '../services/candidate.service.js';
 import { ApiResponse } from '../types/index.js';
 
 export class CandidateController {
+  async getCandidateById(req: Request, res: Response, next: NextFunction): Promise<void> {
+    res.setHeader('Cache-Control', 'private, no-store');
+    try { res.json({ success: true, data: await candidateService.getDetail(req.params.id, req.user!) }); }
+    catch (error) { next(error); }
+  }
+
+  async deleteCandidate(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      await candidateService.deleteCandidate(req.params.id, req.user!);
+      res.json({ success: true, message: 'Đã xóa ứng viên và kết quả đối soát liên quan' });
+    } catch (error) { next(error); }
+  }
+
   async uploadCandidates(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const files = req.files as Express.Multer.File[] | undefined;

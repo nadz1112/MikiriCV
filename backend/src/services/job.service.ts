@@ -3,7 +3,7 @@ import { CreateJobDto, UpdateJobDto } from '../types/index.js';
 import type { AuthUser } from '../middlewares/auth.middleware.js';
 
 export function buildJobScope(user: AuthUser) {
-  return user.role === 'ADMIN' ? {} : { createdById: user.id };
+  return user.role === 'ADMIN' ? {} : { ownerId: user.id, createdById: user.id };
 }
 
 export class JobService {
@@ -13,7 +13,7 @@ export class JobService {
       orderBy: { createdAt: 'desc' },
       include: {
         _count: {
-          select: { matchResults: true },
+          select: { matchResults: { where: user.role === 'ADMIN' ? {} : { candidate: { ownerId: user.id } } } },
         },
         ...(user.role === 'ADMIN' ? {
           createdBy: { select: { id: true, fullName: true, email: true } },
@@ -27,7 +27,7 @@ export class JobService {
     const scope = typeof user === 'string' ? { ownerId } : buildJobScope(user);
     const job = prisma.jobDescription.findUnique
       ? await (prisma.jobDescription.findUnique as any)({
-          where: { id, ...(ownerId ? { ownerId } : {}) },
+          where: { id, ...scope },
           ...(typeof user !== 'string' && user.role === 'ADMIN' ? {
             include: { createdBy: { select: { id: true, fullName: true, email: true } } },
           } : {}),

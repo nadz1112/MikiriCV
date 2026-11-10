@@ -23,11 +23,11 @@ export function ProtectedRoute({ roles }: { roles?: Array<'ADMIN' | 'ENTERPRISE'
 function AppRoutes() {
   const { user, fetchMe, setUnauthenticated } = useAuthStore(); const navigate = useNavigate();
   useEffect(() => { void fetchMe(); const expired = () => { setUnauthenticated(); navigate('/login', { replace: true, state: { notice: 'Phiên đăng nhập đã hết hạn' } }); }; window.addEventListener('auth:expired', expired); return () => window.removeEventListener('auth:expired', expired); }, [fetchMe, setUnauthenticated, navigate]);
-  return <div className="min-h-screen bg-slate-50 font-['Inter',sans-serif] text-slate-900"><Toaster position="top-right"/><Navbar/><main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8"><Routes>
+  return <div className="min-h-screen bg-slate-50 font-['Inter',sans-serif] text-slate-900"><Toaster position="top-right"/><Navbar/><main className="mx-auto w-full max-w-[1920px] px-4 py-8 sm:px-6 lg:px-10"><Routes>
     <Route path="/login" element={<LoginPage/>}/>
     <Route element={<ProtectedRoute/>}><Route path="/change-password" element={<ChangePasswordPage/>}/></Route>
     <Route element={<ProtectedRoute roles={['ADMIN']}/>}><Route path="/admin/users" element={<UsersPage/>}/></Route>
-    <Route element={<ProtectedRoute/>}><Route path="/" element={user?.role === 'ADMIN' ? <Navigate to="/admin/users" replace/> : <DashboardPage/>}/></Route>
+    <Route element={<ProtectedRoute/>}><Route path="/" element={<DashboardPage/>}/></Route>
     <Route element={<ProtectedRoute roles={['ADMIN','ENTERPRISE']}/>}><Route path="/jobs" element={<JobsPage/>}/><Route path="/candidates" element={<CandidatesPage/>}/></Route>
     <Route element={<ProtectedRoute roles={['ENTERPRISE']}/>}><Route path="/matching" element={<MatchingPage/>}/></Route>
     <Route path="*" element={<Navigate to={user?.role === 'ADMIN' ? '/admin/users' : user ? '/' : '/login'} replace/>}/>

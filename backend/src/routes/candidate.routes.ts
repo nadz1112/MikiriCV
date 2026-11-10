@@ -13,5 +13,7 @@ router.post('/upload', validateRequest({}), (req, _res, next) => {
 }, upload.array('files', env.MAX_FILES_PER_REQUEST), (req, res, next) => candidateController.uploadCandidates(req, res, next));
 router.get('/', validateRequest({ query: listCandidatesQuery }), (req, res, next) => candidateController.getCandidates(req, res, next));
 router.get('/:id/file', validateRequest({ params: candidateFileParamsSchema, query: candidateFileQuerySchema }), (req, res, next) => candidateController.getCandidateFile(req, res, next));
+router.get('/:id', validateRequest({ params: candidateFileParamsSchema }), (req, res, next) => candidateController.getCandidateById(req, res, next));
+router.delete('/:id', validateRequest({ params: candidateFileParamsSchema }), (req, res, next) => candidateController.deleteCandidate(req, res, next));
 
 export default router;

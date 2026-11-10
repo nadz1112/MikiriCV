@@ -3,6 +3,7 @@ import { ExtractionStatus, Prisma } from '@prisma/client';
 import { SkillNormalizer } from '../skills/skill-dictionary.js';
 import { normalizeForSearch } from '../../common/utils/normalize-for-search.js';
 import { CandidateListItemRaw } from './candidate.mapper.js';
+import type { AuthUser } from '../../middlewares/auth.middleware.js';
 
 export interface CandidateFilter {
   keyword?: string;
@@ -82,6 +83,28 @@ export const candidateListSelect = {
 } satisfies Prisma.CandidateSelect;
 
 export class CandidateRepository {
+  findDetail(id: string, user: AuthUser) {
+    return prisma.candidate.findFirst({
+      where: { id, ...(user.role === 'ADMIN' ? {} : { ownerId: user.id }) },
+      select: { ...candidateListSelect, rawText: true, matchResults: {
+        where: user.role === 'ADMIN' ? {} : { jobDescription: { ownerId: user.id, createdById: user.id } },
+        orderBy: { score: 'desc' },
+      } },
+    });
+  }
+
+  deleteOwned(id: string, user: AuthUser) {
+    return prisma.candidate.delete({
+      where: { id, ...(user.role === 'ADMIN' ? {} : { ownerId: user.id }) },
+      select: { fileUrl: true },
+    });
+  }
+
+  findAccessibleJob(id: string, user: AuthUser) {
+    return prisma.jobDescription.findFirst({ where: { id,
+      ...(user.role === 'ADMIN' ? {} : { ownerId: user.id, createdById: user.id }) }, select: { id: true } });
+  }
+
   create(data: Prisma.CandidateCreateInput) {
     return prisma.candidate.create({ data });
   }

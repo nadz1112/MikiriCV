@@ -33,10 +33,7 @@ export interface Candidate {
   extractionStatus?: 'SUCCESS' | 'WARNING' | 'FAILED';
   extractionMessage?: string | null;
   uploadedBy?: { id: string; fullName: string; email: string } | null;
-  matchResults?: {
-    jobDescriptionId: string;
-    score: number;
-  }[];
+  matchResults?: MatchResult[];
 }
 
 export interface CandidatePage { data: Candidate[]; total: number; page: number; limit: number }
@@ -65,4 +62,45 @@ export interface CandidateFilter {
   search?: string;
   skills?: string;
   minExp?: string;
+}
+
+export interface JobScoreDistribution {
+  range: string;
+  label: string;
+  count: number;
+  percentage: number;
+}
+
+export interface JobStats {
+  jobId: string;
+  jobTitle: string;
+  totalEvaluated: number;
+  qualifiedCount: number;
+  qualifiedRate: number;
+  avgScore: number;
+  topScore: number;
+  lowestScore: number;
+  distribution: {
+    under50: number;
+    range50to70: number;
+    range71to85: number;
+    over85: number;
+  };
+  buckets: JobScoreDistribution[];
+}
+
+export interface DashboardStats {
+  totalJobs: number;
+  totalCandidates: number;
+  totalMatches: number;
+  qualifiedMatches: number;
+  qualifiedRate: number;
+  avgScore: number;
+  recentEvaluations?: Array<{
+    id: string;
+    candidateName: string;
+    jobTitle: string;
+    score: number;
+    createdAt: string;
+  }>;
 }

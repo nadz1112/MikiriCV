@@ -1,4 +1,4 @@
-import { api } from './api';
+import { httpClient as api } from '../shared/api/httpClient';
 import { ApiResponse, Candidate, CandidateFilter, CandidatePage } from '../types';
 
 export const candidateApi = {
