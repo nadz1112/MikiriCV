@@ -16,12 +16,16 @@ const resetWorkspace = () => {
   useJobStore.setState({ jobs: [], selectedJob: null, isLoading: false });
   useCandidateStore.setState({ candidates: [], selectedCandidates: [], filter: {}, isLoading: false });
 };
+let sessionRequest: Promise<void> | null = null;
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   status: 'loading',
-  fetchMe: async () => {
-    try { const user = await authApi.me(); set({ user, status: 'authenticated' }); }
-    catch { set({ user: null, status: 'unauthenticated' }); }
+  fetchMe: () => {
+    sessionRequest ??= authApi.me()
+      .then((user) => { set({ user, status: 'authenticated' }); })
+      .catch(() => { set({ user: null, status: 'unauthenticated' }); })
+      .finally(() => { sessionRequest = null; });
+    return sessionRequest;
   },
   login: async (email, password) => {
     const user = await authApi.login(email, password);

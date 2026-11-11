@@ -27,13 +27,16 @@ function AppRoutes() {
 
   useEffect(() => {
     void fetchMe();
+  }, [fetchMe]);
+
+  useEffect(() => {
     const expired = () => {
       setUnauthenticated();
       navigate('/login', { replace: true, state: { notice: 'Phiên đăng nhập đã hết hạn' } });
     };
     window.addEventListener('auth:expired', expired);
     return () => window.removeEventListener('auth:expired', expired);
-  }, [fetchMe, setUnauthenticated, navigate]);
+  }, [setUnauthenticated, navigate]);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 font-['Inter',sans-serif] text-slate-900 w-full">
