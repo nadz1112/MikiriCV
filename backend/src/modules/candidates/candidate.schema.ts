@@ -6,6 +6,7 @@ export const uploadHeadersSchema = z.object({
 
 export const listCandidatesQuery = z.object({
   search: z.string().trim().optional(),
+  enterpriseId: z.string().uuid('Mã doanh nghiệp phải là UUID hợp lệ').optional(),
   skills: z.string().optional().transform((v) => (v ? v.split(',').map((s) => s.trim()).filter(Boolean) : [])),
   skillMode: z.enum(['any', 'all'], { message: 'skillMode phải là "any" hoặc "all"' }).default('any'),
   minExp: z.coerce

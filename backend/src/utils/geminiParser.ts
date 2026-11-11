@@ -1,4 +1,12 @@
 import { AiMatchingResult } from '../types/index.js';
+import { z } from 'zod';
+
+const matchingResultSchema = z.object({
+  score: z.number().int().min(0).max(100),
+  summary: z.string().min(1),
+  matchedSkills: z.array(z.string()),
+  missingSkills: z.array(z.string()),
+});
 
 export function sanitizeAndParseGeminiResponse(rawText: string): AiMatchingResult {
   try {
@@ -8,26 +16,9 @@ export function sanitizeAndParseGeminiResponse(rawText: string): AiMatchingResul
       .replace(/```\s*$/i, '')
       .trim();
 
-    const parsed = JSON.parse(cleaned);
-
-    const score = typeof parsed.score === 'number' ? Math.max(0, Math.min(100, Math.round(parsed.score))) : 0;
-    const summary = typeof parsed.summary === 'string' ? parsed.summary : 'Đã hoàn tất đánh giá.';
-    const matchedSkills = Array.isArray(parsed.matchedSkills) ? parsed.matchedSkills.map(String) : [];
-    const missingSkills = Array.isArray(parsed.missingSkills) ? parsed.missingSkills.map(String) : [];
-
-    return {
-      score,
-      summary,
-      matchedSkills,
-      missingSkills,
-    };
-  } catch (error) {
-    console.error('Lỗi khi parse JSON từ Gemini response:', rawText, error);
-    return {
-      score: 0,
-      summary: 'Không thể phân tích dữ liệu tự động do định dạng phản hồi từ AI không đúng cấu trúc.',
-      matchedSkills: [],
-      missingSkills: [],
-    };
+    const parsed: unknown = JSON.parse(cleaned);
+    return matchingResultSchema.parse(parsed);
+  } catch {
+    throw new Error('Phản hồi AI không đúng cấu trúc yêu cầu');
   }
 }

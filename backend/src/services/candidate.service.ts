@@ -119,14 +119,14 @@ export class CandidateService {
   }
 
   async list(query: ListCandidatesQuery, user: AuthUser) {
-    const { page, limit, sort, search, skills, skillMode, minExp, extractionStatus, jobId } = query;
+    const { page, limit, sort, search, skills, skillMode, minExp, extractionStatus, jobId, enterpriseId } = query;
     const filter: CandidateFilter = {
       keyword: search,
       skills: skills || [],
       skillMode,
       minExp,
       extractionStatus: extractionStatus as ExtractionStatus | undefined,
-      ownerId: user.role === 'ADMIN' ? undefined : user.id,
+      ownerId: user.role === 'ADMIN' ? enterpriseId : user.id,
     };
 
     const where = toWhere(filter, skillNormalizer);

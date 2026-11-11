@@ -2,6 +2,8 @@ import { prisma } from '../config/database.js';
 import { geminiModel } from '../config/gemini.js';
 import { RunMatchingDto } from '../types/index.js';
 import { sanitizeAndParseGeminiResponse } from '../utils/geminiParser.js';
+import { env } from '../config/env.js';
+import { vietnamDay } from './admin-dashboard.service.js';
 
 export class MatchingService {
   async runMatching(dto: RunMatchingDto, ownerId?: string) {
@@ -32,6 +34,9 @@ export class MatchingService {
 
     // Xử lý từng ứng viên với Gemini (có thể batch tuần tự để tránh rate limit)
     for (const candidate of candidates) {
+      let inputTokens: number | null = null;
+      let outputTokens: number | null = null;
+      let succeeded = false;
       try {
         const prompt = `
 === THÔNG TIN JOB DESCRIPTION (JD) ===
@@ -56,6 +61,8 @@ Hãy đánh giá mức độ phù hợp và trả về kết quả JSON theo đ�
 `;
 
         const geminiResponse = await geminiModel.generateContent(prompt);
+        inputTokens = geminiResponse.response.usageMetadata?.promptTokenCount ?? null;
+        outputTokens = geminiResponse.response.usageMetadata?.candidatesTokenCount ?? null;
         const rawText = geminiResponse.response.text();
         const parsedResult = sanitizeAndParseGeminiResponse(rawText);
 
@@ -68,12 +75,18 @@ Hãy đánh giá mức độ phù hợp và trả về kết quả JSON theo đ�
             },
           },
           update: {
+            inputTokens,
+            outputTokens,
+            updatedAt: new Date(),
             score: parsedResult.score,
             summary: parsedResult.summary,
             matchedSkills: parsedResult.matchedSkills,
             missingSkills: parsedResult.missingSkills,
           },
           create: {
+            inputTokens,
+            outputTokens,
+            updatedAt: new Date(),
             candidateId: candidate.id,
             jobDescriptionId: job.id,
             score: parsedResult.score,
@@ -94,32 +107,14 @@ Hãy đánh giá mức độ phù hợp và trả về kết quả JSON theo đ�
         });
 
         results.push(savedMatch);
-      } catch (err) {
-        console.error('Lỗi khi xử lý kết quả matching với AI');
-        // Lưu kết quả fallback tạm thời nếu AI gặp sự cố
-        const fallbackMatch = await prisma.matchResult.upsert({
-          where: {
-            candidateId_jobDescriptionId: {
-              candidateId: candidate.id,
-              jobDescriptionId: job.id,
-            },
-          },
-          update: {
-            score: 0,
-            summary: 'Đã xảy ra lỗi trong quá trình kết nối với Gemini AI. Vui lòng thử lại.',
-            matchedSkills: [],
-            missingSkills: [],
-          },
-          create: {
-            candidateId: candidate.id,
-            jobDescriptionId: job.id,
-            score: 0,
-            summary: 'Đã xảy ra lỗi trong quá trình kết nối với Gemini AI. Vui lòng thử lại.',
-            matchedSkills: [],
-            missingSkills: [],
-          },
-        });
-        results.push(fallbackMatch);
+        succeeded = true;
+      } catch {
+        throw Object.assign(new Error('Không thể hoàn tất chấm điểm AI. Vui lòng thử lại.'), { status: 502, code: 'AI_MATCHING_FAILED' });
+      } finally {
+        await prisma.aiUsage.create({ data: {
+          enterpriseId: ownerId ?? job.ownerId,
+          model: env.GEMINI_MODEL, inputTokens, outputTokens, succeeded, day: vietnamDay(),
+        } });
       }
     }
 

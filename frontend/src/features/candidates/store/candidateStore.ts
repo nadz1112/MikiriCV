@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 export interface CandidateFilterState {
+  enterpriseId?: string;
   search: string;
   skills: string[];
   skillMode: 'any' | 'all';
@@ -12,6 +13,7 @@ export interface CandidateFilterState {
 }
 
 interface CandidateStore {
+  setEnterpriseId: (enterpriseId?: string) => void;
   filter: CandidateFilterState;
   selectedCandidateIds: string[];
   setSearch: (search: string) => void;
@@ -42,6 +44,7 @@ const defaultFilter: CandidateFilterState = {
 export const useCandidateFeatureStore = create<CandidateStore>((set) => ({
   filter: { ...defaultFilter },
   selectedCandidateIds: [],
+  setEnterpriseId: (enterpriseId) => set((state) => ({ filter: { ...state.filter, enterpriseId, page: 1 } })),
 
   setSearch: (search) =>
     set((state) => ({ filter: { ...state.filter, search, page: 1 } })),

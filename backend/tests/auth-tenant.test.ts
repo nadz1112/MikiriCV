@@ -82,4 +82,16 @@ describe('authentication and tenant access', () => {
     await expect(matching.runMatching({ jobDescriptionId: 'job-b', candidateIds: ['candidate-b'] }, 'tenant-a')).rejects.toMatchObject({ status: 404 });
     expect(db.prisma.jobDescription.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'job-b', ownerId: 'tenant-a' } }));
   });
+
+  it('lets admins filter a company without allowing HR to change its owner scope', async () => {
+    db.prisma.candidate.findMany.mockResolvedValue([]);
+    const { listCandidatesQuery } = await import('../src/modules/candidates/candidate.schema.js');
+    const enterpriseId = '11111111-1111-4111-8111-111111111111';
+    const query = listCandidatesQuery.parse({ enterpriseId });
+    await candidates.list(query, { id: 'admin', role: 'ADMIN', tokenVersion: 0, mustChangePassword: false });
+    expect(db.prisma.candidate.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { ownerId: enterpriseId } }));
+    await candidates.list(query, { id: 'tenant-a', role: 'ENTERPRISE', tokenVersion: 0, mustChangePassword: false });
+    expect(db.prisma.candidate.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { ownerId: 'tenant-a' } }));
+    expect(listCandidatesQuery.safeParse({ enterpriseId: 'invalid' }).success).toBe(false);
+  });
 });

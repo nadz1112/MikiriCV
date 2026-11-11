@@ -2,16 +2,23 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Search, X, ChevronDown, Check, RotateCcw } from 'lucide-react';
 import { candidateApi } from '../api/candidateApi';
 import { useCandidateFeatureStore } from '../store/candidateStore';
+import { useAuthStore } from '../../auth/authStore';
+import { httpClient } from '../../../shared/api/httpClient';
 
 const POPULAR_SKILLS = ['React', 'Node.js', 'TypeScript', 'PostgreSQL', 'Docker', 'Python', 'Tailwind'];
 
 export const FilterBar: React.FC = () => {
+  const isAdmin = useAuthStore((state) => state.user?.role === 'ADMIN');
+  const [enterprises, setEnterprises] = useState<Array<{ id: string; fullName: string; companyName: string | null }>>([]);
+  const [enterpriseError, setEnterpriseError] = useState('');
+  const [enterpriseLoading, setEnterpriseLoading] = useState(false);
   const {
     filter,
     setSearch,
     toggleSkill,
     setSkillMode,
     setMinExp,
+    setEnterpriseId,
     resetFilter,
   } = useCandidateFeatureStore();
 
@@ -19,6 +26,31 @@ export const FilterBar: React.FC = () => {
   const [skillSearch, setSkillSearch] = useState('');
   const [isSkillDropdownOpen, setIsSkillDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!isAdmin) return;
+    let active = true;
+    const load = async () => {
+      setEnterpriseLoading(true);
+      setEnterpriseError('');
+      try {
+        const items: typeof enterprises = [];
+        let page = 1;
+        let total = 0;
+        do {
+          const { data } = await httpClient.get<{ data: typeof enterprises; total: number }>('/users', { params: { page, limit: 100 } });
+          if (!active) return;
+          items.push(...data.data);
+          total = data.total;
+          page += 1;
+          if (data.data.length === 0) break;
+        } while (items.length < total);
+        setEnterprises(items);
+      } catch { if (active) setEnterpriseError('Không thể tải danh sách doanh nghiệp.'); }
+      finally { if (active) setEnterpriseLoading(false); }
+    };
+    void load();
+    return () => { active = false; };
+  }, [isAdmin]);
 
   // Local state for debouncing keyword search (250ms)
   const [localSearch, setLocalSearch] = useState(filter.search);
@@ -71,6 +103,7 @@ export const FilterBar: React.FC = () => {
   );
 
   const hasActiveFilters =
+    (isAdmin && Boolean(filter.enterpriseId)) ||
     Boolean(filter.search) ||
     filter.skills.length > 0 ||
     filter.minExp > 0 ||
@@ -79,6 +112,13 @@ export const FilterBar: React.FC = () => {
   return (
     <div className="sticky top-0 z-20 rounded-xl border border-slate-200 bg-white/95 px-4 py-3.5 shadow-sm backdrop-blur-md transition-all">
       <div className="flex flex-wrap items-center gap-3">
+        {isAdmin && <label className="text-xs font-medium text-slate-600">Doanh nghiệp
+          <select aria-label="Doanh nghiệp" disabled={enterpriseLoading} value={filter.enterpriseId || ''} onChange={(event) => setEnterpriseId(event.target.value || undefined)} className="ml-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+            <option value="">{enterpriseLoading ? 'Đang tải doanh nghiệp…' : 'Tất cả doanh nghiệp'}</option>
+            {enterprises.map((enterprise) => <option key={enterprise.id} value={enterprise.id}>{enterprise.companyName || enterprise.fullName}</option>)}
+          </select>
+          {enterpriseError && <span role="alert" className="ml-2 text-red-700">{enterpriseError}</span>}
+        </label>}
         {/* 1. Ô tìm từ khóa (Debounce 250ms) */}
         <div className="relative min-w-[220px] flex-1 sm:max-w-xs">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />

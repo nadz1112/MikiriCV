@@ -3,12 +3,19 @@ import { z } from 'zod';
 
 dotenv.config();
 
+const tokenPrice = z.preprocess(
+  (value) => typeof value === 'string' && !value.trim() ? undefined : value,
+  z.coerce.number().finite().nonnegative().optional(),
+);
+
 const envSchema = z.object({
   PORT: z.string().default('4000').transform((v) => parseInt(v, 10)),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL là bắt buộc'),
   GEMINI_API_KEY: z.string().default('YOUR_GEMINI_API_KEY_HERE'),
   GEMINI_MODEL: z.string().default('gemini-3.5-flash'),
+  AI_INPUT_USD_PER_MILLION_TOKENS: tokenPrice,
+  AI_OUTPUT_USD_PER_MILLION_TOKENS: tokenPrice,
   MAX_FILE_SIZE_MB: z.coerce.number().int().positive().default(10),
   MAX_FILES_PER_REQUEST: z.coerce.number().int().positive().max(100).default(20),
   UPLOAD_DIR: z.string().default('./uploads'),

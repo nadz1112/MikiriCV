@@ -77,8 +77,8 @@ export const candidateListSelect = {
   extractionStatus: true,
   extractionMessage: true,
   createdAt: true,
-  uploadedBy: { select: { id: true, fullName: true, email: true } },
-  owner: { select: { id: true, fullName: true, email: true } },
+  uploadedBy: { select: { id: true, fullName: true, email: true, companyName: true } },
+  owner: { select: { id: true, fullName: true, email: true, companyName: true } },
 } satisfies Prisma.CandidateSelect;
 
 export class CandidateRepository {
