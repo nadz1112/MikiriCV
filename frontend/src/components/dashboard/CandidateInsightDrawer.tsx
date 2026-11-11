@@ -94,7 +94,6 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"
-        onClick={onClose}
       />
 
       <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">

@@ -2,18 +2,34 @@ import { prisma } from '../config/database.js';
 import { geminiModel } from '../config/gemini.js';
 import { RunMatchingDto } from '../types/index.js';
 import { sanitizeAndParseGeminiResponse } from '../utils/geminiParser.js';
+import { AppError } from '../common/errors/app-error.js';
+
+const safeCandidateSelect = {
+  id: true,
+  fullName: true,
+  email: true,
+  phone: true,
+  skills: true,
+  yearsOfExperience: true,
+  education: true,
+  fileName: true,
+  extractionStatus: true,
+  extractionMessage: true,
+  createdAt: true,
+} as const;
 
 export class MatchingService {
   async runMatching(dto: RunMatchingDto, ownerId?: string) {
     const { jobDescriptionId, candidateIds } = dto;
 
-    const job = await prisma.jobDescription.findUnique({
-      where: { id: jobDescriptionId, ...(ownerId ? { ownerId } : {}) },
-    });
+    const jobWhere = { id: jobDescriptionId, ...(ownerId ? { ownerId } : {}) };
+    const job =
+      typeof prisma.jobDescription.findFirst === 'function'
+        ? await prisma.jobDescription.findFirst({ where: jobWhere })
+        : await (prisma.jobDescription.findUnique as any)({ where: jobWhere });
 
     if (!job) {
-      throw Object.assign(new Error('Không tìm thấy Job Description'), { status: 404, code: 'JOB_NOT_FOUND' });
-      throw new Error(`Không tìm thấy Job Description với ID: ${jobDescriptionId}`);
+      throw new AppError(404, 'JOB_NOT_FOUND', 'Không tìm thấy Job Description');
     }
 
     const candidates = await prisma.candidate.findMany({
@@ -24,8 +40,7 @@ export class MatchingService {
     });
 
     if (candidates.length !== candidateIds.length) {
-      throw Object.assign(new Error('Không tìm thấy một hoặc nhiều tài nguyên'), { status: 404, code: 'CANDIDATE_NOT_FOUND' });
-      throw new Error('Không tìm thấy ứng viên nào để thực hiện đối soát');
+      throw new AppError(404, 'CANDIDATE_NOT_FOUND', 'Không tìm thấy một hoặc nhiều ứng viên hợp lệ');
     }
 
     const results = [];
@@ -83,43 +98,20 @@ Hãy đánh giá mức độ phù hợp và trả về kết quả JSON theo đ�
           },
           include: {
             candidate: {
-              select: {
-                id: true,
-                fullName: true,
-                email: true,
-                phone: true,
-              },
+              select: safeCandidateSelect,
             },
           },
         });
 
         results.push(savedMatch);
-      } catch (err) {
-        console.error('Lỗi khi xử lý kết quả matching với AI');
-        // Lưu kết quả fallback tạm thời nếu AI gặp sự cố
-        const fallbackMatch = await prisma.matchResult.upsert({
-          where: {
-            candidateId_jobDescriptionId: {
-              candidateId: candidate.id,
-              jobDescriptionId: job.id,
-            },
-          },
-          update: {
-            score: 0,
-            summary: 'Đã xảy ra lỗi trong quá trình kết nối với Gemini AI. Vui lòng thử lại.',
-            matchedSkills: [],
-            missingSkills: [],
-          },
-          create: {
-            candidateId: candidate.id,
-            jobDescriptionId: job.id,
-            score: 0,
-            summary: 'Đã xảy ra lỗi trong quá trình kết nối với Gemini AI. Vui lòng thử lại.',
-            matchedSkills: [],
-            missingSkills: [],
-          },
-        });
-        results.push(fallbackMatch);
+      } catch (err: any) {
+        const status = err?.status === 429 || String(err?.message || '').includes('429') ? 429 : 502;
+        const code = status === 429 ? 'AI_RATE_LIMIT' : 'AI_PROVIDER_ERROR';
+        const message =
+          status === 429
+            ? 'Hệ thống Gemini AI đang đạt giới hạn lượt gọi (Rate Limit). Vui lòng thử lại sau ít phút.'
+            : `Không thể phân tích hồ sơ "${candidate.fullName}" qua Gemini AI. Vui lòng thử lại.`;
+        throw new AppError(status, code, message);
       }
     }
 
@@ -127,21 +119,31 @@ Hãy đánh giá mức độ phù hợp và trả về kết quả JSON theo đ�
   }
 
   async getLeaderboardByJobId(jobDescriptionId: string, ownerId?: string) {
-    const job = await prisma.jobDescription.findUnique({
-      where: { id: jobDescriptionId, ...(ownerId ? { ownerId } : {}) },
-      include: {
-        matchResults: {
-          include: {
-            candidate: true,
+    const jobWhere = { id: jobDescriptionId, ...(ownerId ? { ownerId } : {}) };
+    const include = {
+      matchResults: {
+        include: {
+          candidate: {
+            select: safeCandidateSelect,
           },
-          orderBy: { score: 'desc' },
         },
+        orderBy: { score: 'desc' as const },
       },
-    });
+    };
+
+    const job =
+      typeof prisma.jobDescription.findFirst === 'function'
+        ? await prisma.jobDescription.findFirst({
+            where: jobWhere,
+            include,
+          })
+        : await (prisma.jobDescription.findUnique as any)({
+            where: jobWhere,
+            include,
+          });
 
     if (!job) {
-      throw Object.assign(new Error('Không tìm thấy Job Description'), { status: 404, code: 'JOB_NOT_FOUND' });
-      throw new Error(`Không tìm thấy Job Description với ID: ${jobDescriptionId}`);
+      throw new AppError(404, 'JOB_NOT_FOUND', 'Không tìm thấy Job Description');
     }
 
     return job;

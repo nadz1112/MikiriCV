@@ -55,9 +55,14 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
 
   const headerCheckboxRef = useRef<HTMLInputElement>(null);
 
-  const visibleIds = candidates.map((c) => c.id);
-  const selectedVisibleCount = visibleIds.filter((id) => selectedCandidateIds.includes(id)).length;
-  const isAllVisibleSelected = visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
+  const selectableVisibleIds = candidates
+    .filter((c) => c.extractionStatus !== 'FAILED')
+    .map((c) => c.id);
+  const selectedVisibleCount = selectableVisibleIds.filter((id) =>
+    selectedCandidateIds.includes(id),
+  ).length;
+  const isAllVisibleSelected =
+    selectableVisibleIds.length > 0 && selectedVisibleCount === selectableVisibleIds.length;
   const isIndeterminate = selectedVisibleCount > 0 && !isAllVisibleSelected;
 
   useEffect(() => {
@@ -193,9 +198,10 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
                     type="checkbox"
                     ref={headerCheckboxRef}
                     checked={isAllVisibleSelected}
-                    onChange={() => toggleSelectAll(visibleIds)}
-                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                    title="Chọn tất cả kết quả đang hiển thị"
+                    disabled={selectableVisibleIds.length === 0}
+                    onChange={() => toggleSelectAll(selectableVisibleIds)}
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                    title="Chọn tất cả hồ sơ hợp lệ đang hiển thị"
                   />
                 </th>
                 <th className="px-4 py-3">Họ tên</th>
@@ -222,8 +228,14 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
                       <input
                         type="checkbox"
                         checked={isSelected}
+                        disabled={candidate.extractionStatus === 'FAILED'}
                         onChange={() => toggleSelect(candidate.id)}
-                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        title={
+                          candidate.extractionStatus === 'FAILED'
+                            ? 'Hồ sơ lỗi trích xuất không thể đưa vào AI Matching'
+                            : 'Chọn ứng viên để chạy AI Matching'
+                        }
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
                       />
                     </td>
                     <td className="px-4 py-3">
