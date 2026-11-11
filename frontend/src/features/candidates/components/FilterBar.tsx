@@ -18,6 +18,7 @@ export const FilterBar: React.FC = () => {
     toggleSkill,
     setSkillMode,
     setMinExp,
+    setExtractionStatus,
     setEnterpriseId,
     resetFilter,
   } = useCandidateFeatureStore();
@@ -91,22 +92,33 @@ export const FilterBar: React.FC = () => {
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        handleAddCustomSkill(skillSearch);
         setIsSkillDropdownOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [skillSearch, filter.skills, toggleSkill]);
 
   const filteredSkills = availableSkills.filter((s) =>
     s.toLowerCase().includes(skillSearch.toLowerCase())
   );
+
+  const handleAddCustomSkill = (skillToAdd: string) => {
+    const trimmed = skillToAdd.trim();
+    if (!trimmed) return;
+    if (!filter.skills.some((skill) => skill.toLowerCase() === trimmed.toLowerCase())) {
+      toggleSkill(trimmed);
+    }
+    setSkillSearch('');
+  };
 
   const hasActiveFilters =
     (isAdmin && Boolean(filter.enterpriseId)) ||
     Boolean(filter.search) ||
     filter.skills.length > 0 ||
     filter.minExp > 0 ||
+    Boolean(filter.extractionStatus) ||
     filter.skillMode !== 'any';
 
   return (
@@ -148,7 +160,10 @@ export const FilterBar: React.FC = () => {
         <div className="relative" ref={dropdownRef}>
           <button
             type="button"
-            onClick={() => setIsSkillDropdownOpen((prev) => !prev)}
+            onClick={() => {
+              if (isSkillDropdownOpen) handleAddCustomSkill(skillSearch);
+              setIsSkillDropdownOpen((prev) => !prev);
+            }}
             className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition ${
               filter.skills.length > 0
                 ? 'border-blue-500 bg-blue-50 text-blue-700'
@@ -165,22 +180,48 @@ export const FilterBar: React.FC = () => {
           </button>
 
           {isSkillDropdownOpen && (
-            <div className="absolute left-0 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-xl ring-1 ring-black/5 z-30 animate-in fade-in zoom-in-95 duration-100">
+            <div onMouseDown={(event) => {
+              if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
+            }} className="absolute left-0 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-xl ring-1 ring-black/5 z-30 animate-in fade-in zoom-in-95 duration-100">
               <div className="mb-2 px-1">
                 <input
                   type="text"
                   value={skillSearch}
                   onChange={(e) => setSkillSearch(e.target.value)}
-                  placeholder="Lọc nhanh kỹ năng..."
+                  onBlur={() => handleAddCustomSkill(skillSearch)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddCustomSkill(skillSearch);
+                    }
+                  }}
+                  placeholder="Gõ kỹ năng (Enter để thêm)..."
                   className="w-full rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                   autoFocus
                 />
               </div>
 
-              <div className="max-h-60 overflow-y-auto px-1 divide-y divide-slate-50">
+              {skillSearch.trim().length > 0 && !filter.skills.includes(skillSearch.trim()) && (
+                <div className="mb-1.5 px-1">
+                  <button
+                    type="button"
+                    onClick={() => handleAddCustomSkill(skillSearch)}
+                    className="flex w-full items-center justify-between rounded-lg bg-blue-50 px-2.5 py-1.5 text-left text-xs font-semibold text-blue-700 hover:bg-blue-100 transition"
+                  >
+                    <span>+ Thêm "{skillSearch.trim()}"</span>
+                    <span className="rounded bg-blue-200/60 px-1 py-0.5 text-[10px] font-normal text-blue-800">
+                      Enter
+                    </span>
+                  </button>
+                </div>
+              )}
+
+              <div onMouseDown={(event) => event.preventDefault()} className="max-h-60 overflow-y-auto px-1 divide-y divide-slate-50">
                 {filteredSkills.length === 0 ? (
                   <div className="p-3 text-center text-xs text-slate-400">
-                    Không tìm thấy kỹ năng phù hợp
+                    {skillSearch.trim()
+                      ? 'Không có trong danh mục gợi ý. Bấm nút "+ Thêm" ở trên để tìm.'
+                      : 'Không tìm thấy kỹ năng phù hợp'}
                   </div>
                 ) : (
                   filteredSkills.map((skill) => {
@@ -189,7 +230,10 @@ export const FilterBar: React.FC = () => {
                       <button
                         key={skill}
                         type="button"
-                        onClick={() => toggleSkill(skill)}
+                        onClick={() => {
+                          toggleSkill(skill);
+                          setSkillSearch('');
+                        }}
                         className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-xs transition ${
                           isSelected
                             ? 'bg-blue-50 font-semibold text-blue-700'
@@ -258,6 +302,28 @@ export const FilterBar: React.FC = () => {
               <option value={10}>≥ 10 năm</option>
             </select>
           </div>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <label htmlFor="extractionStatus" className="whitespace-nowrap text-xs font-medium text-slate-600">
+            Trích xuất:
+          </label>
+          <select
+            id="extractionStatus"
+            value={filter.extractionStatus || ''}
+            onChange={(event) => {
+              const value = event.target.value;
+              if (value === '' || value === 'SUCCESS' || value === 'WARNING' || value === 'FAILED') {
+                setExtractionStatus(value || undefined);
+              }
+            }}
+            className="rounded-lg border border-slate-300 bg-white py-1.5 pl-2.5 pr-7 text-xs font-medium text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+          >
+            <option value="">Tất cả</option>
+            <option value="SUCCESS">Thành công</option>
+            <option value="WARNING">Cảnh báo</option>
+            <option value="FAILED">Lỗi</option>
+          </select>
         </div>
 
         {/* 5. Nút xóa bộ lọc */}

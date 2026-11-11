@@ -1,3 +1,4 @@
+import { ModalPortal } from '../common/ModalPortal';
 import React from 'react';
 import { AlertTriangle, Trash2, X } from 'lucide-react';
 import { Candidate } from '../../types';
@@ -23,11 +24,11 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
   const matchCount = candidate.matchResults ? candidate.matchResults.length : 0;
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 overflow-y-auto">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
-        onClick={onClose}
       />
 
       <div className="flex min-h-full items-center justify-center p-4 text-center">
@@ -49,6 +50,7 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
               </div>
               <button
                 onClick={onClose}
+                aria-label="Đóng"
                 className="text-slate-400 hover:text-slate-600 p-1 rounded-lg transition"
               >
                 <X className="w-5 h-5" />
@@ -88,18 +90,11 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
               <Trash2 className="w-4 h-4" />
               <span>{isDeleting ? 'Đang xóa...' : 'Xác nhận xóa vĩnh viễn'}</span>
             </button>
-            <button
-              type="button"
-              disabled={isDeleting}
-              onClick={onClose}
-              className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-2xs ring-1 ring-inset ring-slate-300 hover:bg-slate-50 transition"
-            >
-              Hủy bỏ
-            </button>
           </div>
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 };
 

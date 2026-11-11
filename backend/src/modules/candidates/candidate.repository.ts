@@ -42,11 +42,12 @@ export function toWhere(f: CandidateFilter, normalizer: SkillNormalizer): Prisma
       .filter(Boolean);
 
     if (normalizedSkills.length > 0) {
-      parts.push({
-        skills: f.skillMode === 'all'
-          ? { hasEvery: normalizedSkills }
-          : { hasSome: normalizedSkills },
-      });
+      const skills = normalizedSkills.map((skill): Prisma.CandidateWhereInput =>
+        normalizer.normalize(skill)
+          ? { skills: { has: skill } }
+          : { searchText: { contains: normalizeForSearch(skill) } },
+      );
+      parts.push(f.skillMode === 'all' ? { AND: skills } : { OR: skills });
     }
   }
 

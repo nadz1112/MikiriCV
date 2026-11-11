@@ -25,15 +25,23 @@ export class JobService {
   async getJobById(id: string, user: AuthUser | string) {
     const ownerId = typeof user === 'string' ? user : (user.role === 'ADMIN' ? undefined : user.id);
     const scope = typeof user === 'string' ? { ownerId } : buildJobScope(user);
-    const job = prisma.jobDescription.findUnique
-      ? await (prisma.jobDescription.findUnique as any)({
+    const job = typeof prisma.jobDescription.findFirst === 'function'
+      ? await prisma.jobDescription.findFirst({
+          where: { id, ...scope },
+          include: {
+            _count: {
+              select: { matchResults: true },
+            },
+            ...(typeof user !== 'string' && user.role === 'ADMIN'
+              ? { createdBy: { select: { id: true, fullName: true, email: true } } }
+              : {}),
+          },
+        })
+      : await (prisma.jobDescription.findUnique as any)({
           where: { id, ...(ownerId ? { ownerId } : {}) },
           ...(typeof user !== 'string' && user.role === 'ADMIN' ? {
             include: { createdBy: { select: { id: true, fullName: true, email: true } } },
           } : {}),
-        })
-      : await prisma.jobDescription.findFirst({
-          where: { id, ...scope },
         });
 
     if (!job) {
@@ -140,15 +148,20 @@ export class JobService {
   async updateJob(id: string, data: UpdateJobDto, user: AuthUser) {
     await this.getJobById(id, user);
     return prisma.jobDescription.update({
-      where: { id, ...(typeof user === 'string' ? { ownerId: user } : buildJobScope(user)) },
+      where: { id },
       data,
+      include: {
+        _count: {
+          select: { matchResults: true },
+        },
+      },
     });
   }
 
   async deleteJob(id: string, user: AuthUser) {
     await this.getJobById(id, user);
     return prisma.jobDescription.delete({
-      where: { id, ...(typeof user === 'string' ? { ownerId: user } : buildJobScope(user)) },
+      where: { id },
     });
   }
 }

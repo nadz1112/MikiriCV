@@ -2,7 +2,7 @@
 
 Hệ thống sàng lọc hồ sơ tuyển dụng thông minh 2 tầng:
 1. **Tầng 1 (Rule-based Filtering)**: Lọc tức thời (<100ms) dựa trên kỹ năng, số năm kinh nghiệm và từ khóa tự do, chi phí $0.
-2. **Tầng 2 (Gemini Generative AI Matching)**: Đối soát ngữ nghĩa sâu sắc giữa CV và Job Description (JD) bằng Google Gemini AI, chấm điểm 0–100, chỉ rõ điểm mạnh và kỹ năng còn thiếu.
+2. **Tầng 2 (Gemini Generative AI Matching)**: Đánh giá kỹ năng và số năm kinh nghiệm đã trích xuất theo Job Description (JD) bằng Google Gemini AI, chấm điểm 0–100 và chỉ rõ kỹ năng còn thiếu. Thông tin cá nhân và văn bản CV được giữ tại backend.
 
 ---
 
@@ -160,3 +160,21 @@ Nếu cần tạo lại tài khoản hoặc dữ liệu mẫu trong môi trườ
 ```bash
 npm --prefix backend run cleanup:idempotency
 ```
+
+## Trích xuất CV và dữ liệu gửi tới AI
+
+Khi tải CV lên, backend đọc văn bản PDF bằng `pdf-parse` (PDF.js) hoặc DOCX bằng `mammoth`. Bước này không gọi Gemini. File ảnh scan chưa có lớp văn bản hiện chưa được OCR.
+
+Các trường được nhận diện bằng quy tắc trong `backend/src/modules/candidates/field-parser.ts`:
+
+- Họ tên: ưu tiên tên file sau khi bỏ tiền tố CV/Resume; nếu không phù hợp thì dùng dòng văn bản đầu tiên có vẻ hợp lệ. Đây là ước lượng, có thể cần kiểm tra lại.
+- Email và số điện thoại Việt Nam: dùng biểu thức chính quy.
+- Kinh nghiệm: tìm số năm gần cụm “kinh nghiệm” hoặc “experience”, trong khoảng 0–30; không tìm thấy thì mặc định 0, không có nghĩa chắc chắn ứng viên chưa có kinh nghiệm.
+- Kỹ năng: đối chiếu tên và tên viết tắt với từ điển tại `backend/src/modules/skills/skill-dictionary.ts`. Kỹ năng ngoài từ điển có thể bị bỏ sót; bộ lọc vẫn cho phép nhập tự do để tìm trong văn bản đã trích xuất.
+- Học vấn: hiện chưa có bộ trích xuất, mặc định để trống.
+
+Khi chạy AI Matching, chỉ danh sách kỹ năng đã chuẩn hóa theo từ điển và số năm kinh nghiệm của các CV được chọn được gửi cùng JD tới Gemini. Tên, email, điện thoại, tên file, đường dẫn, học vấn và toàn bộ văn bản CV không được đưa vào prompt. Kết quả vì vậy chỉ đánh giá dữ liệu chuyên môn đã trích xuất, chưa phản ánh đầy đủ dự án hoặc thành tích trong CV. JD vẫn được gửi nguyên nội dung; tránh ghi thông tin cá nhân vào JD. Các kết quả chấm cũ không tự được chấm lại.
+
+“Xử lý nội bộ” ở đây là xử lý tại máy chạy backend. Nếu backend chạy trên máy của bạn thì dữ liệu được xử lý tại máy đó; nếu triển khai lên máy chủ thì file và dữ liệu cá nhân được lưu tại máy chủ, không phải chỉ trong trình duyệt. CV gốc và văn bản trích xuất vẫn được giữ trong kho file/PostgreSQL của hệ thống, và tải file phải qua endpoint được xác thực `/api/candidates/:id/file`.
+
+Cảnh báo PDF.js “Ignoring invalid character … in hex string” là cảnh báo về cấu trúc nội bộ của PDF. Bộ đọc đã được đặt mức log lỗi để tránh lặp cảnh báo này; đây không phải sửa lại file PDF. File không đọc được hoặc không có văn bản vẫn được đánh dấu trích xuất thất bại để người dùng kiểm tra.

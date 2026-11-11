@@ -34,7 +34,15 @@ router.post('/refresh', async (req, res) => {
     res.status(401).json({ success: false, error: { code: 'TOKEN_EXPIRED', message: 'Phiên đăng nhập đã hết hạn' }, requestId: randomUUID() });
   }
 });
-router.get('/me', authenticate, async (req, res, next) => {
+router.get('/me', (req, res, next) => {
+  // Probing an anonymous session is normal when opening the login page.
+  // Expired/invalid cookies still pass through authentication and return 401.
+  if (!req.cookies?.accessToken && !req.cookies?.refreshToken) {
+    res.json({ success: true, data: { user: null } });
+    return;
+  }
+  return authenticate(req, res, next);
+}, async (req, res, next) => {
   try { const user = await prisma.user.findUniqueOrThrow({ where: { id: req.user!.id } }); res.json({ success: true, data: { user: publicUser(user) } }); } catch (err) { next(err); }
 });
 router.post('/logout', authenticate, async (req, res, next) => {

@@ -7,6 +7,7 @@ export interface CandidateFilterState {
   skillMode: 'any' | 'all';
   minExp: number;
   extractionStatus?: 'SUCCESS' | 'WARNING' | 'FAILED';
+  jobId?: string;
   page: number;
   limit: number;
   sort: 'createdAt' | 'yearsOfExperience' | 'fullName';
@@ -22,12 +23,14 @@ interface CandidateStore {
   setSkillMode: (mode: 'any' | 'all') => void;
   setMinExp: (minExp: number) => void;
   setExtractionStatus: (status?: 'SUCCESS' | 'WARNING' | 'FAILED') => void;
+  setJobId: (jobId?: string) => void;
   setPage: (page: number) => void;
   setLimit: (limit: number) => void;
   setSort: (sort: 'createdAt' | 'yearsOfExperience' | 'fullName') => void;
   resetFilter: () => void;
   toggleSelect: (id: string) => void;
   toggleSelectAll: (visibleIds: string[]) => void;
+  removeCandidateId: (id: string) => void;
   clearSelection: () => void;
 }
 
@@ -70,6 +73,9 @@ export const useCandidateFeatureStore = create<CandidateStore>((set) => ({
   setExtractionStatus: (extractionStatus) =>
     set((state) => ({ filter: { ...state.filter, extractionStatus, page: 1 } })),
 
+  setJobId: (jobId) =>
+    set((state) => ({ filter: { ...state.filter, jobId: jobId || undefined, page: 1 } })),
+
   setPage: (page) =>
     set((state) => ({ filter: { ...state.filter, page } })),
 
@@ -80,7 +86,7 @@ export const useCandidateFeatureStore = create<CandidateStore>((set) => ({
     set((state) => ({ filter: { ...state.filter, sort, page: 1 } })),
 
   resetFilter: () =>
-    set({ filter: { ...defaultFilter } }),
+    set((state) => ({ filter: { ...defaultFilter, jobId: state.filter.jobId } })),
 
   toggleSelect: (id) =>
     set((state) => {
@@ -107,6 +113,10 @@ export const useCandidateFeatureStore = create<CandidateStore>((set) => ({
         selectedCandidateIds: [...state.selectedCandidateIds, ...toAdd],
       };
     }),
+
+  removeCandidateId: (id) => set((state) => ({
+    selectedCandidateIds: state.selectedCandidateIds.filter((candidateId) => candidateId !== id),
+  })),
 
   clearSelection: () => set({ selectedCandidateIds: [] }),
 }));

@@ -1,21 +1,40 @@
+import { env } from '../config/env.js';
+import { vietnamDay } from './admin-dashboard.service.js';
 import { prisma } from '../config/database.js';
 import { geminiModel } from '../config/gemini.js';
 import { RunMatchingDto } from '../types/index.js';
 import { sanitizeAndParseGeminiResponse } from '../utils/geminiParser.js';
-import { env } from '../config/env.js';
-import { vietnamDay } from './admin-dashboard.service.js';
+import { AppError } from '../common/errors/app-error.js';
+import { toMatchingProfile } from '../modules/candidates/matching-profile.js';
+import { toAiError } from '../utils/ai-error.js';
+
+const safeCandidateSelect = {
+  id: true,
+  fullName: true,
+  email: true,
+  phone: true,
+  skills: true,
+  yearsOfExperience: true,
+  education: true,
+  fileName: true,
+  extractionStatus: true,
+  extractionMessage: true,
+  createdAt: true,
+} as const;
 
 export class MatchingService {
   async runMatching(dto: RunMatchingDto, ownerId?: string) {
-    const { jobDescriptionId, candidateIds } = dto;
+    const { jobDescriptionId } = dto;
+    const candidateIds = [...new Set(dto.candidateIds)];
 
-    const job = await prisma.jobDescription.findUnique({
-      where: { id: jobDescriptionId, ...(ownerId ? { ownerId } : {}) },
-    });
+    const jobWhere = { id: jobDescriptionId, ...(ownerId ? { ownerId } : {}) };
+    const job =
+      typeof prisma.jobDescription.findFirst === 'function'
+        ? await prisma.jobDescription.findFirst({ where: jobWhere })
+        : await (prisma.jobDescription.findUnique as any)({ where: jobWhere });
 
     if (!job) {
-      throw Object.assign(new Error('Không tìm thấy Job Description'), { status: 404, code: 'JOB_NOT_FOUND' });
-      throw new Error(`Không tìm thấy Job Description với ID: ${jobDescriptionId}`);
+      throw new AppError(404, 'JOB_NOT_FOUND', 'Không tìm thấy Job Description');
     }
 
     const candidates = await prisma.candidate.findMany({
@@ -23,17 +42,22 @@ export class MatchingService {
         id: { in: candidateIds },
         ...(ownerId ? { ownerId } : {}),
       },
+      select: { id: true, fullName: true, skills: true, yearsOfExperience: true, extractionStatus: true },
     });
 
     if (candidates.length !== candidateIds.length) {
-      throw Object.assign(new Error('Không tìm thấy một hoặc nhiều tài nguyên'), { status: 404, code: 'CANDIDATE_NOT_FOUND' });
-      throw new Error('Không tìm thấy ứng viên nào để thực hiện đối soát');
+      throw new AppError(404, 'CANDIDATE_NOT_FOUND', 'Không tìm thấy một hoặc nhiều ứng viên hợp lệ');
+    }
+
+    if (candidates.some((candidate) => candidate.extractionStatus === 'FAILED')) {
+      throw new AppError(422, 'CV_EXTRACTION_FAILED', 'Có CV chưa trích xuất được nội dung. Vui lòng kiểm tra lại hồ sơ đã chọn.');
     }
 
     const results = [];
 
     // Xử lý từng ứng viên với Gemini (có thể batch tuần tự để tránh rate limit)
     for (const candidate of candidates) {
+      let saving = false;
       let inputTokens: number | null = null;
       let outputTokens: number | null = null;
       let succeeded = false;
@@ -46,10 +70,10 @@ Danh sách kỹ năng yêu cầu: ${job.requiredSkills.join(', ')}
 Mô tả công việc:
 ${job.description}
 
-=== NỘI DUNG CV ỨNG VIÊN ===
-Tên ứng viên: ${candidate.fullName}
-Nội dung văn bản trích xuất từ CV:
-${candidate.rawText.substring(0, 10000)}
+=== HỒ SƠ CHUYÊN MÔN ĐÃ TRÍCH XUẤT NỘI BỘ ===
+${JSON.stringify(toMatchingProfile(candidate))}
+Chỉ đánh giá kỹ năng và số năm kinh nghiệm trong hồ sơ này. Không suy đoán thông tin chưa được cung cấp.
+Trong nhận xét, nêu rõ đánh giá dựa trên dữ liệu kỹ năng và kinh nghiệm đã trích xuất, không phải toàn bộ CV.
 
 Hãy đánh giá mức độ phù hợp và trả về kết quả JSON theo đúng định dạng:
 {
@@ -60,13 +84,14 @@ Hãy đánh giá mức độ phù hợp và trả về kết quả JSON theo đ�
 }
 `;
 
-        const geminiResponse = await geminiModel.generateContent(prompt);
+        const geminiResponse = await geminiModel.generateContent(prompt, { timeout: 60000 });
         inputTokens = geminiResponse.response.usageMetadata?.promptTokenCount ?? null;
         outputTokens = geminiResponse.response.usageMetadata?.candidatesTokenCount ?? null;
         const rawText = geminiResponse.response.text();
         const parsedResult = sanitizeAndParseGeminiResponse(rawText);
 
         // Lưu hoặc cập nhật (Upsert) vào PostgreSQL
+        saving = true;
         const savedMatch = await prisma.matchResult.upsert({
           where: {
             candidateId_jobDescriptionId: {
@@ -96,25 +121,37 @@ Hãy đánh giá mức độ phù hợp và trả về kết quả JSON theo đ�
           },
           include: {
             candidate: {
-              select: {
-                id: true,
-                fullName: true,
-                email: true,
-                phone: true,
-              },
+              select: safeCandidateSelect,
             },
           },
         });
 
         results.push(savedMatch);
         succeeded = true;
-      } catch {
-        throw Object.assign(new Error('Không thể hoàn tất chấm điểm AI. Vui lòng thử lại.'), { status: 502, code: 'AI_MATCHING_FAILED' });
+      } catch (err: any) {
+        // A CV deleted while the provider was running must never be recreated or saved.
+        if (err?.code === 'P2003' || err?.code === 'P2025') {
+          throw new AppError(409, 'MATCHING_DATA_CHANGED', 'CV hoặc JD đã bị xóa trong lúc chấm điểm. Vui lòng tải lại danh sách.');
+        }
+        if (saving) throw err;
+        const failure = toAiError(err);
+        console.warn('AI matching failed', {
+          code: failure.code,
+          upstreamStatus: typeof err?.status === 'number' ? err.status : undefined,
+          model: geminiModel.model,
+        });
+        throw failure;
       } finally {
-        await prisma.aiUsage.create({ data: {
-          enterpriseId: ownerId ?? job.ownerId,
-          model: env.GEMINI_MODEL, inputTokens, outputTokens, succeeded, day: vietnamDay(),
-        } });
+        try {
+          await prisma.aiUsage.create({ data: {
+            enterpriseId: ownerId ?? job.ownerId,
+            model: env.GEMINI_MODEL, inputTokens, outputTokens, succeeded, day: vietnamDay(),
+          } });
+        } catch {
+          console.error('AI_USAGE_RECORDING_FAILED');
+          // Keep the original provider/database failure visible if recording also fails.
+          if (succeeded) throw new AppError(500, 'AI_USAGE_RECORDING_FAILED', 'Đã lưu kết quả đánh giá nhưng chưa ghi được lịch sử sử dụng AI. Vui lòng tải lại kết quả và kiểm tra backend.');
+        }
       }
     }
 
@@ -122,21 +159,31 @@ Hãy đánh giá mức độ phù hợp và trả về kết quả JSON theo đ�
   }
 
   async getLeaderboardByJobId(jobDescriptionId: string, ownerId?: string) {
-    const job = await prisma.jobDescription.findUnique({
-      where: { id: jobDescriptionId, ...(ownerId ? { ownerId } : {}) },
-      include: {
-        matchResults: {
-          include: {
-            candidate: true,
+    const jobWhere = { id: jobDescriptionId, ...(ownerId ? { ownerId } : {}) };
+    const include = {
+      matchResults: {
+        include: {
+          candidate: {
+            select: safeCandidateSelect,
           },
-          orderBy: { score: 'desc' },
         },
+        orderBy: { score: 'desc' as const },
       },
-    });
+    };
+
+    const job =
+      typeof prisma.jobDescription.findFirst === 'function'
+        ? await prisma.jobDescription.findFirst({
+            where: jobWhere,
+            include,
+          })
+        : await (prisma.jobDescription.findUnique as any)({
+            where: jobWhere,
+            include,
+          });
 
     if (!job) {
-      throw Object.assign(new Error('Không tìm thấy Job Description'), { status: 404, code: 'JOB_NOT_FOUND' });
-      throw new Error(`Không tìm thấy Job Description với ID: ${jobDescriptionId}`);
+      throw new AppError(404, 'JOB_NOT_FOUND', 'Không tìm thấy Job Description');
     }
 
     return job;

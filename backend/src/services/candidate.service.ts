@@ -12,6 +12,7 @@ import { ExtractorFactory } from '../modules/candidates/text-extractor.js';
 import { FieldParser } from '../modules/candidates/field-parser.js';
 import { skillNormalizer } from '../modules/skills/skill-dictionary.js';
 import { ListCandidatesQuery } from '../modules/candidates/candidate.schema.js';
+import { jobService } from './job.service.js';
 
 const repo = new CandidateRepository();
 const parser = new FieldParser();
@@ -120,6 +121,7 @@ export class CandidateService {
 
   async list(query: ListCandidatesQuery, user: AuthUser) {
     const { page, limit, sort, search, skills, skillMode, minExp, extractionStatus, jobId, enterpriseId } = query;
+    if (jobId) await jobService.getJobById(jobId, user.role === 'ADMIN' ? user : user.id);
     const filter: CandidateFilter = {
       keyword: search,
       skills: skills || [],

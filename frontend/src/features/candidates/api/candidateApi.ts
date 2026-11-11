@@ -1,4 +1,5 @@
 import { httpClient } from '../../../shared/api/httpClient';
+import type { Candidate } from '../../../types';
 
 export interface CandidateItem {
   id: string;
@@ -12,6 +13,7 @@ export interface CandidateItem {
   extractionStatus: 'SUCCESS' | 'WARNING' | 'FAILED';
   extractionMessage: string | null;
   matchScore: number | null;
+  matchResults?: Candidate['matchResults'];
   createdAt: string;
   uploadedBy?: { id: string; fullName: string; email: string; companyName: string | null } | null;
 }
@@ -37,7 +39,42 @@ export interface CandidateQueryParams {
   sort?: 'createdAt' | 'yearsOfExperience' | 'fullName';
 }
 
+export interface CandidateUploadError {
+  fileName: string;
+  code: string;
+  message: string;
+}
+
+export interface CandidateUploadResponse {
+  success: boolean;
+  message: string;
+  data: CandidateItem[];
+  errors: CandidateUploadError[];
+}
+
 export const candidateApi = {
+  upload: async (
+    files: File[],
+    idempotencyKey: string,
+    onUploadProgress?: (progress: number) => void,
+  ): Promise<CandidateUploadResponse> => {
+    const formData = new FormData();
+    files.forEach((file) => {
+      formData.append('files', file);
+    });
+
+    const res = await httpClient.post<CandidateUploadResponse>('/candidates/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        'Idempotency-Key': idempotencyKey,
+      },
+      timeout: 120000,
+      onUploadProgress: (event) =>
+        onUploadProgress?.(event.total ? Math.round((event.loaded / event.total) * 100) : 0),
+    });
+    return res.data;
+  },
+
   list: async (params: CandidateQueryParams = {}): Promise<CandidateListResponse> => {
     const searchParams = new URLSearchParams();
     if (params.enterpriseId) searchParams.append('enterpriseId', params.enterpriseId);
