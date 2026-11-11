@@ -70,6 +70,15 @@ export const FilterBar: React.FC = () => {
     s.toLowerCase().includes(skillSearch.toLowerCase())
   );
 
+  const handleAddCustomSkill = (skillToAdd: string) => {
+    const trimmed = skillToAdd.trim();
+    if (!trimmed) return;
+    if (!filter.skills.includes(trimmed)) {
+      toggleSkill(trimmed);
+    }
+    setSkillSearch('');
+  };
+
   const hasActiveFilters =
     Boolean(filter.search) ||
     filter.skills.length > 0 ||
@@ -131,16 +140,39 @@ export const FilterBar: React.FC = () => {
                   type="text"
                   value={skillSearch}
                   onChange={(e) => setSkillSearch(e.target.value)}
-                  placeholder="Lọc nhanh kỹ năng..."
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddCustomSkill(skillSearch);
+                    }
+                  }}
+                  placeholder="Gõ kỹ năng (Enter để thêm)..."
                   className="w-full rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                   autoFocus
                 />
               </div>
 
+              {skillSearch.trim().length > 0 && !filter.skills.includes(skillSearch.trim()) && (
+                <div className="mb-1.5 px-1">
+                  <button
+                    type="button"
+                    onClick={() => handleAddCustomSkill(skillSearch)}
+                    className="flex w-full items-center justify-between rounded-lg bg-blue-50 px-2.5 py-1.5 text-left text-xs font-semibold text-blue-700 hover:bg-blue-100 transition"
+                  >
+                    <span>+ Thêm "{skillSearch.trim()}"</span>
+                    <span className="rounded bg-blue-200/60 px-1 py-0.5 text-[10px] font-normal text-blue-800">
+                      Enter
+                    </span>
+                  </button>
+                </div>
+              )}
+
               <div className="max-h-60 overflow-y-auto px-1 divide-y divide-slate-50">
                 {filteredSkills.length === 0 ? (
                   <div className="p-3 text-center text-xs text-slate-400">
-                    Không tìm thấy kỹ năng phù hợp
+                    {skillSearch.trim()
+                      ? 'Không có trong danh mục gợi ý. Bấm nút "+ Thêm" ở trên để tìm.'
+                      : 'Không tìm thấy kỹ năng phù hợp'}
                   </div>
                 ) : (
                   filteredSkills.map((skill) => {
