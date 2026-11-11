@@ -1,3 +1,4 @@
+import { ModalPortal } from '../../../components/common/ModalPortal';
 import React, { useEffect, useState } from 'react';
 import { z } from 'zod';
 import { AlertTriangle, Plus, X } from 'lucide-react';
@@ -170,6 +171,7 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
   };
 
   return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4 backdrop-blur-sm animate-in fade-in duration-150"
     >
@@ -371,14 +373,6 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
 
           <div className="flex justify-end gap-2.5 border-t border-slate-100 pt-4">
             <button
-              type="button"
-              onClick={onClose}
-              disabled={submitting}
-              className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
-            >
-              Hủy bỏ
-            </button>
-            <button
               type="submit"
               disabled={submitting}
               className="rounded-xl bg-blue-600 px-5 py-2 text-xs font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 disabled:opacity-50"
@@ -393,6 +387,7 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
         </form>
       </section>
     </div>
+    </ModalPortal>
   );
 };
 

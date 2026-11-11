@@ -1,3 +1,4 @@
+import { ModalPortal } from '../common/ModalPortal';
 import React, { useState } from 'react';
 import {
   X,
@@ -90,6 +91,7 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
     : (candidate.fileUrl?.startsWith('http') ? candidate.fileUrl : `${candidate.fileUrl || '#'}`);
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 overflow-hidden">
       {/* Backdrop */}
       <div
@@ -97,7 +99,7 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
       />
 
       <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
-        <div className="w-screen max-w-2xl bg-white shadow-2xl flex flex-col border-l border-slate-200 animate-in slide-in-from-right duration-300">
+        <div role="dialog" aria-modal="true" aria-label="Chi tiết ứng viên" className="w-screen max-w-2xl bg-white shadow-2xl flex flex-col border-l border-slate-200 animate-in slide-in-from-right duration-300">
           {/* Header */}
           <div className="px-6 py-5 border-b border-slate-100 flex items-start justify-between bg-slate-50/70">
             <div className="space-y-1">
@@ -368,6 +370,7 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 };
 

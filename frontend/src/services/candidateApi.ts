@@ -25,8 +25,17 @@ export const candidateApi = {
     if (filter?.skills) params.append('skills', filter.skills);
     if (filter?.minExp) params.append('minExp', filter.minExp);
 
-    const res = await api.get<ApiResponse<Candidate[]>>(`/candidates?${params.toString()}`);
-    return res.data.data || [];
+    params.set('limit', '500');
+    const candidates: Candidate[] = [];
+    let page = 1;
+    while (true) {
+      params.set('page', String(page));
+      const res = await api.get<CandidatePage>(`/candidates?${params.toString()}`);
+      candidates.push(...res.data.data);
+      if (candidates.length >= res.data.total || res.data.data.length === 0) break;
+      page++;
+    }
+    return candidates;
   },
 
   getPage: async (page: number, limit = 50): Promise<CandidatePage> => {

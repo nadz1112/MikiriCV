@@ -54,7 +54,7 @@ export const MatchingPage: React.FC = () => {
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">AI Matching Studio</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Đối soát ngữ nghĩa chuyên sâu giữa hồ sơ ứng viên đã sàng lọc và Job Description bằng Google Gemini AI.
+          Đánh giá kỹ năng và số năm kinh nghiệm đã trích xuất theo Job Description bằng Google Gemini AI.
         </p>
       </div>
 

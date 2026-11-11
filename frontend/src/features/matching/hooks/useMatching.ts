@@ -5,6 +5,7 @@ import { useCandidateStore } from '../../../store/useCandidateStore';
 import { useMatchingFeatureStore } from '../store/matchingStore';
 import { matchingFeatureApi } from '../api/matchingApi';
 import { Candidate, MatchResult } from '../../../types';
+import { candidateApi } from '../../../services/candidateApi';
 
 export function useMatching(initialJobId?: string, initialCandidateIds?: string[]) {
   const { jobs, fetchJobs } = useJobStore();
@@ -110,6 +111,7 @@ export function useMatching(initialJobId?: string, initialCandidateIds?: string[
   };
 
   const handleRunMatching = async () => {
+    if (isRunning) return;
     if (!selectedJobId) {
       toast.error('Vui lòng chọn một Job Description mục tiêu');
       return;
@@ -121,16 +123,33 @@ export function useMatching(initialJobId?: string, initialCandidateIds?: string[
 
     setIsRunning(true);
     try {
-      const res = await matchingFeatureApi.run(selectedJobId, selectedCandidateIds);
-      const count = res.data?.length ?? selectedCandidateIds.length;
+      // Refresh before submitting: another page/tab may have deleted a selected CV.
+      const freshCandidates = await candidateApi.getAll();
+      const validIds = new Set(freshCandidates.filter((candidate) => candidate.extractionStatus !== 'FAILED').map((candidate) => candidate.id));
+      const currentIds = useMatchingFeatureStore.getState().selectedCandidateIds;
+      const candidateIds = currentIds.filter((id) => validIds.has(id));
+      setSelectedCandidateIds(candidateIds);
+      useCandidateStore.setState({ candidates: freshCandidates });
+      if (candidateIds.length !== currentIds.length) {
+        toast.error('Một số CV đã bị xóa hoặc không còn hợp lệ. Vui lòng kiểm tra lại lựa chọn rồi chạy AI.');
+        return;
+      }
+      if (candidateIds.length === 0) {
+        toast.error('Không còn CV hợp lệ để chấm điểm.');
+        return;
+      }
+      const res = await matchingFeatureApi.run(selectedJobId, candidateIds);
+      if (!res.success) throw new Error(res.message || 'AI Matching thất bại');
+      const count = res.data?.length ?? candidateIds.length;
       toast.success(res.message || `Hoàn tất đánh giá ${count} ứng viên`);
       closeConfirmModal();
       await loadLeaderboard(selectedJobId);
       void fetchJobs();
-    } catch {
-      // Lỗi đã được hiển thị qua interceptor toast tiếng Việt
+    } catch (error) {
+      if (error instanceof Error && !('response' in error)) toast.error(error.message);
     } finally {
       setIsRunning(false);
+      closeConfirmModal();
     }
   };
 

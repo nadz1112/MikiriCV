@@ -1,3 +1,4 @@
+import { ModalPortal } from '../../../components/common/ModalPortal';
 import React from 'react';
 import { AlertTriangle, Trash2, X } from 'lucide-react';
 import { JobDescription } from '../../../types';
@@ -20,6 +21,7 @@ export const JobDeleteModal: React.FC<JobDeleteModalProps> = ({
   const matchCount = job._count?.matchResults ?? 0;
 
   return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm animate-in fade-in duration-150"
     >
@@ -46,6 +48,7 @@ export const JobDeleteModal: React.FC<JobDeleteModalProps> = ({
             type="button"
             disabled={isDeleting}
             onClick={onClose}
+            aria-label="Đóng"
             className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
           >
             <X className="h-4 w-4" />
@@ -85,14 +88,6 @@ export const JobDeleteModal: React.FC<JobDeleteModalProps> = ({
           <button
             type="button"
             disabled={isDeleting}
-            onClick={onClose}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-          >
-            Hủy bỏ
-          </button>
-          <button
-            type="button"
-            disabled={isDeleting}
             onClick={onConfirm}
             className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-rose-700 disabled:opacity-50"
           >
@@ -108,6 +103,7 @@ export const JobDeleteModal: React.FC<JobDeleteModalProps> = ({
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 };
 

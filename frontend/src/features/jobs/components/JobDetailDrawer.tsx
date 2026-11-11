@@ -1,3 +1,4 @@
+import { ModalPortal } from '../../../components/common/ModalPortal';
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -88,18 +89,19 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({
   };
 
   return (
+    <ModalPortal>
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/50 backdrop-blur-sm animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-slate-950/50 backdrop-blur-sm animate-in fade-in duration-150"
     >
       <section
         role="dialog"
         aria-modal="true"
         aria-labelledby="job-drawer-title"
         onClick={(e) => e.stopPropagation()}
-        className="flex h-[94vh] w-full max-w-4xl flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
+        className="flex h-[100dvh] sm:h-[calc(100dvh-2rem)] w-full max-w-4xl flex-col sm:rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
       >
         {/* Header */}
-        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
           <div className="space-y-1.5">
             <div className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
               <Briefcase className="h-3.5 w-3.5" />
@@ -137,7 +139,7 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({
         </div>
 
         {/* Body */}
-        <div className="flex-1 space-y-6 overflow-y-auto p-6">
+        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-6">
           {loading && (
             <div className="flex items-center gap-2 text-xs text-blue-600">
               <LoaderCircle className="h-4 w-4 animate-spin" />
@@ -217,7 +219,7 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4">
           {canManage ? (
             <div className="flex items-center gap-2">
               <button
@@ -271,6 +273,7 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({
         </div>
       </section>
     </div>
+    </ModalPortal>
   );
 };
 

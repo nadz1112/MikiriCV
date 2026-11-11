@@ -59,12 +59,13 @@ export const FilterBar: React.FC = () => {
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        handleAddCustomSkill(skillSearch);
         setIsSkillDropdownOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [skillSearch, filter.skills, toggleSkill]);
 
   const filteredSkills = availableSkills.filter((s) =>
     s.toLowerCase().includes(skillSearch.toLowerCase())
@@ -73,7 +74,7 @@ export const FilterBar: React.FC = () => {
   const handleAddCustomSkill = (skillToAdd: string) => {
     const trimmed = skillToAdd.trim();
     if (!trimmed) return;
-    if (!filter.skills.includes(trimmed)) {
+    if (!filter.skills.some((skill) => skill.toLowerCase() === trimmed.toLowerCase())) {
       toggleSkill(trimmed);
     }
     setSkillSearch('');
@@ -117,7 +118,10 @@ export const FilterBar: React.FC = () => {
         <div className="relative" ref={dropdownRef}>
           <button
             type="button"
-            onClick={() => setIsSkillDropdownOpen((prev) => !prev)}
+            onClick={() => {
+              if (isSkillDropdownOpen) handleAddCustomSkill(skillSearch);
+              setIsSkillDropdownOpen((prev) => !prev);
+            }}
             className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition ${
               filter.skills.length > 0
                 ? 'border-blue-500 bg-blue-50 text-blue-700'
@@ -134,12 +138,15 @@ export const FilterBar: React.FC = () => {
           </button>
 
           {isSkillDropdownOpen && (
-            <div className="absolute left-0 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-xl ring-1 ring-black/5 z-30 animate-in fade-in zoom-in-95 duration-100">
+            <div onMouseDown={(event) => {
+              if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
+            }} className="absolute left-0 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-xl ring-1 ring-black/5 z-30 animate-in fade-in zoom-in-95 duration-100">
               <div className="mb-2 px-1">
                 <input
                   type="text"
                   value={skillSearch}
                   onChange={(e) => setSkillSearch(e.target.value)}
+                  onBlur={() => handleAddCustomSkill(skillSearch)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
@@ -167,7 +174,7 @@ export const FilterBar: React.FC = () => {
                 </div>
               )}
 
-              <div className="max-h-60 overflow-y-auto px-1 divide-y divide-slate-50">
+              <div onMouseDown={(event) => event.preventDefault()} className="max-h-60 overflow-y-auto px-1 divide-y divide-slate-50">
                 {filteredSkills.length === 0 ? (
                   <div className="p-3 text-center text-xs text-slate-400">
                     {skillSearch.trim()
@@ -181,7 +188,10 @@ export const FilterBar: React.FC = () => {
                       <button
                         key={skill}
                         type="button"
-                        onClick={() => toggleSkill(skill)}
+                        onClick={() => {
+                          toggleSkill(skill);
+                          setSkillSearch('');
+                        }}
                         className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-xs transition ${
                           isSelected
                             ? 'bg-blue-50 font-semibold text-blue-700'

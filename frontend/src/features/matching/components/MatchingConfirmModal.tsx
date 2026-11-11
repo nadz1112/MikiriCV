@@ -1,3 +1,4 @@
+import { ModalPortal } from '../../../components/common/ModalPortal';
 import React from 'react';
 import { Briefcase, Clock, LoaderCircle, RefreshCw, Sparkles, Users, X } from 'lucide-react';
 import { JobDescription } from '../../../types';
@@ -29,6 +30,7 @@ export const MatchingConfirmModal: React.FC<MatchingConfirmModalProps> = ({
   const estSeconds = Math.max(4, totalCount * 4);
 
   return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm animate-in fade-in duration-150"
     >
@@ -50,7 +52,7 @@ export const MatchingConfirmModal: React.FC<MatchingConfirmModalProps> = ({
                 {isRunning ? 'Đang chấm điểm bằng Gemini AI...' : 'Xác nhận chạy AI Matching'}
               </h3>
               <p className="text-xs text-slate-500">
-                Đối chiếu ngữ nghĩa CV với tiêu chuẩn Job Description
+                Đối chiếu kỹ năng và kinh nghiệm đã trích xuất với JD
               </p>
             </div>
           </div>
@@ -59,6 +61,7 @@ export const MatchingConfirmModal: React.FC<MatchingConfirmModalProps> = ({
             <button
               type="button"
               onClick={onClose}
+              aria-label="Đóng"
               className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
             >
               <X className="h-4 w-4" />
@@ -74,16 +77,19 @@ export const MatchingConfirmModal: React.FC<MatchingConfirmModalProps> = ({
             </div>
             <div className="space-y-1">
               <p className="text-sm font-bold text-slate-900">
-                Đang gửi {totalCount} hồ sơ tới Google Gemini AI...
+                Đang đánh giá {totalCount} hồ sơ bằng Google Gemini AI...
               </p>
               <p className="mx-auto max-w-sm text-xs leading-relaxed text-slate-500">
-                Hệ thống đang phân tích nội dung CV, đối chiếu kỹ năng đạt được và kỹ năng còn thiếu theo vị trí{' '}
+                Chỉ kỹ năng chuẩn hóa và số năm kinh nghiệm được gửi đi; tên, thông tin liên hệ và văn bản CV được giữ tại máy chủ. Đang đối chiếu với vị trí{' '}
                 <strong className="text-slate-700">{selectedJob.title}</strong>. Vui lòng không đóng cửa sổ này.
               </p>
             </div>
           </div>
         ) : (
           <div className="space-y-4 px-6 py-5 text-sm text-slate-600">
+            <p className="text-xs leading-relaxed text-slate-500">
+              AI chỉ nhận kỹ năng chuẩn hóa, số năm kinh nghiệm và nội dung JD. Thông tin cá nhân và văn bản CV được giữ tại máy chủ. Đánh giá chưa bao gồm đầy đủ dự án và thành tích trong CV.
+            </p>
             {/* Thông tin JD */}
             <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 space-y-2">
               <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
@@ -139,14 +145,6 @@ export const MatchingConfirmModal: React.FC<MatchingConfirmModalProps> = ({
           <button
             type="button"
             disabled={isRunning}
-            onClick={onClose}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-          >
-            Hủy bỏ
-          </button>
-          <button
-            type="button"
-            disabled={isRunning}
             onClick={onConfirm}
             className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-2 text-xs font-semibold text-white shadow-sm hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50"
           >
@@ -165,6 +163,7 @@ export const MatchingConfirmModal: React.FC<MatchingConfirmModalProps> = ({
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 };
 

@@ -111,5 +111,9 @@ export const useCandidateFeatureStore = create<CandidateStore>((set) => ({
       };
     }),
 
+  removeCandidateId: (id) => set((state) => ({
+    selectedCandidateIds: state.selectedCandidateIds.filter((candidateId) => candidateId !== id),
+  })),
+
   clearSelection: () => set({ selectedCandidateIds: [] }),
 }));

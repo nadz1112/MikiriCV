@@ -16,20 +16,37 @@ const resetWorkspace = () => {
   useJobStore.setState({ jobs: [], selectedJob: null, isLoading: false });
   useCandidateStore.setState({ candidates: [], selectedCandidates: [], filter: {}, isLoading: false });
 };
+let sessionRequest: Promise<void> | null = null;
+let sessionVersion = 0;
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   status: 'loading',
-  fetchMe: async () => {
-    try { const user = await authApi.me(); set({ user, status: 'authenticated' }); }
-    catch { set({ user: null, status: 'unauthenticated' }); }
+  fetchMe: () => {
+    if (sessionRequest) return sessionRequest;
+    const version = sessionVersion;
+    sessionRequest = (async () => {
+      try {
+        const user = await authApi.me();
+        if (version !== sessionVersion) return;
+        if (!user) resetWorkspace();
+        set({ user, status: user ? 'authenticated' : 'unauthenticated' });
+      } catch {
+        if (version !== sessionVersion) return;
+        resetWorkspace();
+        set({ user: null, status: 'unauthenticated' });
+      }
+    })().finally(() => { sessionRequest = null; });
+    return sessionRequest;
   },
   login: async (email, password) => {
     const user = await authApi.login(email, password);
+    sessionVersion++;
     set({ user, status: 'authenticated' });
     return user;
   },
   logout: async () => {
+    sessionVersion++;
     try { await authApi.logout(); } finally { resetWorkspace(); set({ user: null, status: 'unauthenticated' }); }
   },
-  setUnauthenticated: () => { resetWorkspace(); set({ user: null, status: 'unauthenticated' }); },
+  setUnauthenticated: () => { sessionVersion++; resetWorkspace(); set({ user: null, status: 'unauthenticated' }); },
 }));
