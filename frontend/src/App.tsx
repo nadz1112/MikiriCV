@@ -9,6 +9,7 @@ import { MatchingPage } from './pages/MatchingPage';
 import { LoginPage } from './pages/LoginPage';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
 import { UsersPage } from './pages/admin/UsersPage';
+import { AdminDashboardPage } from './pages/admin/DashboardPage';
 import { useAuthStore } from './features/auth/authStore';
 
 export function ProtectedRoute({ roles }: { roles?: Array<'ADMIN' | 'ENTERPRISE'> }) {
@@ -16,7 +17,7 @@ export function ProtectedRoute({ roles }: { roles?: Array<'ADMIN' | 'ENTERPRISE'
   if (status === 'loading') return <div className="grid min-h-screen place-items-center text-slate-500">Đang tải phiên đăng nhập…</div>;
   if (!user) return <Navigate to="/login" replace state={{ from: location }} />;
   if (user.mustChangePassword && location.pathname !== '/change-password') return <Navigate to="/change-password" replace />;
-  if (roles && !roles.includes(user.role)) return <main className="mx-auto mt-20 max-w-lg rounded-xl bg-white p-8 text-center shadow"><h1 className="text-2xl font-bold">Bạn không có quyền truy cập</h1><p className="mt-2 text-slate-600">Tài khoản hiện tại không thể mở trang này.</p><a className="mt-5 inline-block rounded-lg bg-blue-700 px-4 py-2 text-white" href={user.role === 'ADMIN' ? '/admin/users' : '/'}>Về trang chủ</a></main>;
+  if (roles && !roles.includes(user.role)) return <main className="mx-auto mt-20 max-w-lg rounded-xl bg-white p-8 text-center shadow"><h1 className="text-2xl font-bold">Bạn không có quyền truy cập</h1><p className="mt-2 text-slate-600">Tài khoản hiện tại không thể mở trang này.</p><a className="mt-5 inline-block rounded-lg bg-blue-700 px-4 py-2 text-white" href={user.role === 'ADMIN' ? '/admin/dashboard' : '/'}>Về trang chủ</a></main>;
   return <Outlet/>;
 }
 
@@ -59,12 +60,13 @@ function AppRoutes() {
             <Route path="/change-password" element={<ChangePasswordPage />} />
           </Route>
           <Route element={<ProtectedRoute roles={['ADMIN']} />}>
+            <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
             <Route path="/admin/users" element={<UsersPage />} />
           </Route>
           <Route element={<ProtectedRoute />}>
             <Route
               path="/"
-              element={user?.role === 'ADMIN' ? <Navigate to="/admin/users" replace /> : <DashboardPage />}
+              element={user?.role === 'ADMIN' ? <Navigate to="/admin/dashboard" replace /> : <DashboardPage />}
             />
           </Route>
           <Route element={<ProtectedRoute roles={['ADMIN', 'ENTERPRISE']} />}>
@@ -76,7 +78,7 @@ function AppRoutes() {
           </Route>
           <Route
             path="*"
-            element={<Navigate to={user?.role === 'ADMIN' ? '/admin/users' : user ? '/' : '/login'} replace />}
+            element={<Navigate to={user?.role === 'ADMIN' ? '/admin/dashboard' : user ? '/' : '/login'} replace />}
           />
         </Routes>
       </main>

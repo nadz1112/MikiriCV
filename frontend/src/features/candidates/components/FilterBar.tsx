@@ -2,16 +2,24 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Search, X, ChevronDown, Check, RotateCcw } from 'lucide-react';
 import { candidateApi } from '../api/candidateApi';
 import { useCandidateFeatureStore } from '../store/candidateStore';
+import { useAuthStore } from '../../auth/authStore';
+import { httpClient } from '../../../shared/api/httpClient';
 
 const POPULAR_SKILLS = ['React', 'Node.js', 'TypeScript', 'PostgreSQL', 'Docker', 'Python', 'Tailwind'];
 
 export const FilterBar: React.FC = () => {
+  const isAdmin = useAuthStore((state) => state.user?.role === 'ADMIN');
+  const [enterprises, setEnterprises] = useState<Array<{ id: string; fullName: string; companyName: string | null }>>([]);
+  const [enterpriseError, setEnterpriseError] = useState('');
+  const [enterpriseLoading, setEnterpriseLoading] = useState(false);
   const {
     filter,
     setSearch,
     toggleSkill,
     setSkillMode,
     setMinExp,
+    setExtractionStatus,
+    setEnterpriseId,
     resetFilter,
   } = useCandidateFeatureStore();
 
@@ -19,6 +27,31 @@ export const FilterBar: React.FC = () => {
   const [skillSearch, setSkillSearch] = useState('');
   const [isSkillDropdownOpen, setIsSkillDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!isAdmin) return;
+    let active = true;
+    const load = async () => {
+      setEnterpriseLoading(true);
+      setEnterpriseError('');
+      try {
+        const items: typeof enterprises = [];
+        let page = 1;
+        let total = 0;
+        do {
+          const { data } = await httpClient.get<{ data: typeof enterprises; total: number }>('/users', { params: { page, limit: 100 } });
+          if (!active) return;
+          items.push(...data.data);
+          total = data.total;
+          page += 1;
+          if (data.data.length === 0) break;
+        } while (items.length < total);
+        setEnterprises(items);
+      } catch { if (active) setEnterpriseError('Không thể tải danh sách doanh nghiệp.'); }
+      finally { if (active) setEnterpriseLoading(false); }
+    };
+    void load();
+    return () => { active = false; };
+  }, [isAdmin]);
 
   // Local state for debouncing keyword search (250ms)
   const [localSearch, setLocalSearch] = useState(filter.search);
@@ -81,14 +114,23 @@ export const FilterBar: React.FC = () => {
   };
 
   const hasActiveFilters =
+    (isAdmin && Boolean(filter.enterpriseId)) ||
     Boolean(filter.search) ||
     filter.skills.length > 0 ||
     filter.minExp > 0 ||
+    Boolean(filter.extractionStatus) ||
     filter.skillMode !== 'any';
 
   return (
     <div className="sticky top-0 z-20 rounded-xl border border-slate-200 bg-white/95 px-4 py-3.5 shadow-sm backdrop-blur-md transition-all">
       <div className="flex flex-wrap items-center gap-3">
+        {isAdmin && <label className="text-xs font-medium text-slate-600">Doanh nghiệp
+          <select aria-label="Doanh nghiệp" disabled={enterpriseLoading} value={filter.enterpriseId || ''} onChange={(event) => setEnterpriseId(event.target.value || undefined)} className="ml-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+            <option value="">{enterpriseLoading ? 'Đang tải doanh nghiệp…' : 'Tất cả doanh nghiệp'}</option>
+            {enterprises.map((enterprise) => <option key={enterprise.id} value={enterprise.id}>{enterprise.companyName || enterprise.fullName}</option>)}
+          </select>
+          {enterpriseError && <span role="alert" className="ml-2 text-red-700">{enterpriseError}</span>}
+        </label>}
         {/* 1. Ô tìm từ khóa (Debounce 250ms) */}
         <div className="relative min-w-[220px] flex-1 sm:max-w-xs">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -260,6 +302,28 @@ export const FilterBar: React.FC = () => {
               <option value={10}>≥ 10 năm</option>
             </select>
           </div>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <label htmlFor="extractionStatus" className="whitespace-nowrap text-xs font-medium text-slate-600">
+            Trích xuất:
+          </label>
+          <select
+            id="extractionStatus"
+            value={filter.extractionStatus || ''}
+            onChange={(event) => {
+              const value = event.target.value;
+              if (value === '' || value === 'SUCCESS' || value === 'WARNING' || value === 'FAILED') {
+                setExtractionStatus(value || undefined);
+              }
+            }}
+            className="rounded-lg border border-slate-300 bg-white py-1.5 pl-2.5 pr-7 text-xs font-medium text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+          >
+            <option value="">Tất cả</option>
+            <option value="SUCCESS">Thành công</option>
+            <option value="WARNING">Cảnh báo</option>
+            <option value="FAILED">Lỗi</option>
+          </select>
         </div>
 
         {/* 5. Nút xóa bộ lọc */}

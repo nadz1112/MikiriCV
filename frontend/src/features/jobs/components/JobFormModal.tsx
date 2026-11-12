@@ -390,4 +390,3 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
     </ModalPortal>
   );
 };
-

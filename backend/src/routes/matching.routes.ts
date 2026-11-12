@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { matchingController } from '../controllers/matching.controller.js';
 import { validateRequest } from '../middlewares/validate.middleware.js';
+import { requireRole } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 
@@ -10,7 +11,7 @@ const runMatchingSchema = z.object({
   candidateIds: z.array(z.string()).min(1, 'Cần chọn ít nhất 1 ứng viên để chấm điểm'),
 });
 
-router.post('/run', validateRequest({ body: runMatchingSchema }), (req, res, next) =>
+router.post('/run', requireRole('ENTERPRISE'), validateRequest({ body: runMatchingSchema }), (req, res, next) =>
   matchingController.runMatching(req, res, next)
 );
 

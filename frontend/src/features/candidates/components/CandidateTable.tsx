@@ -4,6 +4,7 @@ import { CandidateItem, candidateApi } from '../api/candidateApi';
 import { useCandidateFeatureStore } from '../store/candidateStore';
 import { DeleteConfirmModal } from '../../../components/dashboard/DeleteConfirmModal';
 import toast from 'react-hot-toast';
+import { useAuthStore } from '../../auth/authStore';
 
 interface CandidateTableProps {
   candidates: CandidateItem[];
@@ -24,6 +25,7 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
   onPageChange,
   onCandidateDeleted,
 }) => {
+  const isAdmin = useAuthStore((state) => state.user?.role === 'ADMIN');
   const {
     selectedCandidateIds,
     toggleSelect,
@@ -32,6 +34,7 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
     setSort,
     resetFilter,
   } = useCandidateFeatureStore();
+  const showMatchScore = !isAdmin && Boolean(filter.jobId);
 
   const [candidateToDelete, setCandidateToDelete] = useState<CandidateItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -139,7 +142,7 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
           <span className="text-sm font-semibold text-slate-800">
             Tìm thấy <span className="font-bold text-blue-600">{total}</span> ứng viên phù hợp
           </span>
-          {selectedCandidateIds.length > 0 && (
+          {!isAdmin && selectedCandidateIds.length > 0 && (
             <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">
               Đã chọn {selectedCandidateIds.length}
             </span>
@@ -151,7 +154,7 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
           <span className="text-xs text-slate-500">Sắp xếp:</span>
           <select
             value={filter.sort}
-            onChange={(e) => setSort(e.target.value as any)}
+            onChange={(e) => { const value = e.target.value; if (value === 'createdAt' || value === 'yearsOfExperience' || value === 'fullName') setSort(value); }}
             className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-slate-300 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
             <option value="createdAt">Mới nhất</option>
@@ -193,7 +196,7 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
           >
             <thead className="bg-slate-50 text-[11px] uppercase font-semibold text-slate-500 tracking-wider border-b border-slate-200">
               <tr>
-                <th className="w-10 px-4 py-3">
+                {!isAdmin && <th className="w-10 px-4 py-3">
                   <input
                     type="checkbox"
                     ref={headerCheckboxRef}
@@ -203,20 +206,21 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
                     className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
                     title="Chọn tất cả hồ sơ hợp lệ đang hiển thị"
                   />
-                </th>
+                </th>}
                 <th className="px-4 py-3">Họ tên</th>
+                {isAdmin && <th className="px-4 py-3">Người tải lên</th>}
                 <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">SĐT</th>
                 <th className="px-4 py-3 text-center">Kinh nghiệm</th>
                 <th className="px-4 py-3">Kỹ năng</th>
-                <th className="px-4 py-3 text-center">Điểm AI</th>
+                {showMatchScore && <th className="px-4 py-3 text-center">Điểm AI</th>}
                 <th className="px-4 py-3 text-center">Trích xuất</th>
                 <th className="px-4 py-3 text-right">CV gốc</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {candidates.map((candidate) => {
-                const isSelected = selectedCandidateIds.includes(candidate.id);
+                const isSelected = !isAdmin && selectedCandidateIds.includes(candidate.id);
                 return (
                   <tr
                     key={candidate.id}
@@ -224,7 +228,7 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
                       isSelected ? 'bg-blue-50/50 hover:bg-blue-50' : 'hover:bg-slate-50/80'
                     }`}
                   >
-                    <td className="px-4 py-3">
+                    {!isAdmin && <td className="px-4 py-3">
                       <input
                         type="checkbox"
                         checked={isSelected}
@@ -237,7 +241,7 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
                         }
                         className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
                       />
-                    </td>
+                    </td>}
                     <td className="px-4 py-3">
                       <div className="font-semibold text-slate-900">{candidate.fullName}</div>
                       {candidate.education && (
@@ -246,6 +250,7 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
                         </div>
                       )}
                     </td>
+                    {isAdmin && <td className="px-4 py-3"><div className="font-medium text-slate-800">{candidate.uploadedBy?.fullName || 'Không xác định'}</div><div className="text-xs text-slate-500">{candidate.uploadedBy?.companyName || '—'}</div></td>}
                     <td className="px-4 py-3 text-slate-600 text-xs">{candidate.email || '—'}</td>
                     <td className="px-4 py-3 text-slate-600 text-xs font-mono">{candidate.phone || '—'}</td>
                     <td className="px-4 py-3 text-center text-xs font-medium text-slate-800">
@@ -271,7 +276,7 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-center">{renderScoreBadge(candidate.matchScore)}</td>
+                    {showMatchScore && <td className="px-4 py-3 text-center">{renderScoreBadge(candidate.matchScore)}</td>}
                     <td className="px-4 py-3 text-center">
                       {renderStatusBadge(candidate.extractionStatus, candidate.extractionMessage)}
                     </td>
@@ -338,7 +343,7 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
       <DeleteConfirmModal
         isOpen={Boolean(candidateToDelete)}
         onClose={() => setCandidateToDelete(null)}
-        candidate={candidateToDelete as any}
+        candidate={candidateToDelete}
         onConfirm={handleConfirmDelete}
         isDeleting={isDeleting}
       />

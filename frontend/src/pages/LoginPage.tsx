@@ -13,14 +13,14 @@ export function LoginPage() {
   const emailRef = useRef<HTMLInputElement | null>(null); const [showPassword, setShowPassword] = useState(false); const [serverError, setServerError] = useState('');
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormValues>({ resolver: zodResolver(schema) });
   useEffect(() => { emailRef.current?.focus(); }, []);
-  const defaultPath = user?.mustChangePassword ? '/change-password' : user?.role === 'ADMIN' ? '/admin/users' : '/jobs';
+  const defaultPath = user?.mustChangePassword ? '/change-password' : user?.role === 'ADMIN' ? '/admin/dashboard' : '/jobs';
   if (status === 'loading') return <div className="grid min-h-screen place-items-center text-slate-500">Đang kiểm tra phiên đăng nhập…</div>;
   if (user) return <Navigate to={defaultPath} replace />;
   const onSubmit = handleSubmit(async ({ email, password }) => {
     setServerError('');
     try {
       const authenticatedUser = await login(email, password);
-      navigate(authenticatedUser.mustChangePassword ? '/change-password' : (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || (authenticatedUser.role === 'ADMIN' ? '/admin/users' : '/jobs'), { replace: true });
+      navigate(authenticatedUser.mustChangePassword ? '/change-password' : (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || (authenticatedUser.role === 'ADMIN' ? '/admin/dashboard' : '/jobs'), { replace: true });
     } catch (error) {
       const err = error as { response?: { data?: { error?: { message?: string } } }; message?: string };
       setServerError(err.response?.data?.error?.message || 'Không thể kết nối máy chủ. Vui lòng thử lại.');

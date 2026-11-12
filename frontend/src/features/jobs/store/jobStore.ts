@@ -64,4 +64,3 @@ export const useJobFeatureStore = create<JobFeatureUIState>((set) => ({
       deletingJob: null,
     }),
 }));
-

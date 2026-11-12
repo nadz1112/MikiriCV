@@ -1,3 +1,5 @@
+import { env } from '../config/env.js';
+import { vietnamDay } from './admin-dashboard.service.js';
 import { prisma } from '../config/database.js';
 import { geminiModel } from '../config/gemini.js';
 import { RunMatchingDto } from '../types/index.js';
@@ -56,6 +58,9 @@ export class MatchingService {
     // Xử lý từng ứng viên với Gemini (có thể batch tuần tự để tránh rate limit)
     for (const candidate of candidates) {
       let saving = false;
+      let inputTokens: number | null = null;
+      let outputTokens: number | null = null;
+      let succeeded = false;
       try {
         const prompt = `
 === THÔNG TIN JOB DESCRIPTION (JD) ===
@@ -80,6 +85,8 @@ Hãy đánh giá mức độ phù hợp và trả về kết quả JSON theo đ�
 `;
 
         const geminiResponse = await geminiModel.generateContent(prompt, { timeout: 60000 });
+        inputTokens = geminiResponse.response.usageMetadata?.promptTokenCount ?? null;
+        outputTokens = geminiResponse.response.usageMetadata?.candidatesTokenCount ?? null;
         const rawText = geminiResponse.response.text();
         const parsedResult = sanitizeAndParseGeminiResponse(rawText);
 
@@ -93,12 +100,18 @@ Hãy đánh giá mức độ phù hợp và trả về kết quả JSON theo đ�
             },
           },
           update: {
+            inputTokens,
+            outputTokens,
+            updatedAt: new Date(),
             score: parsedResult.score,
             summary: parsedResult.summary,
             matchedSkills: parsedResult.matchedSkills,
             missingSkills: parsedResult.missingSkills,
           },
           create: {
+            inputTokens,
+            outputTokens,
+            updatedAt: new Date(),
             candidateId: candidate.id,
             jobDescriptionId: job.id,
             score: parsedResult.score,
@@ -114,6 +127,7 @@ Hãy đánh giá mức độ phù hợp và trả về kết quả JSON theo đ�
         });
 
         results.push(savedMatch);
+        succeeded = true;
       } catch (err: any) {
         // A CV deleted while the provider was running must never be recreated or saved.
         if (err?.code === 'P2003' || err?.code === 'P2025') {
@@ -127,6 +141,17 @@ Hãy đánh giá mức độ phù hợp và trả về kết quả JSON theo đ�
           model: geminiModel.model,
         });
         throw failure;
+      } finally {
+        try {
+          await prisma.aiUsage.create({ data: {
+            enterpriseId: ownerId ?? job.ownerId,
+            model: env.GEMINI_MODEL, inputTokens, outputTokens, succeeded, day: vietnamDay(),
+          } });
+        } catch {
+          console.error('AI_USAGE_RECORDING_FAILED');
+          // Keep the original provider/database failure visible if recording also fails.
+          if (succeeded) throw new AppError(500, 'AI_USAGE_RECORDING_FAILED', 'Đã lưu kết quả đánh giá nhưng chưa ghi được lịch sử sử dụng AI. Vui lòng tải lại kết quả và kiểm tra backend.');
+        }
       }
     }
 

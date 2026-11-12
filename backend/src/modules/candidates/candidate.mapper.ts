@@ -11,8 +11,8 @@ export interface CandidateListItemRaw {
   extractionMessage: string | null;
   createdAt: Date;
   matchResults?: Array<{ score: number }>;
-  uploadedBy?: { id: string; fullName: string; email: string } | null;
-  owner?: { id: string; fullName: string; email: string } | null;
+  uploadedBy?: { id: string; fullName: string; email: string; companyName: string | null } | null;
+  owner?: { id: string; fullName: string; email: string; companyName: string | null } | null;
 }
 
 export interface CandidateListItemDto {
@@ -28,7 +28,7 @@ export interface CandidateListItemDto {
   extractionMessage: string | null;
   matchScore: number | null;
   createdAt: string;
-  uploadedBy?: { id: string; fullName: string; email: string } | null;
+  uploadedBy?: { id: string; fullName: string; email: string; companyName: string | null } | null;
 }
 
 export function toCandidateListItemDto(

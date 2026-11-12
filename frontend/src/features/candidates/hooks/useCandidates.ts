@@ -50,6 +50,7 @@ export function useCandidates(filter: CandidateQueryParams) {
     };
   }, [
     filter.search,
+    filter.enterpriseId,
     filter.skills?.join(','),
     filter.skillMode,
     filter.minExp,

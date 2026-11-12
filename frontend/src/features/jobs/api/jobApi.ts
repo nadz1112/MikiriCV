@@ -39,4 +39,3 @@ export const jobFeatureApi = {
     return res.data;
   },
 };
-

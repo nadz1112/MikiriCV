@@ -7,8 +7,10 @@ import { FloatingActionBar } from '../features/candidates/components/FloatingAct
 import { useCandidateFeatureStore } from '../features/candidates/store/candidateStore';
 import { useCandidates } from '../features/candidates/hooks/useCandidates';
 import { useJobStore } from '../store/useJobStore';
+import { useAuthStore } from '../features/auth/authStore';
 
 export const CandidatesPage: React.FC = () => {
+  const isHr = useAuthStore((state) => state.user?.role === 'ENTERPRISE');
   const { filter, setPage, setJobId, setSkills, setMinExp } = useCandidateFeatureStore();
   const { candidates, total, page, limit, isLoading, refresh } = useCandidates(filter);
   const { jobs, fetchJobs } = useJobStore();
@@ -71,7 +73,7 @@ export const CandidatesPage: React.FC = () => {
       </div>
 
       {/* Khu vực kéo-thả Upload CV (FR2 - Wireframe 4.2.2) */}
-      <CvDropzone onUploadSuccess={refresh} />
+      {isHr && <CvDropzone onUploadSuccess={refresh} />}
 
       {/* Sticky FilterBar (FR3) */}
       <FilterBar />
@@ -88,7 +90,7 @@ export const CandidatesPage: React.FC = () => {
       />
 
       {/* Thanh hành động nổi khi tích chọn ứng viên (Wireframe 4.2.2) */}
-      <FloatingActionBar />
+      {isHr && <FloatingActionBar />}
     </div>
   );
 };

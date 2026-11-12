@@ -1,4 +1,5 @@
 import { httpClient } from '../../../shared/api/httpClient';
+import type { Candidate } from '../../../types';
 
 export interface CandidateItem {
   id: string;
@@ -12,8 +13,9 @@ export interface CandidateItem {
   extractionStatus: 'SUCCESS' | 'WARNING' | 'FAILED';
   extractionMessage: string | null;
   matchScore: number | null;
+  matchResults?: Candidate['matchResults'];
   createdAt: string;
-  uploadedBy?: { id: string; fullName: string; email: string } | null;
+  uploadedBy?: { id: string; fullName: string; email: string; companyName: string | null } | null;
 }
 
 export interface CandidateListResponse {
@@ -25,6 +27,7 @@ export interface CandidateListResponse {
 }
 
 export interface CandidateQueryParams {
+  enterpriseId?: string;
   search?: string;
   skills?: string[];
   skillMode?: 'any' | 'all';
@@ -74,6 +77,7 @@ export const candidateApi = {
 
   list: async (params: CandidateQueryParams = {}): Promise<CandidateListResponse> => {
     const searchParams = new URLSearchParams();
+    if (params.enterpriseId) searchParams.append('enterpriseId', params.enterpriseId);
 
     if (params.search?.trim()) searchParams.append('search', params.search.trim());
     if (params.skills && params.skills.length > 0) searchParams.append('skills', params.skills.join(','));

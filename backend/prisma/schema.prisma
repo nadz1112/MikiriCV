@@ -37,6 +37,7 @@ model User {
   createdJobs        JobDescription[] @relation("JobCreator")
   candidates         Candidate[]
   uploadedCandidates Candidate[] @relation("CandidateUploader")
+  aiUsage            AiUsage[]
 
   @@map("users")
 }
@@ -113,10 +114,29 @@ model MatchResult {
   matchedSkills    String[]
   missingSkills    String[]
   createdAt        DateTime       @default(now())
+  updatedAt        DateTime?      @updatedAt
+  inputTokens      Int?
+  outputTokens     Int?
 
   candidate        Candidate      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   jobDescription   JobDescription @relation(fields: [jobDescriptionId], references: [id], onDelete: Cascade)
 
   @@unique([candidateId, jobDescriptionId])
   @@map("match_results")
+}
+
+model AiUsage {
+  id           String   @id @default(uuid())
+  enterpriseId String?
+  enterprise   User?    @relation(fields: [enterpriseId], references: [id], onDelete: SetNull)
+  model        String
+  inputTokens  Int?
+  outputTokens Int?
+  succeeded    Boolean
+  createdAt    DateTime @default(now())
+  day          DateTime @db.Date
+
+  @@index([day])
+  @@index([enterpriseId, day])
+  @@map("ai_usage")
 }

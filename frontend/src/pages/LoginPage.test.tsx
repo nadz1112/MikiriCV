@@ -9,9 +9,17 @@ const mocks = vi.hoisted(() => ({ login: vi.fn(), user: null as null | { id: str
 vi.mock('../features/auth/authStore', () => ({ useAuthStore: () => ({ user: mocks.user, status: mocks.status, login: mocks.login }) }));
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); mocks.user = null; mocks.status = 'unauthenticated'; });
-const renderLogin = () => render(<MemoryRouter initialEntries={['/login']}><Routes><Route path="/login" element={<LoginPage/>}/><Route path="/jobs" element={<div>Trang công việc</div>}/><Route path="/admin/users" element={<div>Quản lý tài khoản</div>}/><Route path="/change-password" element={<div>Đổi mật khẩu</div>}/></Routes></MemoryRouter>);
+const renderLogin = () => render(<MemoryRouter initialEntries={['/login']}><Routes><Route path="/login" element={<LoginPage/>}/><Route path="/jobs" element={<div>Trang công việc</div>}/><Route path="/admin/dashboard" element={<div>Dashboard quản trị</div>}/><Route path="/admin/users" element={<div>Quản lý tài khoản</div>}/><Route path="/change-password" element={<div>Đổi mật khẩu</div>}/></Routes></MemoryRouter>);
 
 describe('LoginPage', () => {
+  it('redirects ADMIN to its dashboard after login', async () => {
+    const user = userEvent.setup(); renderLogin();
+    mocks.login.mockResolvedValueOnce({ role: 'ADMIN', mustChangePassword: false });
+    await user.type(screen.getByLabelText('Email'), 'admin@example.test');
+    await user.type(screen.getByLabelText('Mật khẩu'), 'Sample123');
+    await user.click(screen.getByRole('button', { name: 'Đăng nhập' }));
+    expect(await screen.findByText('Dashboard quản trị')).toBeTruthy();
+  });
   it('validates the email field before sending credentials', async () => {
     const user = userEvent.setup(); renderLogin();
     await user.type(screen.getByLabelText('Email'), 'khong-phai-email');

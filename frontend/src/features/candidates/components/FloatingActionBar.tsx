@@ -60,4 +60,3 @@ export const FloatingActionBar: React.FC = () => {
     </div>
   );
 };
-
