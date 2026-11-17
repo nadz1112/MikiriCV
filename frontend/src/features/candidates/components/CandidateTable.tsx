@@ -5,6 +5,8 @@ import { useCandidateFeatureStore } from '../store/candidateStore';
 import { DeleteConfirmModal } from '../../../components/dashboard/DeleteConfirmModal';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../../auth/authStore';
+import type { Candidate } from '../../../types';
+import { CandidateInsightDrawer } from '../../../components/dashboard/CandidateInsightDrawer';
 
 interface CandidateTableProps {
   candidates: CandidateItem[];
@@ -36,14 +38,33 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
   } = useCandidateFeatureStore();
   const showMatchScore = !isAdmin && Boolean(filter.jobId);
 
-  const [candidateToDelete, setCandidateToDelete] = useState<CandidateItem | null>(null);
+  const [candidateToDelete, setCandidateToDelete] = useState<Candidate | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [detailCandidate, setDetailCandidate] = useState<Candidate | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
+  const detailRequest = useRef(0);
+  useEffect(() => () => { detailRequest.current++; }, []);
+  const closeDetail = () => { detailRequest.current++; setDetailCandidate(null); };
+  const openDetail = async (candidate: Candidate) => {
+    const request = ++detailRequest.current;
+    setDetailCandidate(candidate); setDetailLoading(true); setDetailError('');
+    try {
+      const detail = await candidateApi.getById(candidate.id);
+      if (request === detailRequest.current) setDetailCandidate(detail);
+    } catch {
+      if (request === detailRequest.current) setDetailError('Không thể tải chi tiết ứng viên. Vui lòng thử lại.');
+    } finally {
+      if (request === detailRequest.current) setDetailLoading(false);
+    }
+  };
 
   const handleConfirmDelete = async () => {
     if (!candidateToDelete) return;
     setIsDeleting(true);
     try {
       await candidateApi.delete(candidateToDelete.id);
+      if (detailCandidate?.id === candidateToDelete.id) closeDetail();
       toast.success(`Đã xóa hồ sơ ứng viên ${candidateToDelete.fullName}`);
       setCandidateToDelete(null);
       if (onCandidateDeleted) {
@@ -243,7 +264,7 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
                       />
                     </td>}
                     <td className="px-4 py-3">
-                      <div className="font-semibold text-slate-900">{candidate.fullName}</div>
+                      {isAdmin ? <button type="button" onClick={() => void openDetail(candidate)} className="font-semibold text-blue-700 hover:underline" title="Xem chi tiết ứng viên">{candidate.fullName}</button> : <div className="font-semibold text-slate-900">{candidate.fullName}</div>}
                       {candidate.education && (
                         <div className="text-xs text-slate-400 truncate max-w-[200px]" title={candidate.education}>
                           {candidate.education}
@@ -340,6 +361,12 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
       )}
 
       {/* Delete Cascade Confirmation Modal */}
+      {isAdmin && <CandidateInsightDrawer
+        isOpen={Boolean(detailCandidate)} candidate={detailCandidate} matchResult={null}
+        onClose={closeDetail} onDeleteRequest={setCandidateToDelete} showHistory
+        isLoading={detailLoading} error={detailError}
+        onRetry={() => { if (detailCandidate) void openDetail(detailCandidate); }}
+      />}
       <DeleteConfirmModal
         isOpen={Boolean(candidateToDelete)}
         onClose={() => setCandidateToDelete(null)}

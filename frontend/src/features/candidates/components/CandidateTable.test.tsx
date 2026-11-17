@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CandidateTable } from './CandidateTable';
 import type { CandidateItem } from '../api/candidateApi';
@@ -75,4 +75,44 @@ it('admin phải xác nhận xóa và thấy số matching cascade khi dữ li�
   await user.click(screen.getByRole('button', { name: 'Xác nhận xóa vĩnh viễn' }));
   expect(remove).toHaveBeenCalledWith('cv');
   expect(refresh).toHaveBeenCalledOnce();
+});
+
+it('opens admin details with extraction, uploader, CV text and matching history', async () => {
+  auth.user.role = 'ADMIN';
+  const user = userEvent.setup();
+  const detail = { ...candidate, rawText: 'Dòng CV đầu\nDòng CV sau', extractionStatus: 'WARNING' as const, extractionMessage: 'Thiếu số điện thoại', matchResults: [{ jobDescriptionId: 'jd', jobTitle: 'React Developer', score: 85, summary: 'Phù hợp với vị trí', matchedSkills: ['React'], missingSkills: ['Docker'], evaluatedAt: '2026-11-17T00:00:00Z' }] };
+  const load = vi.spyOn(candidateApi, 'getById').mockResolvedValue(detail);
+  show();
+  await user.click(screen.getByRole('button', { name: 'Ứng viên mẫu' }));
+  expect(await screen.findByText('Lịch sử matching theo JD')).toBeTruthy();
+  expect(load).toHaveBeenCalledWith('cv');
+  expect(screen.getByText('Thiếu số điện thoại')).toBeTruthy();
+  expect(screen.getByText('React Developer')).toBeTruthy();
+  expect(screen.getByText('Phù hợp với vị trí')).toBeTruthy();
+  expect(screen.getByText('Docker')).toBeTruthy();
+  await user.click(screen.getByRole('button', { name: /Văn bản trích xuất thô/ }));
+  expect(screen.getByText(/Dòng CV đầu/).textContent).toBe(detail.rawText);
+  expect(screen.getByRole('link', { name: 'Xem tệp CV gốc' }).getAttribute('href')).toBe('/api/candidates/cv/file');
+  await user.click(within(screen.getByRole('dialog', { name: 'Chi tiết ứng viên' })).getByRole('button', { name: 'Xóa ứng viên' }));
+  expect(screen.getByText('Xác nhận xóa ứng viên')).toBeTruthy();
+});
+
+it('shows a detail error and retries into the empty-history state', async () => {
+  auth.user.role = 'ADMIN';
+  const user = userEvent.setup();
+  vi.spyOn(candidateApi, 'getById').mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ ...candidate, rawText: '', matchResults: [] });
+  show();
+  await user.click(screen.getByRole('button', { name: 'Ứng viên mẫu' }));
+  expect((await screen.findByRole('alert')).textContent).toContain('Không thể tải chi tiết ứng viên');
+  await user.click(screen.getByRole('button', { name: 'Thử lại' }));
+  expect(await screen.findByText('Chưa có kết quả matching')).toBeTruthy();
+});
+
+it('shows a loading state until the detail response arrives', async () => {
+  auth.user.role = 'ADMIN';
+  const user = userEvent.setup();
+  vi.spyOn(candidateApi, 'getById').mockReturnValue(new Promise(() => {}));
+  show();
+  await user.click(screen.getByRole('button', { name: 'Ứng viên mẫu' }));
+  expect(screen.getByRole('status').textContent).toContain('Đang tải chi tiết ứng viên');
 });

@@ -53,6 +53,10 @@ export interface CandidateUploadResponse {
 }
 
 export const candidateApi = {
+  getById: async (id: string): Promise<Candidate> => {
+    const res = await httpClient.get<{ data: Candidate }>(`/candidates/${id}`);
+    return res.data.data;
+  },
   upload: async (
     files: File[],
     idempotencyKey: string,
