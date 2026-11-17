@@ -175,18 +175,19 @@ export class CandidateService {
     const candidate = await repo.findOwned(id, ownerId);
     if (!candidate) throw appError(404, 'CANDIDATE_NOT_FOUND', 'Không tìm thấy ứng viên');
 
-    // Xóa file vật lý nếu tồn tại (không để lỗi xóa file chặn xóa record)
+    // Database deletion (including MatchResult cascades) must succeed first.
+    await repo.delete(id, ownerId);
     try {
       const uploadRoot = path.resolve(process.cwd(), env.UPLOAD_DIR);
       const filePath = candidate.fileUrl.startsWith('/uploads/')
         ? path.resolve(uploadRoot, path.basename(candidate.fileUrl))
         : path.resolve(candidate.fileUrl);
-      await fs.unlink(filePath).catch(() => undefined);
-    } catch (err) {
-      console.warn('Không thể xóa tệp vật lý của ứng viên:', err);
+      if (!filePath.startsWith(`${uploadRoot}${path.sep}`)) throw new Error('INVALID_UPLOAD_PATH');
+      await fs.unlink(filePath);
+    } catch {
+      console.warn('CANDIDATE_FILE_DELETE_FAILED');
     }
 
-    await repo.delete(id, ownerId);
     return { success: true, message: 'Đã xóa ứng viên thành công' };
   }
 
