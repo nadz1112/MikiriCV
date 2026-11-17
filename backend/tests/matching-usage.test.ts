@@ -22,7 +22,7 @@ describe('matching usage history', () => {
     vi.clearAllMocks();
     mocks.prisma.jobDescription.findUnique.mockResolvedValue({ id: 'jd', ownerId: 'hr', title: 'JD', description: '', minExperience: 0, requiredSkills: [] });
     mocks.prisma.candidate.findMany.mockResolvedValue([{ id: 'cv', fullName: 'Ứng viên mẫu', rawText: 'Nội dung mẫu', skills: ['React'], yearsOfExperience: 3, extractionStatus: 'SUCCESS' }]);
-    mocks.prisma.matchResult.upsert.mockResolvedValue({ id: 'result', score: 75 });
+    mocks.prisma.matchResult.upsert.mockResolvedValue({ id: 'result', candidateId: 'cv', jobDescriptionId: 'jd', createdAt: new Date(), score: 75, summary: 'OK', matchedSkills: [], missingSkills: [] });
     mocks.prisma.aiUsage.create.mockResolvedValue({});
     mocks.generateContent.mockResolvedValue({ response: { usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 20 }, text: () => JSON.stringify({ score: 75, summary: 'Phù hợp', matchedSkills: [], missingSkills: [] }) } });
   });

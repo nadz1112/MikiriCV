@@ -24,7 +24,7 @@ beforeEach(() => {
     skills: ['reactjs', 'secret@example.com', 'Private Person'], yearsOfExperience: 3, extractionStatus: 'SUCCESS',
   }]);
   mocks.generateContent.mockResolvedValue({ response: { text: () => JSON.stringify(valid) } });
-  mocks.prisma.matchResult.upsert.mockResolvedValue({ id: 'match', ...valid });
+  mocks.prisma.matchResult.upsert.mockResolvedValue({ id: 'match', candidateId: 'cv', jobDescriptionId: 'jd', createdAt: new Date(), ...valid });
   mocks.prisma.aiUsage.create.mockResolvedValue({});
 });
 

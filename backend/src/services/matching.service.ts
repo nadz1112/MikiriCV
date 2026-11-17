@@ -7,6 +7,7 @@ import { sanitizeAndParseGeminiResponse } from '../utils/geminiParser.js';
 import { AppError } from '../common/errors/app-error.js';
 import { toMatchingProfile } from '../modules/candidates/matching-profile.js';
 import { toAiError } from '../utils/ai-error.js';
+import { toMatchResultDto } from '../modules/candidates/candidate.mapper.js';
 
 const safeCandidateSelect = {
   id: true,
@@ -126,7 +127,7 @@ Hãy đánh giá mức độ phù hợp và trả về kết quả JSON theo đ�
           },
         });
 
-        results.push(savedMatch);
+        results.push(toMatchResultDto(savedMatch));
         succeeded = true;
       } catch (err: any) {
         // A CV deleted while the provider was running must never be recreated or saved.
@@ -186,7 +187,7 @@ Hãy đánh giá mức độ phù hợp và trả về kết quả JSON theo đ�
       throw new AppError(404, 'JOB_NOT_FOUND', 'Không tìm thấy Job Description');
     }
 
-    return job;
+    return { ...job, matchResults: job.matchResults.map(toMatchResultDto) };
   }
 }
 

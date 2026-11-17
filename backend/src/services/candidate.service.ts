@@ -7,7 +7,7 @@ import { env } from '../config/env.js';
 import { normalizeForSearch } from '../common/utils/normalize-for-search.js';
 import { AppError } from '../common/errors/app-error.js';
 import { CandidateRepository, CandidateFilter, toWhere, candidateListSelect } from '../modules/candidates/candidate.repository.js';
-import { toCandidateListItemDto, toCandidateUploadDto } from '../modules/candidates/candidate.mapper.js';
+import { toCandidateListItemDto, toCandidateUploadDto, toCandidateDetailDto } from '../modules/candidates/candidate.mapper.js';
 import { ExtractorFactory } from '../modules/candidates/text-extractor.js';
 import { FieldParser } from '../modules/candidates/field-parser.js';
 import { skillNormalizer } from '../modules/skills/skill-dictionary.js';
@@ -167,7 +167,7 @@ export class CandidateService {
     const ownerId = typeof user === 'string' ? user : (user && user.role !== 'ADMIN' ? user.id : undefined);
     const candidate = await repo.findDetail(id, ownerId);
     if (!candidate) throw appError(404, 'CANDIDATE_NOT_FOUND', 'Không tìm thấy ứng viên');
-    return candidate;
+    return toCandidateDetailDto(candidate);
   }
 
   async deleteCandidate(id: string, user?: AuthUser | string) {

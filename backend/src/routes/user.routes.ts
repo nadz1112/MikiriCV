@@ -6,10 +6,10 @@ import { z } from 'zod';
 import { prisma } from '../config/database.js';
 import { env } from '../config/env.js';
 import { requireRole } from '../middlewares/auth.middleware.js';
+import { toAdminUserDto as safeUser } from '../common/mappers/user.mapper.js';
 
 const router = Router();
 router.use(requireRole('ADMIN'));
-const safeUser = (user: { id: string; email: string; fullName: string; companyName: string | null; role: 'ADMIN' | 'ENTERPRISE'; isActive: boolean; mustChangePassword: boolean; lastLoginAt: Date | null; createdAt: Date }) => ({ id: user.id, email: user.email, fullName: user.fullName, companyName: user.companyName, role: user.role, isActive: user.isActive, mustChangePassword: user.mustChangePassword, lastLoginAt: user.lastLoginAt, createdAt: user.createdAt });
 const failure = (error: string, status: number, message: string) => Object.assign(new Error(message), { status, code: error });
 
 router.get('/', async (req, res, next) => {

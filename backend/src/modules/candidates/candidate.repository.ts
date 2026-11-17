@@ -131,10 +131,7 @@ export class CandidateRepository {
   }
 
   findOwned(id: string, ownerId?: string) {
-    if (typeof (prisma.candidate as any)?.findUnique === 'function') {
-      return (prisma.candidate as any).findUnique({ where: { id, ...(ownerId ? { ownerId } : {}) } });
-    }
-    return prisma.candidate.findFirst({ where: { id, ...(ownerId ? { ownerId } : {}) } });
+    return prisma.candidate.findUnique({ where: { id, ...(ownerId ? { ownerId } : {}) } });
   }
 
   findDetail(id: string, ownerId?: string) {
@@ -142,7 +139,9 @@ export class CandidateRepository {
       id,
       ...(ownerId ? { ownerId } : {}),
     };
-    const include = {
+    const select = {
+      ...candidateListSelect,
+      rawText: true,
       matchResults: {
         include: {
           jobDescription: {
@@ -156,15 +155,8 @@ export class CandidateRepository {
         },
         orderBy: { score: 'desc' as const },
       },
-    };
-
-    if (typeof (prisma.candidate as any)?.findUnique === 'function') {
-      return (prisma.candidate as any).findUnique({ where, include });
-    }
-    if (typeof (prisma.candidate as any)?.findFirst === 'function') {
-      return prisma.candidate.findFirst({ where, include });
-    }
-    return null;
+    } satisfies Prisma.CandidateSelect;
+    return prisma.candidate.findUnique({ where, select });
   }
 
   delete(id: string, ownerId?: string) {
