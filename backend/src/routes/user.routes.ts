@@ -11,6 +11,10 @@ import { toAdminUserDto as safeUser } from '../common/mappers/user.mapper.js';
 const router = Router();
 router.use(requireRole('ADMIN'));
 const failure = (error: string, status: number, message: string) => Object.assign(new Error(message), { status, code: error });
+const temporaryPasswordSchema = z.string()
+  .min(8, 'Mật khẩu tạm cần ít nhất 8 ký tự')
+  .regex(/[A-Za-z]/, 'Mật khẩu tạm phải có ít nhất một chữ cái (A–Z)')
+  .regex(/\d/, 'Mật khẩu tạm phải có ít nhất một chữ số');
 
 router.get('/', async (req, res, next) => {
   try {
@@ -23,7 +27,7 @@ router.get('/', async (req, res, next) => {
 });
 router.post('/', async (req, res, next) => {
   try {
-    const body = z.object({ email: z.string().email(), fullName: z.string().min(1), companyName: z.string().min(1), password: z.string().min(8).regex(/[A-Za-z]/).regex(/\d/) }).parse(req.body);
+    const body = z.object({ email: z.string().email(), fullName: z.string().min(1), companyName: z.string().min(1), password: temporaryPasswordSchema }).parse(req.body);
     const email = body.email.trim().toLowerCase();
     if (await prisma.user.findUnique({ where: { email } })) throw failure('EMAIL_ALREADY_EXISTS', 409, 'Email đã tồn tại');
     const { password, ...profile } = body;
@@ -60,7 +64,7 @@ router.patch('/:id/status', async (req, res, next) => {
 });
 router.post('/:id/reset-password', async (req, res, next) => {
   try {
-    const { password } = z.object({ password: z.string().min(8).regex(/[A-Za-z]/).regex(/\d/) }).parse(req.body);
+    const { password } = z.object({ password: temporaryPasswordSchema }).parse(req.body);
     const target = await prisma.user.findUnique({ where: { id: req.params.id }, select: { role: true } });
     if (!target || target.role !== 'ENTERPRISE') throw failure('USER_NOT_FOUND', 404, 'Không tìm thấy tài khoản');
     const user = await prisma.user.update({ where: { id: req.params.id }, data: { passwordHash: await bcrypt.hash(password, env.BCRYPT_ROUNDS), mustChangePassword: true, tokenVersion: { increment: 1 } } });

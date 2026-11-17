@@ -9,8 +9,8 @@ export interface JobPayload {
 }
 
 export const jobApi = {
-  getAll: async () => {
-    const res = await api.get<ApiResponse<JobDescription[]>>('/jobs');
+  getAll: async (signal?: AbortSignal) => {
+    const res = await api.get<ApiResponse<JobDescription[]>>('/jobs', { signal });
     return res.data.data || [];
   },
 

@@ -8,16 +8,21 @@ import { useCandidateFeatureStore } from '../features/candidates/store/candidate
 import { useCandidates } from '../features/candidates/hooks/useCandidates';
 import { useJobStore } from '../store/useJobStore';
 import { useAuthStore } from '../features/auth/authStore';
+import { useAutoRefresh } from '../shared/hooks/useAutoRefresh';
 
 export const CandidatesPage: React.FC = () => {
   const isHr = useAuthStore((state) => state.user?.role === 'ENTERPRISE');
+  const isAdmin = useAuthStore((state) => state.user?.role === 'ADMIN');
   const { filter, setPage, setJobId, setSkills, setMinExp } = useCandidateFeatureStore();
-  const { candidates, total, page, limit, isLoading, refresh } = useCandidates(filter);
+  const { candidates, total, page, limit, isLoading, refresh } = useCandidates(filter, isAdmin);
   const { jobs, fetchJobs } = useJobStore();
 
   useEffect(() => {
-    void fetchJobs();
+    const controller = new AbortController();
+    void fetchJobs({ signal: controller.signal });
+    return () => controller.abort();
   }, [fetchJobs]);
+  useAutoRefresh((signal) => fetchJobs({ background: true, signal }), isAdmin);
 
   const activeJob = jobs.find((j) => j.id === filter.jobId);
 

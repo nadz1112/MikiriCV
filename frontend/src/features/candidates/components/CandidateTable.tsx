@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { useAuthStore } from '../../auth/authStore';
 import type { Candidate } from '../../../types';
 import { CandidateInsightDrawer } from '../../../components/dashboard/CandidateInsightDrawer';
+import { useAutoRefresh } from '../../../shared/hooks/useAutoRefresh';
 
 interface CandidateTableProps {
   candidates: CandidateItem[];
@@ -46,18 +47,19 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
   const detailRequest = useRef(0);
   useEffect(() => () => { detailRequest.current++; }, []);
   const closeDetail = () => { detailRequest.current++; setDetailCandidate(null); };
-  const openDetail = async (candidate: Candidate) => {
+  const openDetail = async (candidate: Candidate, background = false, signal?: AbortSignal) => {
     const request = ++detailRequest.current;
-    setDetailCandidate(candidate); setDetailLoading(true); setDetailError('');
+    if (!background) { setDetailCandidate(candidate); setDetailLoading(true); setDetailError(''); }
     try {
-      const detail = await candidateApi.getById(candidate.id);
-      if (request === detailRequest.current) setDetailCandidate(detail);
+      const detail = signal ? await candidateApi.getById(candidate.id, signal) : await candidateApi.getById(candidate.id);
+      if (!signal?.aborted && request === detailRequest.current) { setDetailCandidate(detail); setDetailError(''); }
     } catch {
-      if (request === detailRequest.current) setDetailError('Không thể tải chi tiết ứng viên. Vui lòng thử lại.');
+      if (!signal?.aborted && request === detailRequest.current) setDetailError('Không thể tải chi tiết ứng viên. Vui lòng thử lại.');
     } finally {
-      if (request === detailRequest.current) setDetailLoading(false);
+      if (!signal?.aborted && request === detailRequest.current) setDetailLoading(false);
     }
   };
+  useAutoRefresh((signal) => detailCandidate ? openDetail(detailCandidate, true, signal) : undefined, isAdmin && Boolean(detailCandidate) && !detailLoading);
 
   const handleConfirmDelete = async () => {
     if (!candidateToDelete) return;

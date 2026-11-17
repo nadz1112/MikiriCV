@@ -60,6 +60,16 @@ async function request(method: string, path: string, body?: unknown, token = coo
 function expectSafe(body: unknown) { expect(JSON.stringify(body)).not.toMatch(/"(password|passwordHash|tokenVersion)":/); }
 
 describe('enterprise account administration over HTTP with a mocked database', () => {
+  it.each([
+    ['1345679', 'Mật khẩu tạm cần ít nhất 8 ký tự'],
+    ['13456789', 'Mật khẩu tạm phải có ít nhất một chữ cái (A–Z)'],
+    ['abcdefgh', 'Mật khẩu tạm phải có ít nhất một chữ số'],
+  ])('rejects invalid temporary passwords with a Vietnamese field error: %s', async (password, message) => {
+    const response = await request('POST', '/users', { email: 'new@example.test', fullName: 'Người dùng', companyName: 'Công ty', password });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: { code: 'VALIDATION_ERROR', details: expect.arrayContaining([{ field: 'password', message }]) } });
+    expect(mocks.user.create).not.toHaveBeenCalled();
+  });
   it('creates a forced-password-change enterprise without persisting plaintext or accepting an injected role', async () => {
     const response = await request('POST', '/users', { email: 'NEW@example.test', fullName: 'Người dùng', companyName: 'Công ty', password: 'Temporary123', role: 'ADMIN' });
     expect(response.status).toBe(201);

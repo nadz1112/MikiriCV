@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { getAdminDashboard, type AdminDashboard, type DashboardRange, type EnterpriseActivity } from '../../services/adminDashboardApi';
+import { useAutoRefresh } from '../../shared/hooks/useAutoRefresh';
 
 type SortKey = 'companyName' | 'jobCount' | 'candidateCount' | 'matchCount' | 'tokens' | 'lastLoginAt';
 const number = (value: number) => value.toLocaleString('vi-VN');
@@ -14,16 +15,23 @@ export function AdminDashboardPage() {
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
   const [sort, setSort] = useState<{ key: SortKey; ascending: boolean }>({ key: 'companyName', ascending: true });
+  const requestId = useRef(0);
+  const load = useCallback(async (signal: AbortSignal, background = false) => {
+    const request = ++requestId.current;
+    if (!background) { setLoading(true); setError(''); setData(null); }
+    try {
+      const response = await getAdminDashboard(range, signal);
+      if (!signal.aborted && request === requestId.current) { setData(response); setError(''); }
+    } catch {
+      if (!signal.aborted && request === requestId.current) setError('Không thể tải Dashboard quản trị. Vui lòng thử lại.');
+    } finally { if (!signal.aborted && request === requestId.current) setLoading(false); }
+  }, [range]);
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true); setError(''); setData(null);
-    void getAdminDashboard(range, controller.signal).then((response) => {
-      if (!controller.signal.aborted) setData(response);
-    }).catch(() => {
-      if (!controller.signal.aborted) setError('Không thể tải Dashboard quản trị. Vui lòng thử lại.');
-    }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    void load(controller.signal);
     return () => controller.abort();
-  }, [range, retry]);
+  }, [load, retry]);
+  useAutoRefresh((signal) => load(signal, true), !loading);
   const enterprises = useMemo(() => {
     const value = (row: EnterpriseActivity): string | number => {
       if (sort.key === 'tokens') return row.inputTokens + row.outputTokens;

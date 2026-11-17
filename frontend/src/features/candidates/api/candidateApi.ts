@@ -53,8 +53,8 @@ export interface CandidateUploadResponse {
 }
 
 export const candidateApi = {
-  getById: async (id: string): Promise<Candidate> => {
-    const res = await httpClient.get<{ data: Candidate }>(`/candidates/${id}`);
+  getById: async (id: string, signal?: AbortSignal): Promise<Candidate> => {
+    const res = await httpClient.get<{ data: Candidate }>(`/candidates/${id}`, { signal });
     return res.data.data;
   },
   upload: async (
@@ -79,7 +79,7 @@ export const candidateApi = {
     return res.data;
   },
 
-  list: async (params: CandidateQueryParams = {}): Promise<CandidateListResponse> => {
+  list: async (params: CandidateQueryParams = {}, signal?: AbortSignal): Promise<CandidateListResponse> => {
     const searchParams = new URLSearchParams();
     if (params.enterpriseId) searchParams.append('enterpriseId', params.enterpriseId);
 
@@ -93,7 +93,7 @@ export const candidateApi = {
     if (params.limit) searchParams.append('limit', params.limit.toString());
     if (params.sort) searchParams.append('sort', params.sort);
 
-    const res = await httpClient.get<CandidateListResponse>(`/candidates?${searchParams.toString()}`);
+    const res = await httpClient.get<CandidateListResponse>(`/candidates?${searchParams.toString()}`, { signal });
     return res.data;
   },
 

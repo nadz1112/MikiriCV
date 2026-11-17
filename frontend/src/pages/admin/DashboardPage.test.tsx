@@ -21,6 +21,18 @@ describe('Dashboard quản trị', () => {
     expect(screen.getByText('Chưa có kết quả matching.')).toBeTruthy();
     expect(screen.getByText('Chưa cấu hình đơn giá')).toBeTruthy();
   });
+  it('refreshes the admin overview when returning to the tab without reloading the page', async () => {
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    try {
+      render(<AdminDashboardPage />);
+      await screen.findByText('Chưa có tài khoản doanh nghiệp.');
+      mocks.get.mockResolvedValue({ ...fixture, overview: { ...fixture.overview, totalJobs: 5 } });
+      fireEvent(window, new Event('focus'));
+      const card = screen.getByText('Job Description').parentElement!;
+      expect(await within(card).findByText('5')).toBeTruthy();
+      expect(screen.queryByRole('status')).toBeNull();
+    } finally { vi.restoreAllMocks(); }
+  });
   it('shows an error and allows retry', async () => {
     mocks.get.mockRejectedValueOnce(new Error('offline'));
     render(<AdminDashboardPage/>);
