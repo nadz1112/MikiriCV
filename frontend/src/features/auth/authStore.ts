@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import { authApi } from './authApi';
 import { useJobStore } from '../../store/useJobStore';
 import { useCandidateStore } from '../../store/useCandidateStore';
+import { useCandidateFeatureStore } from '../candidates/store/candidateStore';
+import { useJobFeatureStore } from '../jobs/store/jobStore';
+import { useMatchingFeatureStore } from '../matching/store/matchingStore';
 
 export interface AuthUser { id: string; email: string; fullName: string; companyName: string | null; role: 'ADMIN' | 'ENTERPRISE'; isActive: boolean; mustChangePassword: boolean; lastLoginAt: string | null }
 interface AuthState {
@@ -15,6 +18,9 @@ interface AuthState {
 const resetWorkspace = () => {
   useJobStore.setState({ jobs: [], selectedJob: null, isLoading: false });
   useCandidateStore.setState({ candidates: [], selectedCandidates: [], filter: {}, isLoading: false });
+  useCandidateFeatureStore.setState(useCandidateFeatureStore.getInitialState());
+  useJobFeatureStore.setState(useJobFeatureStore.getInitialState());
+  useMatchingFeatureStore.setState(useMatchingFeatureStore.getInitialState());
 };
 let sessionRequest: Promise<void> | null = null;
 let sessionVersion = 0;
@@ -41,6 +47,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   login: async (email, password) => {
     const user = await authApi.login(email, password);
     sessionVersion++;
+    resetWorkspace();
     set({ user, status: 'authenticated' });
     return user;
   },

@@ -2,11 +2,10 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../config/database.js';
 import { env } from '../config/env.js';
+import { toPublicUserDto } from '../common/mappers/user.mapper.js';
 
 const fakeHash = '$2b$12$C6UzMDM.H6dfI/f/IKcEe.5w2okqf0wZ5V5gV7X4R0Jj3W7F6T5yK';
-export const publicUser = (user: { id: string; email: string; fullName: string; companyName: string | null; role: 'ADMIN' | 'ENTERPRISE'; isActive: boolean; mustChangePassword: boolean; lastLoginAt: Date | null }) => ({
-  id: user.id, email: user.email, fullName: user.fullName, companyName: user.companyName, role: user.role, isActive: user.isActive, mustChangePassword: user.mustChangePassword, lastLoginAt: user.lastLoginAt,
-});
+export const publicUser = toPublicUserDto;
 
 export function issueTokens(user: { id: string; role: 'ADMIN' | 'ENTERPRISE'; tokenVersion: number }) {
   const payload = { role: user.role, tokenVersion: user.tokenVersion };

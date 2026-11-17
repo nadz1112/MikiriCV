@@ -10,7 +10,7 @@ export function ChangePasswordPage() {
     event.preventDefault(); setError('');
     if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) { setError('Mật khẩu cần ít nhất 8 ký tự, gồm chữ và số.'); return; }
     if (password !== confirm) { setError('Mật khẩu xác nhận không khớp.'); return; }
-    try { await api.post('/auth/change-password', { currentPassword, newPassword: password }); await useAuthStore.getState().fetchMe(); setDone(true); navigate(user?.role === 'ADMIN' ? '/admin/users' : '/jobs', { replace: true }); }
+    try { await api.post('/auth/change-password', { currentPassword, newPassword: password }); await useAuthStore.getState().fetchMe(); setDone(true); navigate(user?.role === 'ADMIN' ? '/admin/dashboard' : '/jobs', { replace: true }); }
     catch (err) { const e = err as { response?: { data?: { error?: { message?: string } } } }; setError(e.response?.data?.error?.message || 'Không thể đổi mật khẩu.'); }
   };
   return <div className="mx-auto max-w-lg rounded-2xl bg-white p-8 shadow-sm"><h1 className="text-2xl font-bold">Đổi mật khẩu</h1><p className="mt-2 text-sm text-slate-500">Mật khẩu cần ít nhất 8 ký tự, gồm chữ và số.</p>{error && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}{done && <p className="mt-4 text-green-700">Đã đổi mật khẩu.</p>}

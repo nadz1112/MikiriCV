@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
     jobDescription: { findFirst: vi.fn() },
     candidate: { findMany: vi.fn() },
     matchResult: { upsert: vi.fn() },
+    aiUsage: { create: vi.fn() },
   },
   generateContent: vi.fn(),
 }));
@@ -23,7 +24,8 @@ beforeEach(() => {
     skills: ['reactjs', 'secret@example.com', 'Private Person'], yearsOfExperience: 3, extractionStatus: 'SUCCESS',
   }]);
   mocks.generateContent.mockResolvedValue({ response: { text: () => JSON.stringify(valid) } });
-  mocks.prisma.matchResult.upsert.mockResolvedValue({ id: 'match', ...valid });
+  mocks.prisma.matchResult.upsert.mockResolvedValue({ id: 'match', candidateId: 'cv', jobDescriptionId: 'jd', createdAt: new Date(), ...valid });
+  mocks.prisma.aiUsage.create.mockResolvedValue({});
 });
 
 describe('matching privacy and integrity', () => {

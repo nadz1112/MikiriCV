@@ -194,4 +194,3 @@ export const MatchingResultsTable: React.FC<MatchingResultsTableProps> = ({
     </section>
   );
 };
-

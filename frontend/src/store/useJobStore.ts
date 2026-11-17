@@ -6,7 +6,7 @@ interface JobState {
   jobs: JobDescription[];
   selectedJob: JobDescription | null;
   isLoading: boolean;
-  fetchJobs: () => Promise<void>;
+  fetchJobs: (options?: { background?: boolean; signal?: AbortSignal }) => Promise<void>;
   selectJob: (job: JobDescription | null) => void;
   updateJob: (job: JobDescription) => void;
   deleteJob: (id: string) => Promise<void>;
@@ -17,13 +17,14 @@ export const useJobStore = create<JobState>((set) => ({
   selectedJob: null,
   isLoading: false,
 
-  fetchJobs: async () => {
-    set({ isLoading: true });
+  fetchJobs: async (options) => {
+    if (!options?.background) set({ isLoading: true });
     try {
-      const data = await jobApi.getAll();
+      const data = await jobApi.getAll(options?.signal);
+      if (options?.signal?.aborted) return;
       set({ jobs: data, isLoading: false });
     } catch {
-      set({ isLoading: false });
+      if (!options?.signal?.aborted) set({ isLoading: false });
     }
   },
 

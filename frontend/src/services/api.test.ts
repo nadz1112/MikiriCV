@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
+import toast from 'react-hot-toast';
 import { afterEach, expect, it, vi } from 'vitest';
 vi.mock('../features/candidates/store/removeDeletedCandidate', () => ({ removeDeletedCandidate: vi.fn() }));
 vi.mock('react-hot-toast', () => ({ default: { error: vi.fn() } }));
@@ -10,7 +11,7 @@ function unauthorized(config: InternalAxiosRequestConfig) {
 function success(config: InternalAxiosRequestConfig, data = {}) {
   return { config, status: 200, statusText: 'OK', headers: {}, data };
 }
-afterEach(() => { vi.restoreAllMocks(); vi.resetModules(); });
+afterEach(() => { vi.clearAllMocks(); vi.restoreAllMocks(); vi.resetModules(); });
 
 it('stops refreshing and emits one expiry event after the refresh cookie is rejected', async () => {
   const { api } = await import('./api');
@@ -52,4 +53,36 @@ it('does not attempt refresh for invalid login credentials', async () => {
   const refresh = vi.spyOn(axios, 'post');
   await expect(api.post('/auth/login', {}, { adapter: async (config) => { throw unauthorized(config); } })).rejects.toBeTruthy();
   expect(refresh).not.toHaveBeenCalled();
+});
+
+it.each(['axios-cancel', 'error-code', 'abort-signal'])('does not show a toast or expire the session for dashboard cancellation: %s', async (kind) => {
+  const { api } = await import('./api');
+  const events = vi.spyOn(window, 'dispatchEvent');
+  const refresh = vi.spyOn(axios, 'post');
+  const controller = new AbortController();
+  if (kind === 'abort-signal') controller.abort();
+  const request = api.get('/admin/dashboard', {
+    signal: controller.signal,
+    adapter: async (config) => {
+      if (kind === 'axios-cancel') throw new axios.CanceledError('canceled', config);
+      throw new AxiosError('canceled', 'ERR_CANCELED', config);
+    },
+  });
+  await expect(request).rejects.toMatchObject({ code: 'ERR_CANCELED' });
+  expect(toast.error).not.toHaveBeenCalled();
+  expect(refresh).not.toHaveBeenCalled();
+  expect(events.mock.calls.filter(([event]) => event.type === 'auth:expired')).toHaveLength(0);
+});
+
+it('still reports actual dashboard API failures', async () => {
+  const { api } = await import('./api');
+  await expect(api.get('/admin/dashboard', {
+    adapter: async (config) => {
+      throw new AxiosError('Request failed', 'ERR_BAD_RESPONSE', config, undefined, {
+        config, status: 500, statusText: 'Internal Server Error', headers: {},
+        data: { success: false, error: { message: 'Không thể tải dữ liệu Dashboard' } },
+      });
+    },
+  })).rejects.toBeTruthy();
+  expect(toast.error).toHaveBeenCalledExactlyOnceWith('Không thể tải dữ liệu Dashboard');
 });

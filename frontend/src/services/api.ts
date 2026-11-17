@@ -35,6 +35,9 @@ api.interceptors.response.use((response) => {
   if (deletedCandidate) removeDeletedCandidate(decodeURIComponent(deletedCandidate[1]));
   return response;
 }, async (error) => {
+  // Dashboard cleanup aborts requests on navigation, filter changes and StrictMode.
+  // Preserve cancellation for callers without treating it as an API/session failure.
+  if (axios.isCancel(error) || error?.code === 'ERR_CANCELED') return Promise.reject(error);
   const original = error.config as SessionConfig | undefined;
   const url = String(original?.url || '');
   if (error.response?.status === 401 && original && !/\/auth\/(login|refresh)/.test(url)) {

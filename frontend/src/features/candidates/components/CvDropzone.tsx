@@ -426,4 +426,3 @@ export const CvDropzone: React.FC<CvDropzoneProps> = ({ onUploadSuccess }) => {
     </div>
   );
 };
-

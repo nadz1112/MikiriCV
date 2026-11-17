@@ -276,4 +276,3 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({
     </ModalPortal>
   );
 };
-
