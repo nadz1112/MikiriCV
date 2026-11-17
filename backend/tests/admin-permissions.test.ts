@@ -2,10 +2,11 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
-const mocks = vi.hoisted(() => ({ findUnique: vi.fn(), runMatching: vi.fn(), upload: vi.fn(), leaderboard: vi.fn() }));
+const mocks = vi.hoisted(() => ({ findUnique: vi.fn(), runMatching: vi.fn(), upload: vi.fn(), leaderboard: vi.fn(), createJob: vi.fn() }));
 vi.mock('../src/config/database.js', () => ({ prisma: { user: { findUnique: mocks.findUnique } } }));
 vi.mock('../src/services/matching.service.js', () => ({ matchingService: { runMatching: mocks.runMatching, getLeaderboardByJobId: mocks.leaderboard } }));
 vi.mock('../src/services/candidate.service.js', () => ({ candidateService: { upload: mocks.upload } }));
+vi.mock('../src/services/job.service.js', () => ({ jobService: { createJob: mocks.createJob } }));
 
 describe('admin and HR write permissions', () => {
   let server: Server;
@@ -28,12 +29,20 @@ describe('admin and HR write permissions', () => {
     mocks.findUnique.mockResolvedValue(user);
     return { Cookie: `accessToken=${issueTokens(user).access}`, 'X-Requested-With': 'CVMikiri', 'Content-Type': 'application/json' };
   }
-  it.each(['/candidates/upload', '/matching/run'])('rejects ADMIN at %s before body or file processing', async (path) => {
+  it.each(['/candidates/upload', '/matching/run', '/jobs'])('rejects ADMIN at %s before body or file processing', async (path) => {
     const response = await fetch(`${base}${path}`, { method: 'POST', headers: headers('ADMIN'), body: '{}' });
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ success: false, error: { code: 'FORBIDDEN', message: 'Bạn không có quyền thực hiện thao tác này' }, requestId: expect.any(String) });
     expect(mocks.runMatching).not.toHaveBeenCalled();
     expect(mocks.upload).not.toHaveBeenCalled();
+    expect(mocks.createJob).not.toHaveBeenCalled();
+  });
+  it('allows ENTERPRISE to create a validated JD', async () => {
+    mocks.createJob.mockResolvedValue({ id: 'jd' });
+    const body = { title: 'Developer', description: 'Develop applications', requiredSkills: ['React'], minExperience: 1 };
+    const response = await fetch(`${base}/jobs`, { method: 'POST', headers: headers('ENTERPRISE'), body: JSON.stringify(body) });
+    expect(response.status).toBe(201);
+    expect(mocks.createJob).toHaveBeenCalledWith(body, expect.objectContaining({ id: 'user', role: 'ENTERPRISE' }));
   });
   it('allows HR to run matching with its own scope', async () => {
     mocks.runMatching.mockResolvedValue([]);
