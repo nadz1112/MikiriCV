@@ -26,7 +26,8 @@ router.post('/', async (req, res, next) => {
     const body = z.object({ email: z.string().email(), fullName: z.string().min(1), companyName: z.string().min(1), password: z.string().min(8).regex(/[A-Za-z]/).regex(/\d/) }).parse(req.body);
     const email = body.email.trim().toLowerCase();
     if (await prisma.user.findUnique({ where: { email } })) throw failure('EMAIL_ALREADY_EXISTS', 409, 'Email đã tồn tại');
-    const user = await prisma.user.create({ data: { ...body, email, passwordHash: await bcrypt.hash(body.password, env.BCRYPT_ROUNDS), role: 'ENTERPRISE', mustChangePassword: true } });
+    const { password, ...profile } = body;
+    const user = await prisma.user.create({ data: { ...profile, email, passwordHash: await bcrypt.hash(password, env.BCRYPT_ROUNDS), role: 'ENTERPRISE', mustChangePassword: true } });
     res.status(201).json({ success: true, data: safeUser(user) });
   } catch (err) { next(err); }
 });
