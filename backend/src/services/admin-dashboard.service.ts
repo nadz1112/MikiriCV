@@ -13,7 +13,7 @@ export async function getAdminDashboard(range: DashboardRange) {
   const today = vietnamDay();
   const start = range === 'all' ? undefined : new Date(today.getTime() - (range === '7d' ? 6 : 29) * DAY_MS);
   const usageWhere = { ...(start ? { day: { gte: start, lte: today } } : {}) };
-  const [users, totalJobs, totalCandidates, failedCandidates, scores, enterprises, jobsByOwner, cvsByOwner, matchesByOwner, usage, daily, usageByOwner, callsWithoutTokenData] = await Promise.all([
+  const [users, totalJobs, totalCandidates, failedCandidates, scores, enterprises, jobsByOwner, cvsByOwner, matchesByOwner, usage, daily, usageByOwner, callsWithoutTokenData, earliestUsage] = await Promise.all([
     prisma.user.groupBy({ by: ['isActive'], _count: { _all: true } }),
     prisma.jobDescription.count(),
     prisma.candidate.count(),
@@ -27,6 +27,7 @@ export async function getAdminDashboard(range: DashboardRange) {
     prisma.aiUsage.groupBy({ by: ['day'], where: usageWhere, _sum: { inputTokens: true, outputTokens: true }, _count: { _all: true }, orderBy: { day: 'asc' } }),
     prisma.aiUsage.groupBy({ by: ['enterpriseId'], where: usageWhere, _sum: { inputTokens: true, outputTokens: true }, _count: { _all: true } }),
     prisma.aiUsage.count({ where: { ...usageWhere, OR: [{ inputTokens: null }, { outputTokens: null }] } }),
+    prisma.aiUsage.findFirst({ orderBy: { createdAt: 'asc' }, select: { createdAt: true } }),
   ]);
   // Resolve only IDs and ownership for grouped matching counts; never read CV content.
   const candidateOwners = matchesByOwner.length ? await prisma.candidate.findMany({
@@ -54,8 +55,22 @@ export async function getAdminDashboard(range: DashboardRange) {
   const locked = users.find((row) => !row.isActive)?._count._all ?? 0;
   const inputTokens = usage._sum.inputTokens ?? 0;
   const outputTokens = usage._sum.outputTokens ?? 0;
+  const activity = enterprises.map((enterprise) => {
+    const ownerUsage = tokens.get(enterprise.id);
+    const input = ownerUsage?._sum.inputTokens ?? 0;
+    const output = ownerUsage?._sum.outputTokens ?? 0;
+    return {
+      ...enterprise, jobCount: jobs.get(enterprise.id) ?? 0, candidateCount: cvs.get(enterprise.id) ?? 0,
+      matchCount: matches.get(enterprise.id) ?? 0, inputTokens: input, outputTokens: output,
+      calls: ownerUsage?._count._all ?? 0, estimatedCostUsd: estimate(input, output),
+    };
+  });
+  const deletedUsage = tokens.get(null);
+  const deletedInput = deletedUsage?._sum.inputTokens ?? 0;
+  const deletedOutput = deletedUsage?._sum.outputTokens ?? 0;
   return {
     range,
+    aiUsageSince: earliestUsage?.createdAt.toISOString() ?? null,
     overview: { totalUsers: active + locked, activeUsers: active, lockedUsers: locked, totalJobs, totalCandidates, failedCandidates, totalMatches: scores.reduce((sum, row) => sum + row._count._all, 0) },
     distribution,
     ai: {
@@ -68,9 +83,10 @@ export async function getAdminDashboard(range: DashboardRange) {
         return { date, inputTokens: input, outputTokens: output, calls: row?._count._all ?? 0, estimatedCostUsd: estimate(input, output) };
       }),
     },
-    enterprises: enterprises.map((enterprise) => ({
-      ...enterprise, jobCount: jobs.get(enterprise.id) ?? 0, candidateCount: cvs.get(enterprise.id) ?? 0, matchCount: matches.get(enterprise.id) ?? 0,
-      inputTokens: tokens.get(enterprise.id)?._sum.inputTokens ?? 0, outputTokens: tokens.get(enterprise.id)?._sum.outputTokens ?? 0,
-    })),
+    enterprises: [...activity, ...(deletedUsage ? [{
+      id: null, fullName: 'Tài khoản đã xóa', companyName: 'Tài khoản đã xóa', lastLoginAt: null,
+      jobCount: 0, candidateCount: 0, matchCount: 0, inputTokens: deletedInput, outputTokens: deletedOutput,
+      calls: deletedUsage._count._all, estimatedCostUsd: estimate(deletedInput, deletedOutput),
+    }] : [])],
   };
 }

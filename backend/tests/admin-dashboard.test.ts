@@ -7,7 +7,7 @@ const db = vi.hoisted(() => ({
   jobDescription: { count: vi.fn(), groupBy: vi.fn() },
   candidate: { count: vi.fn(), groupBy: vi.fn(), findMany: vi.fn() },
   matchResult: { groupBy: vi.fn() },
-  aiUsage: { aggregate: vi.fn(), groupBy: vi.fn(), count: vi.fn() },
+  aiUsage: { aggregate: vi.fn(), groupBy: vi.fn(), count: vi.fn(), findFirst: vi.fn() },
 }));
 vi.mock('../src/config/database.js', () => ({ prisma: db }));
 
@@ -45,6 +45,7 @@ describe('GET /api/admin/dashboard', () => {
     db.aiUsage.groupBy.mockImplementation((args: { by: string[] }) => Promise.resolve(args.by[0] === 'enterpriseId'
       ? [{ enterpriseId: 'hr', _sum: { inputTokens: 1000, outputTokens: 500 }, _count: { _all: 3 } }] : []));
     db.aiUsage.count.mockResolvedValue(1);
+    db.aiUsage.findFirst.mockResolvedValue({ createdAt: new Date('2026-01-01T00:00:00Z') });
   });
   function headers(role: 'ADMIN' | 'ENTERPRISE' = 'ADMIN') {
     const user = { id: 'user', role, tokenVersion: 0, isActive: true, mustChangePassword: false };
@@ -78,16 +79,32 @@ describe('GET /api/admin/dashboard', () => {
     expect(db.aiUsage.aggregate).toHaveBeenCalledWith(expect.objectContaining({ where: range === 'all' ? {} : { day: { gte: expect.any(Date), lte: expect.any(Date) } } }));
   });
   it('tolerates empty and legacy data without tokens', async () => {
+    db.aiUsage.findFirst.mockResolvedValue(null);
     db.aiUsage.aggregate.mockResolvedValue({ _sum: { inputTokens: null, outputTokens: null }, _count: { _all: 0, inputTokens: 0, outputTokens: 0 } });
     db.aiUsage.count.mockResolvedValue(0);
     db.user.findMany.mockResolvedValue([]);
     const response = await fetch(base, { headers: headers() });
     expect(response.status).toBe(200);
-    expect((await response.json()).data).toMatchObject({ ai: { inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0 }, enterprises: [] });
+    expect((await response.json()).data).toMatchObject({ aiUsageSince: null, ai: { inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0 }, enterprises: [] });
   });
   it('groups calendar days using Vietnam time', async () => {
     const { vietnamDay } = await import('../src/services/admin-dashboard.service.js');
     expect(vietnamDay(new Date('2026-11-10T18:00:00Z')).toISOString()).toBe('2026-11-11T00:00:00.000Z');
+  });
+  it('retains deleted accounts in activity totals and returns the global earliest usage date', async () => {
+    db.aiUsage.groupBy.mockImplementation((args: { by: string[] }) => Promise.resolve(args.by[0] === 'enterpriseId' ? [
+      { enterpriseId: 'hr', _sum: { inputTokens: 600, outputTokens: 300 }, _count: { _all: 2 } },
+      { enterpriseId: null, _sum: { inputTokens: 400, outputTokens: 200 }, _count: { _all: 1 } },
+    ] : []));
+    const response = await fetch(base + '?range=7d', { headers: headers() });
+    const { data } = await response.json();
+    expect(response.status).toBe(200);
+    expect(data.aiUsageSince).toBe('2026-01-01T00:00:00.000Z');
+    expect(db.aiUsage.findFirst).toHaveBeenCalledWith({ orderBy: { createdAt: 'asc' }, select: { createdAt: true } });
+    expect(data.enterprises.find((row: { id: string | null }) => row.id === null)).toMatchObject({ fullName: 'Tài khoản đã xóa', inputTokens: 400, outputTokens: 200, calls: 1 });
+    const totals = data.enterprises.reduce((sum: { input: number; output: number; calls: number; cost: number }, row: { inputTokens: number; outputTokens: number; calls: number; estimatedCostUsd: number }) => ({ input: sum.input + row.inputTokens, output: sum.output + row.outputTokens, calls: sum.calls + row.calls, cost: sum.cost + row.estimatedCostUsd }), { input: 0, output: 0, calls: 0, cost: 0 });
+    expect(totals).toMatchObject({ input: data.ai.inputTokens, output: data.ai.outputTokens, calls: data.ai.calls });
+    expect(totals.cost).toBeCloseTo(data.ai.estimatedCostUsd);
   });
   it('returns an unknown cost when prices are not configured', async () => {
     const { env } = await import('../src/config/env.js');

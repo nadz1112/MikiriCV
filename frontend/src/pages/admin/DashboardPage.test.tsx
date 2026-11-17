@@ -7,6 +7,7 @@ import type { AdminDashboard } from '../../services/adminDashboardApi';
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('../../services/adminDashboardApi', () => ({ getAdminDashboard: mocks.get }));
 const fixture: AdminDashboard = {
+  aiUsageSince: null,
   range: '7d', overview: { totalUsers: 0, activeUsers: 0, lockedUsers: 0, totalJobs: 0, totalCandidates: 0, failedCandidates: 0, totalMatches: 0 },
   distribution: [], ai: { inputTokens: 0, outputTokens: 0, estimatedCostUsd: null, inputRate: null, outputRate: null, calls: 0, callsWithoutTokenData: 0, daily: [] }, enterprises: [],
 };
@@ -34,12 +35,20 @@ describe('Dashboard quản trị', () => {
     await waitFor(() => expect(mocks.get).toHaveBeenLastCalledWith('30d', expect.any(AbortSignal)));
   });
   it('sorts company activity by JD count', async () => {
-    const activity = { fullName: 'Nhân sự', lastLoginAt: null, candidateCount: 0, matchCount: 0, inputTokens: 0, outputTokens: 0 };
+    const activity = { fullName: 'Nhân sự', lastLoginAt: null, candidateCount: 0, matchCount: 0, inputTokens: 0, outputTokens: 0, calls: 0, estimatedCostUsd: null };
     mocks.get.mockResolvedValue({ ...fixture, enterprises: [{ ...activity, id: 'a', companyName: 'Alpha', jobCount: 1 }, { ...activity, id: 'b', companyName: 'Beta', jobCount: 3 }] });
     render(<AdminDashboardPage/>);
     await screen.findByText('Alpha');
     fireEvent.click(screen.getByRole('button', { name: /JD/ }));
     const rows = within(screen.getByRole('table')).getAllByRole('row');
     expect(rows[1].textContent).toContain('Beta');
+  });
+  it('shows the usage start date and deleted-account activity', async () => {
+    mocks.get.mockResolvedValue({ ...fixture, aiUsageSince: '2026-11-17T00:00:00Z', enterprises: [{ id: null, fullName: 'Tài khoản đã xóa', companyName: 'Tài khoản đã xóa', lastLoginAt: null, jobCount: 0, candidateCount: 0, matchCount: 0, inputTokens: 100, outputTokens: 50, calls: 2, estimatedCostUsd: 0.001 }] });
+    render(<AdminDashboardPage />);
+    expect(await screen.findByText(/Chi phí AI tính từ 17\/11\/2026/)).toBeTruthy();
+    expect(screen.getAllByText('Tài khoản đã xóa').length).toBeGreaterThan(0);
+    expect(screen.getByRole('columnheader', { name: 'Lượt gọi AI' })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: 'Chi phí ước tính' })).toBeTruthy();
   });
 });

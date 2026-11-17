@@ -2,7 +2,7 @@ import { httpClient } from '../shared/api/httpClient';
 
 export type DashboardRange = '7d' | '30d' | 'all';
 export interface EnterpriseActivity {
-  id: string;
+  id: string | null;
   fullName: string;
   companyName: string | null;
   lastLoginAt: string | null;
@@ -11,9 +11,12 @@ export interface EnterpriseActivity {
   matchCount: number;
   inputTokens: number;
   outputTokens: number;
+  calls: number;
+  estimatedCostUsd: number | null;
 }
 export interface AdminDashboard {
   range: DashboardRange;
+  aiUsageSince: string | null;
   overview: { totalUsers: number; activeUsers: number; lockedUsers: number; totalJobs: number; totalCandidates: number; failedCandidates: number; totalMatches: number };
   distribution: Array<{ label: string; count: number }>;
   ai: {
