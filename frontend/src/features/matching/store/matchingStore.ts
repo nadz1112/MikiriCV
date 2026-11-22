@@ -47,4 +47,3 @@ export const useMatchingFeatureStore = create<MatchingFeatureState>((set) => ({
 
   clearSelection: () => set({ selectedCandidateIds: [] }),
 }));
-

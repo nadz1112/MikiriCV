@@ -235,4 +235,3 @@ export function useMatching(initialJobId?: string, initialCandidateIds?: string[
     handleConfirmDeleteCandidate,
   };
 }
-

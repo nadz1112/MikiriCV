@@ -27,6 +27,10 @@ interface CandidateInsightDrawerProps {
   matchResult: MatchResult | null;
   jobTitle?: string;
   onDeleteRequest: (candidate: Candidate) => void;
+  showHistory?: boolean;
+  isLoading?: boolean;
+  error?: string;
+  onRetry?: () => void;
 }
 
 export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
@@ -36,6 +40,10 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
   matchResult,
   jobTitle,
   onDeleteRequest,
+  showHistory = false,
+  isLoading = false,
+  error = '',
+  onRetry,
 }) => {
   const [showRawText, setShowRawText] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -88,7 +96,7 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
   // URL file gốc: Sử dụng endpoint an toàn /api/candidates/:id/file
   const fileDownloadUrl = candidate.id
     ? `/api/candidates/${candidate.id}/file`
-    : (candidate.fileUrl?.startsWith('http') ? candidate.fileUrl : `${candidate.fileUrl || '#'}`);
+    : '#';
 
   return (
     <ModalPortal>
@@ -105,7 +113,7 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  AI Insight Drawer • Wireframe 4.2.3
+                  {showHistory ? 'Chi tiết ứng viên' : 'AI Insight'}
                 </span>
                 {jobTitle && (
                   <span className="text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
@@ -129,6 +137,7 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
 
           {/* Drawer Body - Scrollable */}
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            {isLoading ? <p role="status" className="py-8 text-center text-slate-500">Đang tải chi tiết ứng viên…</p> : error ? <div role="alert" className="rounded-xl bg-red-50 p-4 text-red-800">{error}<button type="button" onClick={onRetry} className="ml-3 font-semibold underline">Thử lại</button></div> : <>
             {/* Candidate Quick Info Bar */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 bg-slate-50/80 rounded-xl border border-slate-100 text-xs text-slate-600">
               <div className="space-y-1">
@@ -164,6 +173,13 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
                 </p>
               </div>
             </div>
+
+            {candidate.uploadedBy && <section className="rounded-xl border border-slate-200 p-4 text-sm"><h3 className="font-semibold">Người tải lên</h3><p>{candidate.uploadedBy.fullName}</p><p className="text-slate-500">{candidate.uploadedBy.companyName || 'Chưa có tên công ty'}</p></section>}
+            {candidate.extractionStatus && <section className="rounded-xl border border-slate-200 p-4 text-sm"><h3 className="font-semibold">Trạng thái trích xuất</h3><p>{({ SUCCESS: 'Thành công', WARNING: 'Cảnh báo', FAILED: 'Lỗi' } as const)[candidate.extractionStatus]}</p>{candidate.extractionMessage && <p className="mt-1 text-amber-800">{candidate.extractionMessage}</p>}</section>}
+
+            {showHistory && <section className="space-y-3"><h3 className="font-semibold">Lịch sử matching theo JD</h3>
+              {candidate.matchResults?.length ? <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr>{['JD', 'Điểm', 'Nhận xét', 'Kỹ năng khớp', 'Kỹ năng thiếu', 'Đánh giá lúc'].map((heading) => <th key={heading} className="p-2">{heading}</th>)}</tr></thead><tbody>{candidate.matchResults.map((match) => <tr key={match.jobDescriptionId} className="border-t border-slate-200"><td className="p-2">{match.jobTitle || match.jobDescriptionId}</td><td className="p-2"><span className={`rounded-full px-2 py-1 font-bold ${match.score >= 80 ? 'bg-emerald-50 text-emerald-700' : match.score >= 50 ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'}`}>{match.score}</span></td><td className="min-w-40 p-2">{match.summary || 'Chưa có nhận xét'}</td><td className="p-2">{match.matchedSkills?.join(', ') || '—'}</td><td className="p-2">{match.missingSkills?.join(', ') || '—'}</td><td className="p-2">{match.evaluatedAt ? new Date(match.evaluatedAt).toLocaleString('vi-VN') : '—'}</td></tr>)}</tbody></table></div> : <p className="text-sm text-slate-500">Chưa có kết quả matching</p>}
+            </section>}
 
             {/* Score Showcase Hero */}
             {matchResult ? (
@@ -206,7 +222,7 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
                   </span>
                 </div>
               </div>
-            ) : (
+            ) : !showHistory && (
               <div className="p-4 rounded-xl bg-slate-100 text-slate-500 text-center text-xs">
                 Ứng viên này chưa được chấm điểm AI đối với vị trí hiện tại.
               </div>
@@ -344,6 +360,7 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
                 </div>
               )}
             </div>
+            </>}
           </div>
 
           {/* Actions Footer */}
@@ -361,6 +378,7 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
 
             <button
               onClick={() => onDeleteRequest(candidate)}
+              disabled={isLoading || Boolean(error)}
               className="inline-flex items-center gap-2 px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold border border-rose-200 rounded-xl text-xs sm:text-sm transition"
             >
               <Trash2 className="w-4 h-4" />

@@ -106,4 +106,3 @@ export const JobDeleteModal: React.FC<JobDeleteModalProps> = ({
     </ModalPortal>
   );
 };
-

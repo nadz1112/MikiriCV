@@ -77,14 +77,14 @@ export const JobsPage: React.FC = () => {
           </p>
         </div>
 
-        <button
+        {!isAdmin && <button
           type="button"
           onClick={openCreateModal}
           className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700"
         >
           <Plus className="h-4 w-4" />
           <span>Tạo JD mới</span>
-        </button>
+        </button>}
       </div>
 
       {/* Thanh tìm kiếm nhanh JD */}
@@ -139,16 +139,16 @@ export const JobsPage: React.FC = () => {
           <AlertCircle className="mx-auto mb-3 h-12 w-12 text-slate-300" />
           <h2 className="text-base font-semibold text-slate-800">Chưa có Job Description nào</h2>
           <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">
-            Tạo JD đầu tiên để lưu mô tả công việc, kỹ năng yêu cầu và số năm kinh nghiệm tối thiểu.
+            {isAdmin ? 'Chưa có doanh nghiệp nào tạo Job Description.' : 'Tạo JD đầu tiên để lưu mô tả công việc, kỹ năng yêu cầu và số năm kinh nghiệm tối thiểu.'}
           </p>
-          <button
+          {!isAdmin && <button
             type="button"
             onClick={openCreateModal}
             className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
           >
             <Plus className="h-4 w-4" />
             <span>Tạo JD ngay</span>
-          </button>
+          </button>}
         </div>
       ) : filteredJobs.length === 0 ? (
         <div className="rounded-2xl border border-slate-200 bg-white py-14 text-center">

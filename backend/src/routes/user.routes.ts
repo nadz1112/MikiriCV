@@ -6,11 +6,15 @@ import { z } from 'zod';
 import { prisma } from '../config/database.js';
 import { env } from '../config/env.js';
 import { requireRole } from '../middlewares/auth.middleware.js';
+import { toAdminUserDto as safeUser } from '../common/mappers/user.mapper.js';
 
 const router = Router();
 router.use(requireRole('ADMIN'));
-const safeUser = (user: { id: string; email: string; fullName: string; companyName: string | null; role: 'ADMIN' | 'ENTERPRISE'; isActive: boolean; mustChangePassword: boolean; lastLoginAt: Date | null; createdAt: Date }) => ({ id: user.id, email: user.email, fullName: user.fullName, companyName: user.companyName, role: user.role, isActive: user.isActive, mustChangePassword: user.mustChangePassword, lastLoginAt: user.lastLoginAt, createdAt: user.createdAt });
 const failure = (error: string, status: number, message: string) => Object.assign(new Error(message), { status, code: error });
+const temporaryPasswordSchema = z.string()
+  .min(8, 'Mật khẩu tạm cần ít nhất 8 ký tự')
+  .regex(/[A-Za-z]/, 'Mật khẩu tạm phải có ít nhất một chữ cái (A–Z)')
+  .regex(/\d/, 'Mật khẩu tạm phải có ít nhất một chữ số');
 
 router.get('/', async (req, res, next) => {
   try {
@@ -23,10 +27,11 @@ router.get('/', async (req, res, next) => {
 });
 router.post('/', async (req, res, next) => {
   try {
-    const body = z.object({ email: z.string().email(), fullName: z.string().min(1), companyName: z.string().min(1), password: z.string().min(8).regex(/[A-Za-z]/).regex(/\d/) }).parse(req.body);
+    const body = z.object({ email: z.string().email(), fullName: z.string().min(1), companyName: z.string().min(1), password: temporaryPasswordSchema }).parse(req.body);
     const email = body.email.trim().toLowerCase();
     if (await prisma.user.findUnique({ where: { email } })) throw failure('EMAIL_ALREADY_EXISTS', 409, 'Email đã tồn tại');
-    const user = await prisma.user.create({ data: { ...body, email, passwordHash: await bcrypt.hash(body.password, env.BCRYPT_ROUNDS), role: 'ENTERPRISE', mustChangePassword: true } });
+    const { password, ...profile } = body;
+    const user = await prisma.user.create({ data: { ...profile, email, passwordHash: await bcrypt.hash(password, env.BCRYPT_ROUNDS), role: 'ENTERPRISE', mustChangePassword: true } });
     res.status(201).json({ success: true, data: safeUser(user) });
   } catch (err) { next(err); }
 });
@@ -59,7 +64,7 @@ router.patch('/:id/status', async (req, res, next) => {
 });
 router.post('/:id/reset-password', async (req, res, next) => {
   try {
-    const { password } = z.object({ password: z.string().min(8).regex(/[A-Za-z]/).regex(/\d/) }).parse(req.body);
+    const { password } = z.object({ password: temporaryPasswordSchema }).parse(req.body);
     const target = await prisma.user.findUnique({ where: { id: req.params.id }, select: { role: true } });
     if (!target || target.role !== 'ENTERPRISE') throw failure('USER_NOT_FOUND', 404, 'Không tìm thấy tài khoản');
     const user = await prisma.user.update({ where: { id: req.params.id }, data: { passwordHash: await bcrypt.hash(password, env.BCRYPT_ROUNDS), mustChangePassword: true, tokenVersion: { increment: 1 } } });

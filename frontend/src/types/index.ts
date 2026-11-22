@@ -32,10 +32,15 @@ export interface Candidate {
   createdAt: string;
   extractionStatus?: 'SUCCESS' | 'WARNING' | 'FAILED';
   extractionMessage?: string | null;
-  uploadedBy?: { id: string; fullName: string; email: string } | null;
+  uploadedBy?: { id: string; fullName: string; email: string; companyName?: string | null } | null;
   matchResults?: {
     jobDescriptionId: string;
     score: number;
+    jobTitle?: string;
+    summary?: string;
+    matchedSkills?: string[];
+    missingSkills?: string[];
+    evaluatedAt?: string;
   }[];
 }
 

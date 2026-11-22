@@ -3,10 +3,11 @@ import { candidateController } from '../controllers/candidate.controller.js';
 import { upload } from '../middlewares/upload.middleware.js';
 import { validateRequest } from '../middlewares/validate.middleware.js';
 import { env } from '../config/env.js';
+import { requireRole } from '../middlewares/auth.middleware.js';
 import { candidateFileParamsSchema, candidateFileQuerySchema, listCandidatesQuery, uploadHeadersSchema } from '../modules/candidates/candidate.schema.js';
 
 const router = Router();
-router.post('/upload', validateRequest({}), (req, _res, next) => {
+router.post('/upload', requireRole('ENTERPRISE'), validateRequest({}), (req, _res, next) => {
   const parsed = uploadHeadersSchema.safeParse({ idempotencyKey: req.get('Idempotency-Key') });
   if (!parsed.success) { next(parsed.error); return; }
   next();

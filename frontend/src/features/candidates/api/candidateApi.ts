@@ -1,4 +1,5 @@
 import { httpClient } from '../../../shared/api/httpClient';
+import type { Candidate } from '../../../types';
 
 export interface CandidateItem {
   id: string;
@@ -12,8 +13,9 @@ export interface CandidateItem {
   extractionStatus: 'SUCCESS' | 'WARNING' | 'FAILED';
   extractionMessage: string | null;
   matchScore: number | null;
+  matchResults?: Candidate['matchResults'];
   createdAt: string;
-  uploadedBy?: { id: string; fullName: string; email: string } | null;
+  uploadedBy?: { id: string; fullName: string; email: string; companyName: string | null } | null;
 }
 
 export interface CandidateListResponse {
@@ -25,6 +27,7 @@ export interface CandidateListResponse {
 }
 
 export interface CandidateQueryParams {
+  enterpriseId?: string;
   search?: string;
   skills?: string[];
   skillMode?: 'any' | 'all';
@@ -50,6 +53,10 @@ export interface CandidateUploadResponse {
 }
 
 export const candidateApi = {
+  getById: async (id: string, signal?: AbortSignal): Promise<Candidate> => {
+    const res = await httpClient.get<{ data: Candidate }>(`/candidates/${id}`, { signal });
+    return res.data.data;
+  },
   upload: async (
     files: File[],
     idempotencyKey: string,
@@ -72,8 +79,9 @@ export const candidateApi = {
     return res.data;
   },
 
-  list: async (params: CandidateQueryParams = {}): Promise<CandidateListResponse> => {
+  list: async (params: CandidateQueryParams = {}, signal?: AbortSignal): Promise<CandidateListResponse> => {
     const searchParams = new URLSearchParams();
+    if (params.enterpriseId) searchParams.append('enterpriseId', params.enterpriseId);
 
     if (params.search?.trim()) searchParams.append('search', params.search.trim());
     if (params.skills && params.skills.length > 0) searchParams.append('skills', params.skills.join(','));
@@ -85,7 +93,7 @@ export const candidateApi = {
     if (params.limit) searchParams.append('limit', params.limit.toString());
     if (params.sort) searchParams.append('sort', params.sort);
 
-    const res = await httpClient.get<CandidateListResponse>(`/candidates?${searchParams.toString()}`);
+    const res = await httpClient.get<CandidateListResponse>(`/candidates?${searchParams.toString()}`, { signal });
     return res.data;
   },
 

@@ -7,7 +7,7 @@ import { env } from '../config/env.js';
 import { normalizeForSearch } from '../common/utils/normalize-for-search.js';
 import { AppError } from '../common/errors/app-error.js';
 import { CandidateRepository, CandidateFilter, toWhere, candidateListSelect } from '../modules/candidates/candidate.repository.js';
-import { toCandidateListItemDto, toCandidateUploadDto } from '../modules/candidates/candidate.mapper.js';
+import { toCandidateListItemDto, toCandidateUploadDto, toCandidateDetailDto } from '../modules/candidates/candidate.mapper.js';
 import { ExtractorFactory } from '../modules/candidates/text-extractor.js';
 import { FieldParser } from '../modules/candidates/field-parser.js';
 import { skillNormalizer } from '../modules/skills/skill-dictionary.js';
@@ -120,7 +120,7 @@ export class CandidateService {
   }
 
   async list(query: ListCandidatesQuery, user: AuthUser) {
-    const { page, limit, sort, search, skills, skillMode, minExp, extractionStatus, jobId } = query;
+    const { page, limit, sort, search, skills, skillMode, minExp, extractionStatus, jobId, enterpriseId } = query;
     if (jobId) await jobService.getJobById(jobId, user.role === 'ADMIN' ? user : user.id);
     const filter: CandidateFilter = {
       keyword: search,
@@ -128,7 +128,7 @@ export class CandidateService {
       skillMode,
       minExp,
       extractionStatus: extractionStatus as ExtractionStatus | undefined,
-      ownerId: user.role === 'ADMIN' ? undefined : user.id,
+      ownerId: user.role === 'ADMIN' ? enterpriseId : user.id,
     };
 
     const where = toWhere(filter, skillNormalizer);
@@ -167,7 +167,7 @@ export class CandidateService {
     const ownerId = typeof user === 'string' ? user : (user && user.role !== 'ADMIN' ? user.id : undefined);
     const candidate = await repo.findDetail(id, ownerId);
     if (!candidate) throw appError(404, 'CANDIDATE_NOT_FOUND', 'Không tìm thấy ứng viên');
-    return candidate;
+    return toCandidateDetailDto(candidate);
   }
 
   async deleteCandidate(id: string, user?: AuthUser | string) {
@@ -175,18 +175,19 @@ export class CandidateService {
     const candidate = await repo.findOwned(id, ownerId);
     if (!candidate) throw appError(404, 'CANDIDATE_NOT_FOUND', 'Không tìm thấy ứng viên');
 
-    // Xóa file vật lý nếu tồn tại (không để lỗi xóa file chặn xóa record)
+    // Database deletion (including MatchResult cascades) must succeed first.
+    await repo.delete(id, ownerId);
     try {
       const uploadRoot = path.resolve(process.cwd(), env.UPLOAD_DIR);
       const filePath = candidate.fileUrl.startsWith('/uploads/')
         ? path.resolve(uploadRoot, path.basename(candidate.fileUrl))
         : path.resolve(candidate.fileUrl);
-      await fs.unlink(filePath).catch(() => undefined);
-    } catch (err) {
-      console.warn('Không thể xóa tệp vật lý của ứng viên:', err);
+      if (!filePath.startsWith(`${uploadRoot}${path.sep}`)) throw new Error('INVALID_UPLOAD_PATH');
+      await fs.unlink(filePath);
+    } catch {
+      console.warn('CANDIDATE_FILE_DELETE_FAILED');
     }
 
-    await repo.delete(id, ownerId);
     return { success: true, message: 'Đã xóa ứng viên thành công' };
   }
 
