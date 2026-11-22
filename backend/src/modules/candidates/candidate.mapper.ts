@@ -51,6 +51,16 @@ export function toCandidateDetailDto(candidate: CandidateSummaryRaw & { rawText:
 interface MatchResultRaw {
   id: string; candidateId: string; jobDescriptionId: string; score: number; summary: string;
   matchedSkills: string[]; missingSkills: string[]; createdAt: Date;
+  matchLevel?: string | null;
+  scoreBreakdown?: unknown;
+  strengths?: unknown;
+  gaps?: unknown;
+  requirementsAnalysis?: unknown;
+  interviewQuestions?: unknown;
+  careerPotential?: unknown;
+  confidence?: string | null;
+  limitations?: unknown;
+  evidence?: unknown;
   candidate?: CandidateSummaryRaw;
 }
 
@@ -59,6 +69,16 @@ export function toMatchResultDto(match: MatchResultRaw) {
     id: match.id, candidateId: match.candidateId, jobDescriptionId: match.jobDescriptionId,
     score: match.score, summary: match.summary, matchedSkills: match.matchedSkills, missingSkills: match.missingSkills,
     createdAt: match.createdAt.toISOString(),
+    matchLevel: match.matchLevel ?? undefined,
+    scoreBreakdown: match.scoreBreakdown ?? undefined,
+    strengths: match.strengths ?? undefined,
+    gapsAndConcerns: match.gaps ?? undefined,
+    requirementsAnalysis: match.requirementsAnalysis ?? undefined,
+    interviewQuestions: match.interviewQuestions ?? undefined,
+    careerPotential: match.careerPotential ?? undefined,
+    confidence: match.confidence ?? undefined,
+    limitations: match.limitations ?? undefined,
+    evidence: match.evidence ?? undefined,
     ...(match.candidate ? { candidate: toCandidateSummaryDto(match.candidate) } : {}),
   };
 }

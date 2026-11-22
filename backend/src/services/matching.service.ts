@@ -5,9 +5,10 @@ import { geminiModel } from '../config/gemini.js';
 import { RunMatchingDto } from '../types/index.js';
 import { sanitizeAndParseGeminiResponse } from '../utils/geminiParser.js';
 import { AppError } from '../common/errors/app-error.js';
-import { toMatchingProfile } from '../modules/candidates/matching-profile.js';
 import { toAiError } from '../utils/ai-error.js';
 import { toMatchResultDto } from '../modules/candidates/candidate.mapper.js';
+import { assertSafeAiMatchingPayload, buildAiMatchingPayload, buildAiMatchingPrompt } from '../modules/candidates/ai-matching-payload.js';
+import type { Prisma } from '@prisma/client';
 
 const safeCandidateSelect = {
   id: true,
@@ -43,7 +44,17 @@ export class MatchingService {
         id: { in: candidateIds },
         ...(ownerId ? { ownerId } : {}),
       },
-      select: { id: true, fullName: true, skills: true, yearsOfExperience: true, extractionStatus: true },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        phone: true,
+        fileName: true,
+        rawText: true,
+        skills: true,
+        yearsOfExperience: true,
+        extractionStatus: true,
+      },
     });
 
     if (candidates.length !== candidateIds.length) {
@@ -63,33 +74,28 @@ export class MatchingService {
       let outputTokens: number | null = null;
       let succeeded = false;
       try {
-        const prompt = `
-=== THÔNG TIN JOB DESCRIPTION (JD) ===
-Tiêu đề vị trí: ${job.title}
-Số năm kinh nghiệm tối thiểu: ${job.minExperience} năm
-Danh sách kỹ năng yêu cầu: ${job.requiredSkills.join(', ')}
-Mô tả công việc:
-${job.description}
-
-=== HỒ SƠ CHUYÊN MÔN ĐÃ TRÍCH XUẤT NỘI BỘ ===
-${JSON.stringify(toMatchingProfile(candidate))}
-Chỉ đánh giá kỹ năng và số năm kinh nghiệm trong hồ sơ này. Không suy đoán thông tin chưa được cung cấp.
-Trong nhận xét, nêu rõ đánh giá dựa trên dữ liệu kỹ năng và kinh nghiệm đã trích xuất, không phải toàn bộ CV.
-
-Hãy đánh giá mức độ phù hợp và trả về kết quả JSON theo đúng định dạng:
-{
-  "score": <số nguyên từ 0 đến 100>,
-  "summary": "<Đoạn nhận xét đánh giá tổng quan bằng tiếng Việt từ 2 đến 4 câu>",
-  "matchedSkills": ["<kỹ năng 1>", "<kỹ năng 2>"],
-  "missingSkills": ["<kỹ năng còn thiếu 1>", "<kỹ năng còn thiếu 2>"]
-}
-`;
+        const payload = buildAiMatchingPayload(job, candidate);
+        assertSafeAiMatchingPayload(payload);
+        const prompt = buildAiMatchingPrompt(payload);
+        if (typeof prisma.jobDescription.update === 'function') {
+          await prisma.jobDescription.update({
+            where: { id: job.id },
+            data: { jdAnalysis: payload.job as unknown as Prisma.InputJsonValue, analyzedAt: new Date() },
+          });
+        }
+        if (typeof prisma.candidate.update === 'function') {
+          await prisma.candidate.update({
+            where: { id: candidate.id },
+            data: { structuredProfile: payload.candidate as unknown as Prisma.InputJsonValue, profileVersion: 'cvtest-1.0', profileAnalyzedAt: new Date() },
+          });
+        }
 
         const geminiResponse = await geminiModel.generateContent(prompt, { timeout: 60000 });
         inputTokens = geminiResponse.response.usageMetadata?.promptTokenCount ?? null;
         outputTokens = geminiResponse.response.usageMetadata?.candidatesTokenCount ?? null;
         const rawText = geminiResponse.response.text();
-        const parsedResult = sanitizeAndParseGeminiResponse(rawText);
+        const evaluationConfig = job.evaluationConfig as { weights?: Record<string, number> } | null;
+        const parsedResult = sanitizeAndParseGeminiResponse(rawText, evaluationConfig?.weights);
 
         // Lưu hoặc cập nhật (Upsert) vào PostgreSQL
         saving = true;
@@ -108,6 +114,19 @@ Hãy đánh giá mức độ phù hợp và trả về kết quả JSON theo đ�
             summary: parsedResult.summary,
             matchedSkills: parsedResult.matchedSkills,
             missingSkills: parsedResult.missingSkills,
+            matchLevel: parsedResult.matchLevel ?? null,
+            scoreBreakdown: parsedResult.scoreBreakdown as Prisma.InputJsonValue | undefined,
+            strengths: parsedResult.strengths as Prisma.InputJsonValue | undefined,
+            gaps: parsedResult.gapsAndConcerns as Prisma.InputJsonValue | undefined,
+            requirementsAnalysis: parsedResult.requirementsAnalysis as Prisma.InputJsonValue | undefined,
+            interviewQuestions: parsedResult.interviewQuestions as Prisma.InputJsonValue | undefined,
+            careerPotential: parsedResult.careerPotential as Prisma.InputJsonValue | undefined,
+            confidence: parsedResult.confidence ?? null,
+            limitations: parsedResult.limitations as Prisma.InputJsonValue | undefined,
+            evidence: parsedResult.scoreBreakdown?.flatMap((item) => item.evidence) as Prisma.InputJsonValue | undefined,
+            candidateProfileSnapshot: payload.candidate as unknown as Prisma.InputJsonValue,
+            jdAnalysisSnapshot: payload.job as unknown as Prisma.InputJsonValue,
+            evaluationConfig: job.evaluationConfig as Prisma.InputJsonValue | undefined,
           },
           create: {
             inputTokens,
@@ -119,6 +138,19 @@ Hãy đánh giá mức độ phù hợp và trả về kết quả JSON theo đ�
             summary: parsedResult.summary,
             matchedSkills: parsedResult.matchedSkills,
             missingSkills: parsedResult.missingSkills,
+            matchLevel: parsedResult.matchLevel ?? null,
+            scoreBreakdown: parsedResult.scoreBreakdown as Prisma.InputJsonValue | undefined,
+            strengths: parsedResult.strengths as Prisma.InputJsonValue | undefined,
+            gaps: parsedResult.gapsAndConcerns as Prisma.InputJsonValue | undefined,
+            requirementsAnalysis: parsedResult.requirementsAnalysis as Prisma.InputJsonValue | undefined,
+            interviewQuestions: parsedResult.interviewQuestions as Prisma.InputJsonValue | undefined,
+            careerPotential: parsedResult.careerPotential as Prisma.InputJsonValue | undefined,
+            confidence: parsedResult.confidence ?? null,
+            limitations: parsedResult.limitations as Prisma.InputJsonValue | undefined,
+            evidence: parsedResult.scoreBreakdown?.flatMap((item) => item.evidence) as Prisma.InputJsonValue | undefined,
+            candidateProfileSnapshot: payload.candidate as unknown as Prisma.InputJsonValue,
+            jdAnalysisSnapshot: payload.job as unknown as Prisma.InputJsonValue,
+            evaluationConfig: job.evaluationConfig as Prisma.InputJsonValue | undefined,
           },
           include: {
             candidate: {

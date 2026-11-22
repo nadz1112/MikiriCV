@@ -11,6 +11,8 @@ const createJobSchema = z.object({
   description: z.string().trim().min(10, 'Mô tả công việc phải có ít nhất 10 ký tự'),
   requiredSkills: z.array(z.string().trim().min(1, 'Kỹ năng không được để trống')).min(1, 'Cần ít nhất 1 kỹ năng yêu cầu'),
   minExperience: z.number().int().min(0).max(30).default(0),
+  preferredSkills: z.array(z.string().trim().min(1)).optional(),
+  evaluationConfig: z.record(z.unknown()).optional(),
 });
 
 // PUT replaces the JD and uses the same complete validation rules as creation.

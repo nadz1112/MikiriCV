@@ -41,6 +41,22 @@ describe('matching privacy and integrity', () => {
     expect(mocks.prisma.candidate.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ['cv'] }, ownerId: 'owner' } }));
   });
 
+  it('redacts PII patterns if they are accidentally present in JD text', async () => {
+    mocks.prisma.jobDescription.findFirst.mockResolvedValue({
+      id: 'jd',
+      title: 'Developer',
+      description: 'Liên hệ hr@example.com hoặc 0901234567',
+      requiredSkills: ['React'],
+      minExperience: 2,
+    });
+    await matchingService.runMatching(dto, 'owner');
+    const prompt = mocks.generateContent.mock.calls[0][0];
+    expect(prompt).not.toContain('hr@example.com');
+    expect(prompt).not.toContain('0901234567');
+    expect(prompt).toContain('[email đã ẩn]');
+    expect(prompt).toContain('[số điện thoại đã ẩn]');
+  });
+
   it('rejects deleted or foreign IDs before calling the provider', async () => {
     mocks.prisma.candidate.findMany.mockResolvedValue([]);
     await expect(matchingService.runMatching(dto, 'owner')).rejects.toMatchObject({ code: 'CANDIDATE_NOT_FOUND' });

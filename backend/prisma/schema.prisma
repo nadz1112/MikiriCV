@@ -48,6 +48,11 @@ model JobDescription {
   description    String        @db.Text
   requiredSkills String[]
   minExperience  Int           @default(0)
+  preferredSkills  String[]   @default([])
+  evaluationConfig Json?
+  jdAnalysis       Json?
+  evaluationVersion String    @default("cvtest-1.0")
+  analyzedAt       DateTime?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   matchResults   MatchResult[]
@@ -76,6 +81,9 @@ model Candidate {
   extractionStatus  ExtractionStatus @default(SUCCESS)
   extractionMessage String?
   contentHash       String?
+  structuredProfile Json?
+  profileVersion    String?
+  profileAnalyzedAt DateTime?
   createdAt         DateTime      @default(now())
   matchResults      MatchResult[]
   ownerId           String
@@ -117,6 +125,20 @@ model MatchResult {
   updatedAt        DateTime?      @updatedAt
   inputTokens      Int?
   outputTokens     Int?
+  matchLevel       String?
+  scoreBreakdown   Json?
+  strengths        Json?
+  gaps             Json?
+  requirementsAnalysis Json?
+  interviewQuestions Json?
+  careerPotential  Json?
+  confidence       String?
+  limitations      Json?
+  evidence         Json?
+  evaluationConfig Json?
+  evaluationVersion String       @default("cvtest-1.0")
+  candidateProfileSnapshot Json?
+  jdAnalysisSnapshot Json?
 
   candidate        Candidate      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   jobDescription   JobDescription @relation(fields: [jobDescriptionId], references: [id], onDelete: Cascade)

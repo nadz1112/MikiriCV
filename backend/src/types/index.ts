@@ -10,6 +10,8 @@ export interface CreateJobDto {
   description: string;
   requiredSkills: string[];
   minExperience?: number;
+  preferredSkills?: string[];
+  evaluationConfig?: Record<string, unknown>;
 }
 
 export interface UpdateJobDto {
@@ -17,6 +19,8 @@ export interface UpdateJobDto {
   description: string;
   requiredSkills: string[];
   minExperience: number;
+  preferredSkills?: string[];
+  evaluationConfig?: Record<string, unknown>;
 }
 
 export interface CandidateFilterQuery {
@@ -35,6 +39,54 @@ export interface AiMatchingResult {
   summary: string;
   matchedSkills: string[];
   missingSkills: string[];
+  matchLevel?: 'strong_match' | 'good_match' | 'partial_match' | 'low_match';
+  scoreBreakdown?: CvTestCategoryAssessment[];
+  strengths?: string[];
+  gapsAndConcerns?: string[];
+  requirementsAnalysis?: CvTestRequirementAnalysis[];
+  interviewQuestions?: string[];
+  careerPotential?: CvTestCareerPotential;
+  confidence?: 'high' | 'medium' | 'low';
+  limitations?: string[];
+  evidence?: CvTestEvidence[];
+}
+
+export type CvTestCategory =
+  | 'skill_matching'
+  | 'experience_relevance'
+  | 'project_achievement'
+  | 'soft_skills'
+  | 'education_certification'
+  | 'cv_quality';
+
+export interface CvTestEvidence {
+  source: 'CV' | 'JD';
+  section: string;
+  text: string;
+}
+
+export interface CvTestCategoryAssessment {
+  category: CvTestCategory;
+  score: number;
+  maxScore: number;
+  reason: string;
+  evidence: CvTestEvidence[];
+  gaps: string[];
+  status: 'not_found' | 'insufficient_evidence' | 'partially_matched' | 'matched' | 'strongly_matched';
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export interface CvTestRequirementAnalysis {
+  requirement: string;
+  priority: 'required' | 'preferred';
+  status: 'not_found' | 'insufficient_evidence' | 'partially_matched' | 'matched' | 'strongly_matched';
+  evidence: CvTestEvidence[];
+  gap?: string;
+}
+
+export interface CvTestCareerPotential {
+  assessment: 'positive_evidence' | 'insufficient_evidence' | 'mixed_evidence';
+  reason: string;
 }
 
 export interface ExtractedCandidateInfo {

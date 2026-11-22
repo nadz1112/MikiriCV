@@ -24,6 +24,7 @@ const jobFormSchema = z.object({
     .int('Số năm kinh nghiệm phải là số nguyên')
     .min(0, 'Số năm kinh nghiệm không được âm')
     .max(30, 'Số năm kinh nghiệm tối đa là 30 năm'),
+  preferredSkills: z.array(z.string().trim().min(1)).optional(),
 });
 
 const SUGGESTED_SKILLS = [
@@ -56,6 +57,8 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
   const [description, setDescription] = useState('');
   const [skills, setSkills] = useState<string[]>([]);
   const [skillInput, setSkillInput] = useState('');
+  const [preferredSkills, setPreferredSkills] = useState<string[]>([]);
+  const [preferredSkillInput, setPreferredSkillInput] = useState('');
   const [minExperience, setMinExperience] = useState('0');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -67,13 +70,17 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
       setTitle(editingJob.title);
       setDescription(editingJob.description);
       setSkills(editingJob.requiredSkills);
+      setPreferredSkills(editingJob.preferredSkills ?? []);
       setSkillInput('');
+      setPreferredSkillInput('');
       setMinExperience(String(editingJob.minExperience));
     } else {
       setTitle('');
       setDescription('');
       setSkills([]);
+      setPreferredSkills([]);
       setSkillInput('');
+      setPreferredSkillInput('');
       setMinExperience('0');
     }
   }, [isOpen, editingJob]);
@@ -130,6 +137,7 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
       description,
       requiredSkills: mergedSkills,
       minExperience: Number(minExperience),
+      preferredSkills,
     });
 
     if (!parsed.success) {
@@ -344,7 +352,52 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
             </div>
           </div>
 
-          {/* 4. Số năm kinh nghiệm tối thiểu */}
+          {/* 4. Kỹ năng ưu tiên */}
+          <div>
+            <label htmlFor="job-preferred-skills" className="mb-1 block text-xs font-semibold text-slate-700">
+              Kỹ năng ưu tiên / Nice-to-have
+            </label>
+            <input
+              id="job-preferred-skills"
+              type="text"
+              value={preferredSkillInput}
+              onChange={(e) => setPreferredSkillInput(e.target.value)}
+              onBlur={() => {
+                const items = preferredSkillInput.split(',').map((item) => item.trim()).filter(Boolean);
+                if (items.length > 0) {
+                  setPreferredSkills((current) => [...new Set([...current, ...items])]);
+                  setPreferredSkillInput('');
+                }
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' && event.key !== ',') return;
+                event.preventDefault();
+                const items = preferredSkillInput.split(',').map((item) => item.trim()).filter(Boolean);
+                if (items.length > 0) {
+                  setPreferredSkills((current) => [...new Set([...current, ...items])]);
+                  setPreferredSkillInput('');
+                }
+              }}
+              placeholder="Ví dụ: Kubernetes, AWS"
+              className="w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+            />
+            {preferredSkills.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {preferredSkills.map((skill) => (
+                  <button
+                    type="button"
+                    key={skill}
+                    onClick={() => setPreferredSkills((current) => current.filter((item) => item !== skill))}
+                    className="rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700"
+                  >
+                    {skill} ×
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 5. Số năm kinh nghiệm tối thiểu */}
           <div>
             <label htmlFor="job-experience" className="mb-1 block text-xs font-semibold text-slate-700">
               Số năm kinh nghiệm tối thiểu

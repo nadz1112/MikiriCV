@@ -6,6 +6,8 @@ export interface JobPayload {
   description: string;
   requiredSkills: string[];
   minExperience: number;
+  preferredSkills?: string[];
+  evaluationConfig?: Record<string, unknown>;
 }
 
 export const jobApi = {

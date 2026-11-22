@@ -4,6 +4,8 @@ export interface JobDescription {
   description: string;
   requiredSkills: string[];
   minExperience: number;
+  preferredSkills?: string[];
+  evaluationConfig?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
   createdById?: string | null;
@@ -55,6 +57,25 @@ export interface MatchResult {
   matchedSkills: string[];
   missingSkills: string[];
   createdAt: string;
+  matchLevel?: 'strong_match' | 'good_match' | 'partial_match' | 'low_match';
+  scoreBreakdown?: Array<{
+    category: 'skill_matching' | 'experience_relevance' | 'project_achievement' | 'soft_skills' | 'education_certification' | 'cv_quality';
+    score: number;
+    maxScore: number;
+    reason: string;
+    evidence: Array<{ source: 'CV' | 'JD'; section: string; text: string }>;
+    gaps: string[];
+    status: 'not_found' | 'insufficient_evidence' | 'partially_matched' | 'matched' | 'strongly_matched';
+    confidence: 'high' | 'medium' | 'low';
+  }>;
+  strengths?: string[];
+  gapsAndConcerns?: string[];
+  requirementsAnalysis?: unknown[];
+  interviewQuestions?: string[];
+  careerPotential?: { assessment: 'positive_evidence' | 'insufficient_evidence' | 'mixed_evidence'; reason: string };
+  confidence?: 'high' | 'medium' | 'low';
+  limitations?: string[];
+  evidence?: Array<{ source: 'CV' | 'JD'; section: string; text: string }>;
   candidate?: Candidate;
   jobDescription?: JobDescription;
 }
