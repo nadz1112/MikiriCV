@@ -47,6 +47,10 @@ export interface Candidate {
 export interface CandidatePage { data: Candidate[]; total: number; page: number; limit: number }
 
 export interface MatchResult {
+  highlights?: string[];
+  skillAnalysis?: string[];
+  redFlags?: string[];
+  interviewQuestions?: string[];
   id: string;
   candidateId: string;
   jobDescriptionId: string;

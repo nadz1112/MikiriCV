@@ -13,18 +13,24 @@ import { FieldParser } from '../modules/candidates/field-parser.js';
 import { skillNormalizer } from '../modules/skills/skill-dictionary.js';
 import { ListCandidatesQuery } from '../modules/candidates/candidate.schema.js';
 import { jobService } from './job.service.js';
+import { getUserSubscription, checkDocuments } from './subscription.service.js';
 
 const repo = new CandidateRepository();
 const parser = new FieldParser();
 const failedMessage = 'Không thể đọc nội dung văn bản. Vui lòng kiểm tra file không cài mật khẩu hoặc file ảnh scan chưa được hỗ trợ.';
 const typeByExt: Record<string, string> = { '.pdf': 'application/pdf', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' };
-type UploadError = { fileName: string; code: 'FILE_TOO_LARGE' | 'UNSUPPORTED_FILE_TYPE'; message: string };
+type UploadError = { fileName: string; code: 'FILE_TOO_LARGE' | 'UNSUPPORTED_FILE_TYPE' | 'PLAN_DOCUMENT_LIMIT'; message: string };
 
 function appError(status: number, code: string, message: string) { return new AppError(status, code, message); }
 
 export class CandidateService {
   async upload(files: Express.Multer.File[], idempotencyKey: string, user: AuthUser) {
     const removeTemporaryFiles = () => Promise.all(files.map((file) => fs.unlink(file.path).catch(() => undefined)));
+    const subscription = await getUserSubscription(user.id).catch(async (error) => { await removeTemporaryFiles(); throw error; });
+    if (!subscription.bulk && files.length > 1) {
+      await removeTemporaryFiles();
+      throw appError(403, 'PLUS_REQUIRED', 'Gói FREE chỉ tải lên từng CV đơn lẻ. Nâng gói PLUS để tải hàng loạt.');
+    }
     const requestHashParts = [];
     try {
       for (const file of files) requestHashParts.push({ name: file.originalname, size: file.size, hash: crypto.createHash('sha256').update(await fs.readFile(file.path)).digest('hex') });
@@ -77,11 +83,16 @@ export class CandidateService {
         await fs.rename(file.path, storedPath);
         processedPaths[processedPaths.length - 1] = storedPath;
         let rawText = '';
+        let pageCount: number | null = null;
         let extractionStatus: 'SUCCESS' | 'WARNING' | 'FAILED' = 'SUCCESS';
         let extractionMessage: string | null = null;
         let fields = parser.parse('', safeName);
         try {
-          rawText = (await ExtractorFactory.create(expectedMime).extract(storedPath)).trim();
+          const extractor = ExtractorFactory.create(expectedMime);
+          if (extractor.extractDocument) {
+            const document = await extractor.extractDocument(storedPath);
+            rawText = document.text.trim(); pageCount = document.pageCount;
+          } else rawText = (await extractor.extract(storedPath)).trim();
           if (!rawText) throw new Error('EMPTY_TEXT');
           fields = parser.parse(rawText, safeName);
           const missing: string[] = [];
@@ -93,8 +104,15 @@ export class CandidateService {
           rawText = ''; extractionStatus = 'FAILED'; extractionMessage = failedMessage;
           fields = { ...parser.parse('', safeName), email: null, phone: null, skills: [], yearsOfExperience: 0 };
         }
+        try { checkDocuments(subscription, [{ rawText, pageCount }]); }
+        catch (error) {
+          errors.push({ fileName: file.originalname, code: 'PLAN_DOCUMENT_LIMIT', message: (error as Error).message });
+          await fs.unlink(storedPath).catch(() => undefined);
+          processedPaths.splice(processedPaths.indexOf(storedPath), 1);
+          continue;
+        }
         const candidate = await repo.create({
-          fullName: fields.fullName, email: fields.email, phone: fields.phone, rawText,
+          fullName: fields.fullName, email: fields.email, phone: fields.phone, rawText, pageCount,
           searchText: normalizeForSearch(`${fields.fullName} ${rawText}`), skills: fields.skills,
           yearsOfExperience: fields.yearsOfExperience, education: fields.education,
           fileName: safeName, fileUrl: storedPath, extractionStatus, extractionMessage, contentHash,

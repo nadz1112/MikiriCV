@@ -52,12 +52,14 @@ interface MatchResultRaw {
   id: string; candidateId: string; jobDescriptionId: string; score: number; summary: string;
   matchedSkills: string[]; missingSkills: string[]; createdAt: Date;
   candidate?: CandidateSummaryRaw;
+  highlights?: string[]; skillAnalysis?: string[]; redFlags?: string[]; interviewQuestions?: string[];
 }
 
 export function toMatchResultDto(match: MatchResultRaw) {
   return {
     id: match.id, candidateId: match.candidateId, jobDescriptionId: match.jobDescriptionId,
     score: match.score, summary: match.summary, matchedSkills: match.matchedSkills, missingSkills: match.missingSkills,
+    highlights: match.highlights ?? [], skillAnalysis: match.skillAnalysis ?? [], redFlags: match.redFlags ?? [], interviewQuestions: match.interviewQuestions ?? [],
     createdAt: match.createdAt.toISOString(),
     ...(match.candidate ? { candidate: toCandidateSummaryDto(match.candidate) } : {}),
   };

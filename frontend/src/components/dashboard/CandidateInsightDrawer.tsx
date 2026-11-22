@@ -242,6 +242,7 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
             )}
 
             {/* 2 Cột Gestalt: Kỹ năng khớp (Xanh) vs Kỹ năng thiếu (Đỏ nhạt) */}
+            {matchResult && ([['3 điểm nổi bật', matchResult.highlights], ['Phân tích kỹ năng', matchResult.skillAnalysis], ['Điểm cần xác minh (Red flags)', matchResult.redFlags], ['Câu hỏi phỏng vấn gợi ý', matchResult.interviewQuestions]] as const).map(([title, items]) => items && items.length > 0 ? <section key={title} className="rounded-xl border border-slate-200 bg-white p-4"><h3 className="font-semibold text-slate-800">{title}</h3><ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-600">{items.map((item, index) => <li key={index}>{item}</li>)}</ul></section> : null)}
             {matchResult && (
               <div className="space-y-3">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">

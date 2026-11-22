@@ -9,17 +9,31 @@ vi.mock('../../services/adminDashboardApi', () => ({ getAdminDashboard: mocks.ge
 const fixture: AdminDashboard = {
   aiUsageSince: null,
   range: '7d', overview: { totalUsers: 0, activeUsers: 0, lockedUsers: 0, totalJobs: 0, totalCandidates: 0, failedCandidates: 0, totalMatches: 0 },
-  distribution: [], ai: { inputTokens: 0, outputTokens: 0, estimatedCostUsd: null, inputRate: null, outputRate: null, calls: 0, callsWithoutTokenData: 0, daily: [] }, enterprises: [],
+  distribution: [], ai: { simulatedCostVnd: 0, demoInputRate: 10000, demoOutputRate: 30000, billingMode: 'PAID', inputTokens: 0, outputTokens: 0, estimatedCostUsd: null, inputRate: null, outputRate: null, calls: 0, callsWithoutTokenData: 0, daily: [] }, enterprises: [],
 };
 afterEach(cleanup);
 beforeEach(() => { vi.clearAllMocks(); mocks.get.mockResolvedValue(fixture); });
 describe('Dashboard quản trị', () => {
+  it('shows nonzero demo cost separately from zero provider fees on free tier', async () => {
+    mocks.get.mockResolvedValue({ ...fixture, ai: { ...fixture.ai, billingMode: 'FREE', inputTokens: 311, outputTokens: 110, simulatedCostVnd: 6.41, estimatedCostUsd: 0, inputRate: 0, outputRate: 0 } });
+    render(<AdminDashboardPage />);
+    expect(await screen.findByText('6,41 đ')).toBeTruthy();
+    expect(screen.queryByText(/API Free tier|API đang dùng Free tier|Áp dụng cho cả FREE và PLUS/)).toBeNull();
+    expect(screen.getByText('6,41 đ')).toBeTruthy();
+    expect(screen.getAllByText('Chi phí quy đổi (mô phỏng)')).toHaveLength(2);
+    expect(screen.queryByText('Chưa cấu hình đơn giá')).toBeNull();
+    expect(screen.queryByText('Cách tính chi phí AI')).toBeNull();
+    expect(screen.queryByText(/USD\/triệu token/)).toBeNull();
+  });
   it('shows loading and empty states', async () => {
     render(<AdminDashboardPage/>);
     expect(screen.getByRole('status').textContent).toContain('Đang tải');
     expect(await screen.findByText('Chưa có tài khoản doanh nghiệp.')).toBeTruthy();
-    expect(screen.getByText('Chưa có kết quả matching.')).toBeTruthy();
-    expect(screen.getByText('Chưa cấu hình đơn giá')).toBeTruthy();
+    expect(screen.queryByText('Phân bổ điểm toàn hệ thống')).toBeNull();
+    expect(screen.getByRole('region', { name: 'Quản lý hạn mức doanh nghiệp' })).toBeTruthy();
+    expect(screen.queryByText('FREE — Trải nghiệm cơ bản')).toBeNull();
+    expect(screen.queryByText('Khuyên dùng')).toBeNull();
+    expect(screen.getByText('0 đ')).toBeTruthy();
   });
   it('refreshes the admin overview when returning to the tab without reloading the page', async () => {
     vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
@@ -44,13 +58,13 @@ describe('Dashboard quản trị', () => {
     render(<AdminDashboardPage/>);
     await screen.findByText('Chưa có tài khoản doanh nghiệp.');
     fireEvent.change(screen.getByLabelText('Khoảng thời gian AI'), { target: { value: '30d' } });
-    await waitFor(() => expect(mocks.get).toHaveBeenLastCalledWith('30d', expect.any(AbortSignal)));
+    await waitFor(() => expect(mocks.get).toHaveBeenLastCalledWith('30d', expect.any(AbortSignal), undefined));
   });
   it('sorts company activity by JD count', async () => {
-    const activity = { fullName: 'Nhân sự', lastLoginAt: null, candidateCount: 0, matchCount: 0, inputTokens: 0, outputTokens: 0, calls: 0, estimatedCostUsd: null };
+    const activity = { hrCount: 0, members: [], fullName: 'Nhân sự', lastLoginAt: null, candidateCount: 0, matchCount: 0, inputTokens: 0, outputTokens: 0, calls: 0, estimatedCostUsd: null };
     mocks.get.mockResolvedValue({ ...fixture, enterprises: [{ ...activity, id: 'a', companyName: 'Alpha', jobCount: 1 }, { ...activity, id: 'b', companyName: 'Beta', jobCount: 3 }] });
     render(<AdminDashboardPage/>);
-    await screen.findByText('Alpha');
+    await screen.findByRole('button', { name: 'Alpha' });
     fireEvent.click(screen.getByRole('button', { name: /JD/ }));
     const rows = within(screen.getByRole('table')).getAllByRole('row');
     expect(rows[1].textContent).toContain('Beta');
@@ -61,6 +75,19 @@ describe('Dashboard quản trị', () => {
     expect(await screen.findByText(/Chi phí AI tính từ 17\/11\/2026/)).toBeTruthy();
     expect(screen.getAllByText('Tài khoản đã xóa').length).toBeGreaterThan(0);
     expect(screen.getByRole('columnheader', { name: 'Lượt gọi AI' })).toBeTruthy();
-    expect(screen.getByRole('columnheader', { name: 'Chi phí ước tính' })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: 'Chi phí quy đổi (mô phỏng)' })).toBeTruthy();
+  });
+  it('opens company HR details and filters AI usage by company', async () => {
+    const hr = { id: 'hr-a', fullName: 'HR Alpha', email: 'hr@alpha.test', isActive: true, lastLoginAt: null, jobCount: 2, candidateCount: 3, matchCount: 1, inputTokens: 120, outputTokens: 30, calls: 1 };
+    mocks.get.mockResolvedValue({ ...fixture, enterprises: [{ id: 'alpha', companyName: 'Alpha', fullName: 'Alpha', lastLoginAt: null, hrCount: 1, members: [hr], jobCount: 2, candidateCount: 3, matchCount: 1, inputTokens: 120, outputTokens: 30, calls: 1, estimatedCostUsd: null }] });
+    render(<AdminDashboardPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Alpha' }));
+    const details = screen.getByRole('region', { name: 'HR thuộc Alpha' });
+    expect(within(details).getByText('hr@alpha.test')).toBeTruthy();
+    expect(within(details).getByText('120')).toBeTruthy();
+    fireEvent.click(within(details).getByRole('button', { name: 'Thu gọn' }));
+    expect(screen.queryByRole('region', { name: 'HR thuộc Alpha' })).toBeNull();
+    fireEvent.change(screen.getByLabelText('Doanh nghiệp thống kê AI'), { target: { value: 'alpha' } });
+    await waitFor(() => expect(mocks.get).toHaveBeenLastCalledWith('7d', expect.any(AbortSignal), 'alpha'));
   });
 });
