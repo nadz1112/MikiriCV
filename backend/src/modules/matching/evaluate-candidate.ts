@@ -166,7 +166,6 @@ export async function evaluateCandidateWithAi(
     console.warn('AI matching failed', {
       code: failure.code,
       upstreamStatus: typeof upstreamStatus === 'number' ? upstreamStatus : undefined,
-      model: aiProvider.modelName,
     });
     throw failure;
   } finally {
