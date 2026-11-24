@@ -10,10 +10,18 @@ const mocks = vi.hoisted(() => ({
     aiUsage: { create: vi.fn() },
   },
   generateContent: vi.fn(),
+  reserveAnalyses: vi.fn(),
+  refundAnalyses: vi.fn(),
+  checkDocuments: vi.fn(),
 }));
 
 vi.mock('../src/config/database.js', () => ({ prisma: mocks.prisma }));
 vi.mock('../src/config/gemini.js', () => ({ geminiModel: { generateContent: mocks.generateContent } }));
+vi.mock('../src/services/subscription.service.js', () => ({
+  reserveAnalyses: mocks.reserveAnalyses,
+  refundAnalyses: mocks.refundAnalyses,
+  checkDocuments: mocks.checkDocuments,
+}));
 
 describe('async matching jobs and runner', () => {
   let MatchingService: typeof import('../src/services/matching.service.js').MatchingService;
@@ -30,6 +38,20 @@ describe('async matching jobs and runner', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.reserveAnalyses.mockResolvedValue({
+      companyId: 'company-1',
+      name: 'PLUS',
+      monthDate: new Date('2026-11-01T00:00:00Z'),
+      maxPages: 6,
+      maxCharacters: 12000,
+      bulk: true,
+      monthlyLimit: 300,
+      used: 0,
+      remaining: 300,
+      reserved: 1,
+    });
+    mocks.refundAnalyses.mockResolvedValue(undefined);
+    mocks.checkDocuments.mockReturnValue(undefined);
   });
 
   it('rejects sync matching batches exceeding SYNC_MATCH_MAX', async () => {
@@ -41,13 +63,13 @@ describe('async matching jobs and runner', () => {
     });
   });
 
-  it('creates an async job, skips FAILED candidates, and enqueues runner', async () => {
+  it('creates an async job, skips FAILED candidates, reserves pending quota, and enqueues runner', async () => {
     const enqueue = vi.fn();
     const service = new MatchingService(undefined, { enqueue });
     mocks.prisma.jobDescription.findFirst.mockResolvedValue({ id: 'jd-1' });
     mocks.prisma.candidate.findMany.mockResolvedValue([
-      { id: 'c1', extractionStatus: 'SUCCESS' },
-      { id: 'c2', extractionStatus: 'FAILED' },
+      { id: 'c1', extractionStatus: 'SUCCESS', rawText: 'Node.js 3 năm', pageCount: 1, fileName: 'c1.pdf', fileUrl: '/uploads/c1.pdf' },
+      { id: 'c2', extractionStatus: 'FAILED', rawText: '', pageCount: null, fileName: 'c2.pdf', fileUrl: '/uploads/c2.pdf' },
     ]);
     mocks.prisma.matchingJob.create.mockResolvedValue({
       id: 'job-1',
@@ -70,16 +92,45 @@ describe('async matching jobs and runner', () => {
     const job = await service.createMatchingJob({ jobDescriptionId: 'jd-1', candidateIds: ['c1', 'c2'] }, 'hr-1');
     expect(job.status).toBe('QUEUED');
     expect(job.processed).toBe(1);
+    expect(mocks.reserveAnalyses).toHaveBeenCalledWith('hr-1', 1);
+    expect(mocks.checkDocuments).toHaveBeenCalledTimes(1);
+    expect(mocks.prisma.matchingJob.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        companyId: 'company-1',
+        planName: 'PLUS',
+        quotaMonth: expect.any(Date),
+      }),
+    }));
     expect(enqueue).toHaveBeenCalledWith('job-1');
   });
 
-  it('enforces tenant isolation and cancellable states on jobs', async () => {
+  it('refunds reserved quota if checkDocuments rejects when creating matching job', async () => {
+    const enqueue = vi.fn();
+    const service = new MatchingService(undefined, { enqueue });
+    mocks.prisma.jobDescription.findFirst.mockResolvedValue({ id: 'jd-1' });
+    mocks.prisma.candidate.findMany.mockResolvedValue([
+      { id: 'c1', extractionStatus: 'SUCCESS', rawText: 'x'.repeat(4000), pageCount: 3, fileName: 'c1.pdf', fileUrl: '/uploads/c1.pdf' },
+    ]);
+    mocks.checkDocuments.mockImplementationOnce(() => {
+      throw Object.assign(new Error('Vượt giới hạn trang'), { status: 422, code: 'PLAN_DOCUMENT_LIMIT' });
+    });
+
+    await expect(service.createMatchingJob({ jobDescriptionId: 'jd-1', candidateIds: ['c1'] }, 'hr-1')).rejects.toMatchObject({
+      status: 422,
+      code: 'PLAN_DOCUMENT_LIMIT',
+    });
+    expect(mocks.refundAnalyses).toHaveBeenCalledWith(expect.objectContaining({ companyId: 'company-1' }), 1);
+    expect(mocks.prisma.matchingJob.create).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it('enforces tenant isolation, cancellable states, and refunds skipped items on queued cancel', async () => {
     const service = new MatchingService(undefined, { enqueue: vi.fn() });
     mocks.prisma.matchingJob.findFirst.mockResolvedValue(null);
     await expect(service.getMatchingJob('job-1', { id: 'hr-2', role: 'ENTERPRISE', tokenVersion: 0, mustChangePassword: false }, true))
       .rejects.toMatchObject({ status: 404, code: 'MATCHING_JOB_NOT_FOUND' });
 
-    mocks.prisma.matchingJob.findFirst.mockResolvedValue({
+    mocks.prisma.matchingJob.findFirst.mockResolvedValueOnce({
       id: 'job-1',
       jobDescriptionId: 'jd-1',
       status: 'COMPLETED',
@@ -96,33 +147,75 @@ describe('async matching jobs and runner', () => {
       status: 409,
       code: 'MATCHING_JOB_NOT_CANCELLABLE',
     });
+
+    const quotaMonth = new Date('2026-11-01T00:00:00Z');
+    mocks.prisma.matchingJob.findFirst.mockResolvedValueOnce({
+      id: 'job-2',
+      jobDescriptionId: 'jd-1',
+      status: 'QUEUED',
+      companyId: 'company-1',
+      quotaMonth,
+    });
+    mocks.prisma.matchingJobItem.updateMany.mockResolvedValueOnce({ count: 2 });
+    mocks.prisma.matchingJob.update.mockResolvedValueOnce({
+      id: 'job-2',
+      jobDescriptionId: 'jd-1',
+      status: 'CANCELLED',
+      total: 2,
+      processed: 2,
+      failed: 0,
+      cancelRequested: true,
+      errorMessage: null,
+      createdAt: new Date(),
+      startedAt: null,
+      finishedAt: new Date(),
+    });
+    const cancelled = await service.cancelMatchingJob('job-2', 'hr-1');
+    expect(cancelled.status).toBe('CANCELLED');
+    expect(mocks.refundAnalyses).toHaveBeenCalledWith({ companyId: 'company-1', monthDate: quotaMonth }, 2);
   });
 
-  it('processes batch with partial failure visibility and cancellation between batches', async () => {
+  it('processes batch with partial failure visibility, company accounting, and quota refunds', async () => {
     const aiProvider = {
       modelName: 'gemini-3.6-flash',
       promptVersion: 'cvtest-1.0',
       generateEvaluation: vi.fn()
         .mockResolvedValueOnce({
-          rawText: JSON.stringify({ score: 85, summary: 'Phù hợp', matchedSkills: ['Node.js'], missingSkills: [] }),
+          rawText: JSON.stringify({
+            score: 85,
+            summary: 'Phù hợp',
+            matchedSkills: ['Node.js'],
+            missingSkills: [],
+            highlights: ['Node.js', 'REST API', '3 năm kinh nghiệm'],
+            skillAnalysis: ['Node.js: đáp ứng tốt'],
+            redFlags: ['Cần xác minh quy mô hệ thống'],
+            interviewQuestions: ['Q1?', 'Q2?', 'Q3?'],
+          }),
           inputTokens: 100,
           outputTokens: 30,
         })
         .mockRejectedValueOnce({ status: 429 }),
     };
     const runner = new MatchingJobRunner(aiProvider);
+    const quotaMonth = new Date('2026-11-01T00:00:00Z');
 
     mocks.prisma.matchingJob.findUnique
-      .mockResolvedValueOnce({ id: 'job-1', status: 'QUEUED', startedAt: null, cancelRequested: false })
+      .mockResolvedValueOnce({ id: 'job-1', status: 'QUEUED', startedAt: null, cancelRequested: false, companyId: 'company-1', quotaMonth })
       .mockResolvedValueOnce({
         id: 'job-1',
         ownerId: 'hr-1',
+        companyId: 'company-1',
+        planName: 'PLUS',
+        quotaMonth,
         cancelRequested: false,
         jobDescription: { id: 'jd-1', ownerId: 'hr-1', title: 'Backend', description: 'Build APIs', requiredSkills: ['Node.js'], minExperience: 2 },
       })
       .mockResolvedValueOnce({
         id: 'job-1',
         ownerId: 'hr-1',
+        companyId: 'company-1',
+        planName: 'PLUS',
+        quotaMonth,
         cancelRequested: true,
         jobDescription: { id: 'jd-1', ownerId: 'hr-1', title: 'Backend', description: 'Build APIs', requiredSkills: ['Node.js'], minExperience: 2 },
       });
@@ -165,10 +258,15 @@ describe('async matching jobs and runner', () => {
       where: { id: 'item-2' },
       data: expect.objectContaining({ status: 'FAILED', errorCode: 'AI_RATE_LIMIT' }),
     }));
+    expect(mocks.prisma.aiUsage.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ companyId: 'company-1', enterpriseId: 'hr-1' }),
+    }));
     expect(mocks.prisma.matchingJob.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'job-1' },
       data: expect.objectContaining({ status: 'CANCELLED' }),
     }));
+    expect(mocks.refundAnalyses).toHaveBeenCalledTimes(2);
+    expect(mocks.refundAnalyses).toHaveBeenCalledWith({ companyId: 'company-1', monthDate: quotaMonth }, 1);
     expect(mocks.prisma.matchResult.upsert).toHaveBeenCalledTimes(1);
   });
 });

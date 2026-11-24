@@ -4,9 +4,6 @@ CREATE TYPE "MatchingJobStatus" AS ENUM ('QUEUED', 'RUNNING', 'COMPLETED', 'CANC
 -- CreateEnum
 CREATE TYPE "MatchingItemStatus" AS ENUM ('PENDING', 'DONE', 'FAILED', 'SKIPPED');
 
--- DropIndex
-DROP INDEX "candidates_search_text_trgm_idx";
-
 -- AlterTable
 ALTER TABLE "match_results" ADD COLUMN     "modelName" TEXT,
 ADD COLUMN     "promptVersion" TEXT;
@@ -16,6 +13,9 @@ CREATE TABLE "matching_jobs" (
     "id" TEXT NOT NULL,
     "jobDescriptionId" TEXT NOT NULL,
     "ownerId" TEXT NOT NULL,
+    "companyId" TEXT,
+    "planName" TEXT,
+    "quotaMonth" DATE,
     "status" "MatchingJobStatus" NOT NULL DEFAULT 'QUEUED',
     "total" INTEGER NOT NULL,
     "processed" INTEGER NOT NULL DEFAULT 0,

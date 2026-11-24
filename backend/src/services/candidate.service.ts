@@ -26,11 +26,19 @@ function appError(status: number, code: string, message: string) { return new Ap
 
 async function extractCandidateFields(filePath: string, expectedMime: string, fileName: string) {
   let rawText = '';
+  let pageCount: number | null = null;
   let extractionStatus: 'SUCCESS' | 'WARNING' | 'FAILED' = 'SUCCESS';
   let extractionMessage: string | null = null;
   let fields = parser.parse('', fileName);
   try {
-    rawText = (await ExtractorFactory.create(expectedMime).extract(filePath)).trim();
+    const extractor = ExtractorFactory.create(expectedMime);
+    if (extractor.extractDocument) {
+      const document = await extractor.extractDocument(filePath);
+      rawText = document.text.trim();
+      pageCount = document.pageCount;
+    } else {
+      rawText = (await extractor.extract(filePath)).trim();
+    }
     if (!rawText) throw new Error('EMPTY_TEXT');
     fields = parser.parse(rawText, fileName);
     const missing: string[] = [];
@@ -43,11 +51,12 @@ async function extractCandidateFields(filePath: string, expectedMime: string, fi
     }
   } catch {
     rawText = '';
+    pageCount = null;
     extractionStatus = 'FAILED';
     extractionMessage = failedMessage;
     fields = { ...parser.parse('', fileName), email: null, phone: null, skills: [], yearsOfExperience: 0, education: null };
   }
-  return { rawText, extractionStatus, extractionMessage, fields };
+  return { rawText, pageCount, extractionStatus, extractionMessage, fields };
 }
 
 export class CandidateService {
@@ -261,12 +270,17 @@ export class CandidateService {
       throw appError(409, 'FILE_NOT_FOUND', 'Không tìm thấy tệp CV gốc trên máy chủ. Vui lòng xóa hồ sơ và tải lên tệp mới.');
     }
 
-    const { rawText, extractionStatus, extractionMessage, fields } = await extractCandidateFields(filePath, expectedMime, candidate.fileName);
+    const { rawText, pageCount, extractionStatus, extractionMessage, fields } = await extractCandidateFields(filePath, expectedMime, candidate.fileName);
+    if (user.role !== 'ADMIN' && extractionStatus !== 'FAILED') {
+      const subscription = await getUserSubscription(user.id);
+      checkDocuments(subscription, [{ rawText, pageCount }]);
+    }
     const updated = await repo.updateExtraction(id, ownerId, {
       fullName: fields.fullName,
       email: fields.email,
       phone: fields.phone,
       rawText,
+      pageCount,
       searchText: normalizeForSearch(`${fields.fullName} ${rawText}`),
       skills: fields.skills,
       yearsOfExperience: fields.yearsOfExperience,

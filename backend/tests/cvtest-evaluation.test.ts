@@ -43,6 +43,52 @@ describe('CVTest evaluation structure', () => {
     expect(result.scoreBreakdown?.[0].evidence[0].section).toBe('Projects');
   });
 
+  it('preserves custom weights alongside FREE and PLUS plan gating', () => {
+    const customWeights = {
+      skill_matching: 40,
+      experience_relevance: 20,
+      project_achievement: 15,
+      soft_skills: 10,
+      education_certification: 10,
+      cv_quality: 5,
+    };
+    const customBreakdown: CvTestCategoryAssessment[] = [
+      { category: 'skill_matching', score: 36, maxScore: 40, reason: 'Kỹ năng tốt.', evidence: [], gaps: [], status: 'matched', confidence: 'high' },
+      { category: 'experience_relevance', score: 18, maxScore: 20, reason: 'Kinh nghiệm phù hợp.', evidence: [], gaps: [], status: 'matched', confidence: 'high' },
+      { category: 'project_achievement', score: 12, maxScore: 15, reason: 'Dự án tốt.', evidence: [], gaps: [], status: 'matched', confidence: 'medium' },
+      { category: 'soft_skills', score: 8, maxScore: 10, reason: 'Giao tiếp tốt.', evidence: [], gaps: [], status: 'matched', confidence: 'medium' },
+      { category: 'education_certification', score: 8, maxScore: 10, reason: 'Bằng cấp phù hợp.', evidence: [], gaps: [], status: 'matched', confidence: 'medium' },
+      { category: 'cv_quality', score: 4, maxScore: 5, reason: 'Trình bày rõ.', evidence: [], gaps: [], status: 'matched', confidence: 'high' },
+    ];
+    const response = {
+      score: 10,
+      summary: 'Đánh giá theo trọng số tùy chỉnh.',
+      matchedSkills: ['Node.js'],
+      missingSkills: [],
+      scoreBreakdown: customBreakdown,
+      strengths: ['Mạnh backend'],
+      gapsAndConcerns: ['Cần hỏi thêm về Docker'],
+      requirementsAnalysis: [],
+      interviewQuestions: ['Câu hỏi 1?', 'Câu hỏi 2?', 'Câu hỏi 3?'],
+      careerPotential: { assessment: 'positive_evidence', reason: 'Phát triển tốt.' },
+      confidence: 'high',
+      limitations: [],
+    };
+
+    const plusResult = sanitizeAndParseGeminiResponse(JSON.stringify(response), { weights: customWeights, plan: 'PLUS' });
+    expect(plusResult.score).toBe(86);
+    expect(plusResult.interviewQuestions).toHaveLength(3);
+    expect(plusResult.skillAnalysis?.length).toBeGreaterThan(0);
+    expect(plusResult.redFlags).toEqual(['Cần hỏi thêm về Docker']);
+
+    const freeResult = sanitizeAndParseGeminiResponse(JSON.stringify(response), { weights: customWeights, plan: 'FREE' });
+    expect(freeResult.score).toBe(86);
+    expect(freeResult.highlights).toEqual(['Mạnh backend']);
+    expect(freeResult.interviewQuestions).toEqual([]);
+    expect(freeResult.skillAnalysis).toEqual([]);
+    expect(freeResult.redFlags).toEqual([]);
+  });
+
   it('rejects provider output containing PII patterns', () => {
     expect(() => sanitizeAndParseGeminiResponse(JSON.stringify({
       score: 82,

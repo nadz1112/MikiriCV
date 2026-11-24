@@ -192,6 +192,9 @@ model MatchingJob {
   id               String            @id @default(uuid())
   jobDescriptionId String
   ownerId          String
+  companyId        String?
+  planName         String?
+  quotaMonth       DateTime?         @db.Date
   status           MatchingJobStatus @default(QUEUED)
   total            Int
   processed        Int               @default(0)

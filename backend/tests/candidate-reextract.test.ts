@@ -73,7 +73,16 @@ describe('POST /api/candidates/:id/reextract', () => {
   });
 
   function headers(role: 'ADMIN' | 'ENTERPRISE') {
-    const user = { id: 'hr-1', role, tokenVersion: 0, isActive: true, mustChangePassword: false };
+    const user = {
+      id: 'hr-1',
+      role,
+      tokenVersion: 0,
+      isActive: true,
+      mustChangePassword: false,
+      company: role === 'ENTERPRISE'
+        ? { id: 'company-1', plan: 'FREE', billingCycle: 'MONTHLY', monthlyUsed: 0, quotaMonth: null }
+        : null,
+    };
     mocks.userFindUnique.mockResolvedValue(user);
     return { Cookie: `accessToken=${issueTokens(user).access}`, 'X-Requested-With': 'CVMikiri' };
   }
@@ -124,7 +133,28 @@ describe('POST /api/candidates/:id/reextract', () => {
     expect(body.success).toBe(true);
     expect(body.data.extractionStatus).toBe('SUCCESS');
     expect(body.data.skills).toEqual(['Node.js']);
-    expect(mocks.candidateUpdate).toHaveBeenCalledTimes(1);
+    expect(mocks.candidateUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ pageCount: 1 }),
+    }));
+  });
+
+  it('rejects ENTERPRISE re-extract with 422 PLAN_DOCUMENT_LIMIT when extracted text exceeds plan limit', async () => {
+    const candId = '44444444-4444-4444-8444-444444444444';
+    const pdfPath = path.join(uploadDir, 'long-cv.pdf');
+    await writeFile(pdfPath, buildSamplePdf('React NodeJS '.repeat(260)));
+
+    mocks.candidateFindUnique.mockResolvedValueOnce({
+      id: candId,
+      ownerId: 'hr-1',
+      fileName: 'long.pdf',
+      fileUrl: pdfPath,
+    });
+
+    const res = await fetch(`${base}/candidates/${candId}/reextract`, { method: 'POST', headers: headers('ENTERPRISE') });
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.error.code).toBe('PLAN_DOCUMENT_LIMIT');
+    expect(mocks.candidateUpdate).not.toHaveBeenCalled();
   });
 
   it('returns 409 FILE_NOT_FOUND when original file is missing on disk', async () => {

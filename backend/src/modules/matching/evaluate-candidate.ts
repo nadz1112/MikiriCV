@@ -80,7 +80,7 @@ export async function evaluateCandidateWithAi(
     const aiResponse = await aiProvider.generateEvaluation(prompt);
     inputTokens = aiResponse.inputTokens;
     outputTokens = aiResponse.outputTokens;
-    const parsedResult = sanitizeAndParseGeminiResponse(aiResponse.rawText, plan ?? weights);
+    const parsedResult = sanitizeAndParseGeminiResponse(aiResponse.rawText, { weights, plan });
 
     saving = true;
     const savedMatch = await prisma.matchResult.upsert({
@@ -108,7 +108,7 @@ export async function evaluateCandidateWithAi(
         strengths: parsedResult.strengths as Prisma.InputJsonValue | undefined,
         gaps: parsedResult.gapsAndConcerns as Prisma.InputJsonValue | undefined,
         requirementsAnalysis: parsedResult.requirementsAnalysis as Prisma.InputJsonValue | undefined,
-        interviewQuestions: parsedResult.interviewQuestions,
+        interviewQuestions: parsedResult.interviewQuestions ?? [],
         careerPotential: parsedResult.careerPotential as Prisma.InputJsonValue | undefined,
         confidence: parsedResult.confidence ?? null,
         limitations: parsedResult.limitations as Prisma.InputJsonValue | undefined,
@@ -137,7 +137,7 @@ export async function evaluateCandidateWithAi(
         strengths: parsedResult.strengths as Prisma.InputJsonValue | undefined,
         gaps: parsedResult.gapsAndConcerns as Prisma.InputJsonValue | undefined,
         requirementsAnalysis: parsedResult.requirementsAnalysis as Prisma.InputJsonValue | undefined,
-        interviewQuestions: parsedResult.interviewQuestions,
+        interviewQuestions: parsedResult.interviewQuestions ?? [],
         careerPotential: parsedResult.careerPotential as Prisma.InputJsonValue | undefined,
         confidence: parsedResult.confidence ?? null,
         limitations: parsedResult.limitations as Prisma.InputJsonValue | undefined,

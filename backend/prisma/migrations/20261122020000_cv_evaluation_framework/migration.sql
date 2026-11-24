@@ -1,0 +1,26 @@
+ALTER TABLE "job_descriptions"
+  ADD COLUMN IF NOT EXISTS "preferredSkills" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  ADD COLUMN IF NOT EXISTS "evaluationConfig" JSONB,
+  ADD COLUMN IF NOT EXISTS "jdAnalysis" JSONB,
+  ADD COLUMN IF NOT EXISTS "evaluationVersion" TEXT NOT NULL DEFAULT 'cvtest-1.0',
+  ADD COLUMN IF NOT EXISTS "analyzedAt" TIMESTAMP(3);
+
+ALTER TABLE "candidates"
+  ADD COLUMN IF NOT EXISTS "structuredProfile" JSONB,
+  ADD COLUMN IF NOT EXISTS "profileVersion" TEXT,
+  ADD COLUMN IF NOT EXISTS "profileAnalyzedAt" TIMESTAMP(3);
+
+ALTER TABLE "match_results"
+  ADD COLUMN IF NOT EXISTS "matchLevel" TEXT,
+  ADD COLUMN IF NOT EXISTS "scoreBreakdown" JSONB,
+  ADD COLUMN IF NOT EXISTS "strengths" JSONB,
+  ADD COLUMN IF NOT EXISTS "gaps" JSONB,
+  ADD COLUMN IF NOT EXISTS "requirementsAnalysis" JSONB,
+  ADD COLUMN IF NOT EXISTS "careerPotential" JSONB,
+  ADD COLUMN IF NOT EXISTS "confidence" TEXT,
+  ADD COLUMN IF NOT EXISTS "limitations" JSONB,
+  ADD COLUMN IF NOT EXISTS "evidence" JSONB,
+  ADD COLUMN IF NOT EXISTS "evaluationConfig" JSONB,
+  ADD COLUMN IF NOT EXISTS "evaluationVersion" TEXT NOT NULL DEFAULT 'cvtest-1.0',
+  ADD COLUMN IF NOT EXISTS "candidateProfileSnapshot" JSONB,
+  ADD COLUMN IF NOT EXISTS "jdAnalysisSnapshot" JSONB;

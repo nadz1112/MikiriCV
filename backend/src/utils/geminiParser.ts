@@ -52,7 +52,19 @@ function sanitizeCareerPotential(value: unknown): CvTestCareerPotential | undefi
   };
 }
 
-function parseDetailedResult(parsed: Record<string, unknown>, weights?: Record<string, number>): AiMatchingResult {
+export interface ParseGeminiOptions {
+  weights?: Record<string, number>;
+  plan?: 'FREE' | 'PLUS';
+}
+
+const isNonEmptyStrings = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === 'string' && item.trim().length > 0);
+
+function parseDetailedResult(
+  parsed: Record<string, unknown>,
+  weights?: Record<string, number>,
+  plan?: 'FREE' | 'PLUS',
+): AiMatchingResult {
   if (!Array.isArray(parsed.scoreBreakdown)) throw new Error('INVALID_AI_RESPONSE');
   const breakdown = parsed.scoreBreakdown as CvTestCategoryAssessment[];
   if (breakdown.length !== 6 || breakdown.some((item) =>
@@ -73,17 +85,38 @@ function parseDetailedResult(parsed: Record<string, unknown>, weights?: Record<s
     throw new Error('INVALID_AI_RESPONSE');
   }
 
+  const highlights = isNonEmptyStrings(parsed.highlights)
+    ? parsed.highlights
+    : parsed.strengths.map((item) => item.trim()).filter(Boolean).slice(0, 3);
+  const skillAnalysis = plan === 'FREE'
+    ? []
+    : isNonEmptyStrings(parsed.skillAnalysis)
+      ? parsed.skillAnalysis
+      : breakdown
+          .filter((item) => item.category === 'skill_matching' || item.category === 'experience_relevance')
+          .map((item) => item.reason.trim())
+          .filter(Boolean);
+  const redFlags = plan === 'FREE'
+    ? []
+    : isNonEmptyStrings(parsed.redFlags)
+      ? parsed.redFlags
+      : parsed.gapsAndConcerns.map((item) => item.trim()).filter(Boolean);
+  const interviewQuestions = plan === 'FREE' ? [] : parsed.interviewQuestions;
+
   return {
     score: calculatedScore,
     summary: typeof parsed.summary === 'string' ? parsed.summary.trim() : '',
     matchedSkills: Array.isArray(parsed.matchedSkills) ? parsed.matchedSkills.filter((item): item is string => typeof item === 'string') : [],
     missingSkills: Array.isArray(parsed.missingSkills) ? parsed.missingSkills.filter((item): item is string => typeof item === 'string') : [],
+    highlights,
+    skillAnalysis,
+    redFlags,
     matchLevel: getMatchLevel(calculatedScore),
     scoreBreakdown: breakdown,
     strengths: parsed.strengths,
     gapsAndConcerns: parsed.gapsAndConcerns,
     requirementsAnalysis: sanitizeRequirementsAnalysis(parsed.requirementsAnalysis),
-    interviewQuestions: parsed.interviewQuestions,
+    interviewQuestions,
     careerPotential: sanitizeCareerPotential(parsed.careerPotential),
     confidence: parsed.confidence as AiMatchingResult['confidence'],
     limitations: parsed.limitations,
@@ -92,11 +125,20 @@ function parseDetailedResult(parsed: Record<string, unknown>, weights?: Record<s
 
 export function sanitizeAndParseGeminiResponse(
   rawText: string,
-  options?: Record<string, number> | 'FREE' | 'PLUS',
+  options?: ParseGeminiOptions | Record<string, number> | 'FREE' | 'PLUS',
 ): AiMatchingResult {
   try {
-    const weights = typeof options === 'object' ? options : undefined;
-    const plan = typeof options === 'string' ? options : undefined;
+    let weights: Record<string, number> | undefined;
+    let plan: 'FREE' | 'PLUS' | undefined;
+    if (typeof options === 'string') {
+      plan = options;
+    } else if (options && ('weights' in options || 'plan' in options)) {
+      const opts = options as ParseGeminiOptions;
+      weights = opts.weights;
+      plan = opts.plan;
+    } else if (options && typeof options === 'object') {
+      weights = options as Record<string, number>;
+    }
     const cleaned = rawText
       .replace(/^```json\s*/i, '')
       .replace(/^```\s*/i, '')
@@ -111,7 +153,7 @@ export function sanitizeAndParseGeminiResponse(
     }
 
     if (Array.isArray(parsed.scoreBreakdown)) {
-      return parseDetailedResult(parsed, weights);
+      return parseDetailedResult(parsed, weights, plan);
     }
 
     if (!parsed || typeof parsed.score !== 'number' || !Number.isInteger(parsed.score) || parsed.score < 0 || parsed.score > 100

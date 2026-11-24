@@ -8,8 +8,23 @@ import { geminiMatchingProvider, type AIMatchingProvider } from '../modules/matc
 import { evaluateCandidateWithAi, safeMatchingCandidateSelect } from '../modules/matching/evaluate-candidate.js';
 import { matchingJobRunner } from '../modules/matching/matching-job.runner.js';
 import { PdfTextExtractor } from '../modules/candidates/text-extractor.js';
+import { localFileStorage } from '../modules/storage/file-storage.js';
 import { reserveAnalyses, refundAnalyses, checkDocuments } from './subscription.service.js';
-import path from 'path';
+
+async function ensurePdfPageCounts(
+  candidates: Array<{ pageCount: number | null; fileName?: string | null; fileUrl: string }>,
+) {
+  for (const candidate of candidates) {
+    if (candidate.pageCount == null && candidate.fileName?.toLowerCase().endsWith('.pdf')) {
+      try {
+        const filePath = localFileStorage.resolveSafePath(candidate.fileUrl);
+        candidate.pageCount = (await new PdfTextExtractor().extractDocument(filePath)).pageCount;
+      } catch {
+        throw new AppError(422, 'CV_PAGE_COUNT_UNAVAILABLE', 'Không thể kiểm tra số trang CV. Vui lòng tải lại file PDF hợp lệ.');
+      }
+    }
+  }
+}
 
 function formatMatchingJobDto(job: {
   id: string;
@@ -109,20 +124,7 @@ export class MatchingService {
       throw new AppError(422, 'CV_EXTRACTION_FAILED', 'Có CV chưa trích xuất được nội dung. Vui lòng kiểm tra lại hồ sơ đã chọn.');
     }
 
-    for (const candidate of candidates) {
-      if (candidate.pageCount == null && candidate.fileName?.toLowerCase().endsWith('.pdf')) {
-        try {
-          const root = path.resolve(process.cwd(), env.UPLOAD_DIR);
-          const filePath = candidate.fileUrl.startsWith('/uploads/')
-            ? path.resolve(root, path.basename(candidate.fileUrl))
-            : path.resolve(candidate.fileUrl);
-          if (!filePath.startsWith(`${root}${path.sep}`)) throw new Error('INVALID_CV_PATH');
-          candidate.pageCount = (await new PdfTextExtractor().extractDocument(filePath)).pageCount;
-        } catch {
-          throw new AppError(422, 'CV_PAGE_COUNT_UNAVAILABLE', 'Không thể kiểm tra số trang CV. Vui lòng tải lại file PDF hợp lệ.');
-        }
-      }
-    }
+    await ensurePdfPageCounts(candidates);
 
     const ticket = await reserveAnalyses(ownerId ?? job.ownerId, candidateIds.length);
     const results = [];
@@ -170,7 +172,14 @@ export class MatchingService {
 
     const candidates = await prisma.candidate.findMany({
       where: { id: { in: candidateIds }, ownerId },
-      select: { id: true, extractionStatus: true },
+      select: {
+        id: true,
+        extractionStatus: true,
+        rawText: true,
+        pageCount: true,
+        fileName: true,
+        fileUrl: true,
+      },
     });
     if (candidates.length !== candidateIds.length) {
       throw new AppError(404, 'CANDIDATE_NOT_FOUND', 'Không tìm thấy một hoặc nhiều ứng viên hợp lệ');
@@ -179,6 +188,7 @@ export class MatchingService {
     const byId = new Map(candidates.map((c) => [c.id, c]));
     const now = new Date();
     let skippedCount = 0;
+    const pendingCandidates: typeof candidates = [];
     const itemCreates = candidateIds.map((candidateId) => {
       const candidate = byId.get(candidateId)!;
       if (candidate.extractionStatus === 'FAILED') {
@@ -192,6 +202,7 @@ export class MatchingService {
           finishedAt: now,
         };
       }
+      pendingCandidates.push(candidate);
       return {
         candidateId,
         status: 'PENDING' as const,
@@ -200,28 +211,67 @@ export class MatchingService {
     });
 
     const allSkipped = skippedCount === candidateIds.length;
-    const created = await prisma.matchingJob.create({
-      data: {
-        jobDescriptionId,
-        ownerId,
-        status: allSkipped ? 'COMPLETED' : 'QUEUED',
-        total: candidateIds.length,
-        processed: skippedCount,
-        failed: 0,
-        finishedAt: allSkipped ? now : null,
-        items: {
-          create: itemCreates,
-        },
-      },
-      include: {
-        items: {
-          orderBy: { id: 'asc' },
-          include: {
-            candidate: { select: { id: true, fullName: true } },
+    let created;
+    if (allSkipped) {
+      created = await prisma.matchingJob.create({
+        data: {
+          jobDescriptionId,
+          ownerId,
+          status: 'COMPLETED',
+          total: candidateIds.length,
+          processed: skippedCount,
+          failed: 0,
+          finishedAt: now,
+          items: {
+            create: itemCreates,
           },
         },
-      },
-    });
+        include: {
+          items: {
+            orderBy: { id: 'asc' },
+            include: {
+              candidate: { select: { id: true, fullName: true } },
+            },
+          },
+        },
+      });
+    } else {
+      await ensurePdfPageCounts(pendingCandidates);
+      const ticket = await reserveAnalyses(ownerId, pendingCandidates.length);
+      try {
+        checkDocuments(ticket, pendingCandidates);
+        created = await prisma.matchingJob.create({
+          data: {
+            jobDescriptionId,
+            ownerId,
+            companyId: ticket.companyId,
+            planName: ticket.name,
+            quotaMonth: ticket.monthDate,
+            status: 'QUEUED',
+            total: candidateIds.length,
+            processed: skippedCount,
+            failed: 0,
+            finishedAt: null,
+            items: {
+              create: itemCreates,
+            },
+          },
+          include: {
+            items: {
+              orderBy: { id: 'asc' },
+              include: {
+                candidate: { select: { id: true, fullName: true } },
+              },
+            },
+          },
+        });
+      } catch (err) {
+        await refundAnalyses(ticket, pendingCandidates.length).catch(() => {
+          console.error('ANALYSIS_QUOTA_REFUND_FAILED');
+        });
+        throw err;
+      }
+    }
 
     if (!allSkipped) {
       this.runner.enqueue(created.id);
@@ -289,6 +339,11 @@ export class MatchingService {
           ...(skipped.count > 0 ? { processed: { increment: skipped.count } } : {}),
         },
       });
+      if (skipped.count > 0 && job.companyId && job.quotaMonth) {
+        await refundAnalyses({ companyId: job.companyId, monthDate: job.quotaMonth }, skipped.count).catch(() => {
+          console.error('ANALYSIS_QUOTA_REFUND_FAILED');
+        });
+      }
       return formatMatchingJobDto(cancelled);
     }
 

@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 import { prisma } from '../../config/database.js';
 import { env } from '../../config/env.js';
 import { toAiError } from '../../utils/ai-error.js';
+import { refundAnalyses } from '../../services/subscription.service.js';
 import { geminiMatchingProvider, type AIMatchingProvider } from './ai-matching-provider.js';
 import { evaluateCandidateWithAi } from './evaluate-candidate.js';
 
@@ -11,6 +12,18 @@ export class MatchingJobRunner extends EventEmitter {
 
   constructor(private readonly aiProvider: AIMatchingProvider = geminiMatchingProvider) {
     super();
+  }
+
+  private async refundIfReserved(
+    job: { companyId?: string | null; quotaMonth?: Date | null } | null | undefined,
+    count: number,
+  ): Promise<void> {
+    if (!job?.companyId || !job.quotaMonth || count <= 0) return;
+    try {
+      await refundAnalyses({ companyId: job.companyId, monthDate: job.quotaMonth }, count);
+    } catch {
+      console.error('ANALYSIS_QUOTA_REFUND_FAILED');
+    }
   }
 
   enqueue(jobId: string): void {
@@ -51,14 +64,14 @@ export class MatchingJobRunner extends EventEmitter {
   async processJob(jobId: string): Promise<void> {
     const initialJob = await prisma.matchingJob.findUnique({
       where: { id: jobId },
-      select: { id: true, status: true, startedAt: true, cancelRequested: true },
+      select: { id: true, status: true, startedAt: true, cancelRequested: true, companyId: true, quotaMonth: true },
     });
     if (!initialJob || ['COMPLETED', 'CANCELLED', 'FAILED'].includes(initialJob.status)) {
       return;
     }
 
     if (initialJob.cancelRequested) {
-      await this.finalizeCancelledJob(jobId);
+      await this.finalizeCancelledJob(jobId, initialJob);
       return;
     }
 
@@ -68,6 +81,7 @@ export class MatchingJobRunner extends EventEmitter {
     });
     this.emit('progress', { jobId });
 
+    let currentJobMeta: { companyId?: string | null; quotaMonth?: Date | null } = initialJob;
     try {
       while (true) {
         const job = await prisma.matchingJob.findUnique({
@@ -77,9 +91,10 @@ export class MatchingJobRunner extends EventEmitter {
           },
         });
         if (!job) return;
+        currentJobMeta = job;
 
         if (job.cancelRequested) {
-          await this.finalizeCancelledJob(jobId);
+          await this.finalizeCancelledJob(jobId, job);
           return;
         }
 
@@ -131,11 +146,13 @@ export class MatchingJobRunner extends EventEmitter {
                 where: { id: jobId },
                 data: { processed: { increment: 1 } },
               });
+              await this.refundIfReserved(job, 1);
               return;
             }
 
             try {
-              await evaluateCandidateWithAi(job.jobDescription, item.candidate, this.aiProvider, job.ownerId);
+              const plan = job.planName === 'FREE' || job.planName === 'PLUS' ? job.planName : undefined;
+              await evaluateCandidateWithAi(job.jobDescription, item.candidate, this.aiProvider, job.ownerId, plan, job.companyId ?? null);
               await prisma.matchingJobItem.update({
                 where: { id: item.id },
                 data: {
@@ -169,6 +186,7 @@ export class MatchingJobRunner extends EventEmitter {
                   failed: { increment: 1 },
                 },
               });
+              await this.refundIfReserved(job, 1);
             }
           }),
         );
@@ -180,19 +198,34 @@ export class MatchingJobRunner extends EventEmitter {
         }
       }
     } catch (error) {
+      const now = new Date();
+      const skipped = await prisma.matchingJobItem.updateMany({
+        where: { jobId, status: 'PENDING' },
+        data: {
+          status: 'SKIPPED',
+          errorCode: 'JOB_FAILED',
+          errorMessage: 'Tiến trình đánh giá gặp sự cố hệ thống',
+          finishedAt: now,
+        },
+      });
       await prisma.matchingJob.updateMany({
         where: { id: jobId, status: { in: ['QUEUED', 'RUNNING'] } },
         data: {
           status: 'FAILED',
           errorMessage: error instanceof Error ? error.message : 'Tiến trình đánh giá gặp sự cố hệ thống',
-          finishedAt: new Date(),
+          finishedAt: now,
+          ...(skipped.count > 0 ? { processed: { increment: skipped.count } } : {}),
         },
       });
+      await this.refundIfReserved(currentJobMeta, skipped.count);
       this.emit('progress', { jobId });
     }
   }
 
-  private async finalizeCancelledJob(jobId: string): Promise<void> {
+  private async finalizeCancelledJob(
+    jobId: string,
+    job?: { companyId?: string | null; quotaMonth?: Date | null },
+  ): Promise<void> {
     const now = new Date();
     const skipped = await prisma.matchingJobItem.updateMany({
       where: { jobId, status: 'PENDING' },
@@ -211,6 +244,7 @@ export class MatchingJobRunner extends EventEmitter {
         ...(skipped.count > 0 ? { processed: { increment: skipped.count } } : {}),
       },
     });
+    await this.refundIfReserved(job, skipped.count);
     this.emit('progress', { jobId });
   }
 }
