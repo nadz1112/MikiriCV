@@ -7,6 +7,7 @@ import { prisma } from '../config/database.js';
 import { env } from '../config/env.js';
 import { requireRole } from '../middlewares/auth.middleware.js';
 import { toAdminUserDto as safeUser } from '../common/mappers/user.mapper.js';
+import { companyMembership } from '../services/company.service.js';
 
 const router = Router();
 router.use(requireRole('ADMIN'));
@@ -15,6 +16,12 @@ const temporaryPasswordSchema = z.string()
   .min(8, 'Mật khẩu tạm cần ít nhất 8 ký tự')
   .regex(/[A-Za-z]/, 'Mật khẩu tạm phải có ít nhất một chữ cái (A–Z)')
   .regex(/\d/, 'Mật khẩu tạm phải có ít nhất một chữ số');
+
+router.get('/companies', async (_req, res, next) => {
+  try {
+    res.json({ success: true, data: await prisma.company.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }) });
+  } catch (err) { next(err); }
+});
 
 router.get('/', async (req, res, next) => {
   try {
@@ -27,11 +34,11 @@ router.get('/', async (req, res, next) => {
 });
 router.post('/', async (req, res, next) => {
   try {
-    const body = z.object({ email: z.string().email(), fullName: z.string().min(1), companyName: z.string().min(1), password: temporaryPasswordSchema }).parse(req.body);
+    const body = z.object({ email: z.string().email(), fullName: z.string().trim().min(1), companyName: z.string().trim().min(1), password: temporaryPasswordSchema }).parse(req.body);
     const email = body.email.trim().toLowerCase();
     if (await prisma.user.findUnique({ where: { email } })) throw failure('EMAIL_ALREADY_EXISTS', 409, 'Email đã tồn tại');
     const { password, ...profile } = body;
-    const user = await prisma.user.create({ data: { ...profile, email, passwordHash: await bcrypt.hash(password, env.BCRYPT_ROUNDS), role: 'ENTERPRISE', mustChangePassword: true } });
+    const user = await prisma.user.create({ data: { ...profile, company: companyMembership(profile.companyName), email, passwordHash: await bcrypt.hash(password, env.BCRYPT_ROUNDS), role: 'ENTERPRISE', mustChangePassword: true } });
     res.status(201).json({ success: true, data: safeUser(user) });
   } catch (err) { next(err); }
 });
@@ -45,10 +52,10 @@ router.get('/:id', async (req, res, next) => {
 });
 router.put('/:id', async (req, res, next) => {
   try {
-    const body = z.object({ fullName: z.string().min(1), companyName: z.string().min(1) }).parse(req.body);
+    const body = z.object({ fullName: z.string().trim().min(1), companyName: z.string().trim().min(1) }).parse(req.body);
     const target = await prisma.user.findUnique({ where: { id: req.params.id }, select: { role: true } });
     if (!target || target.role !== 'ENTERPRISE') throw failure('USER_NOT_FOUND', 404, 'Không tìm thấy tài khoản');
-    const user = await prisma.user.update({ where: { id: req.params.id }, data: body });
+    const user = await prisma.user.update({ where: { id: req.params.id }, data: { ...body, company: companyMembership(body.companyName) } });
     res.json({ success: true, data: safeUser(user) });
   } catch (err) { next(err); }
 });

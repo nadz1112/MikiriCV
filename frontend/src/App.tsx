@@ -3,7 +3,6 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation, useNavigat
 import { Toaster } from 'react-hot-toast';
 import { Navbar } from './components/common/Navbar';
 import { DashboardPage } from './pages/DashboardPage';
-import { JobsPage } from './pages/JobsPage';
 import { CandidatesPage } from './pages/CandidatesPage';
 import { MatchingPage } from './pages/MatchingPage';
 import { LoginPage } from './pages/LoginPage';
@@ -70,7 +69,6 @@ function AppRoutes() {
             />
           </Route>
           <Route element={<ProtectedRoute roles={['ADMIN', 'ENTERPRISE']} />}>
-            <Route path="/jobs" element={<JobsPage />} />
             <Route path="/candidates" element={<CandidatesPage />} />
           </Route>
           <Route element={<ProtectedRoute roles={['ENTERPRISE']} />}>

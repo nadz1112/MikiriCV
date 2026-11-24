@@ -35,6 +35,10 @@ export interface AiMatchingResult {
   summary: string;
   matchedSkills: string[];
   missingSkills: string[];
+  highlights: string[];
+  skillAnalysis: string[];
+  redFlags: string[];
+  interviewQuestions: string[];
 }
 
 export interface ExtractedCandidateInfo {

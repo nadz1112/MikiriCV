@@ -4,6 +4,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
+import { companyMembership } from '../src/services/company.service.js';
 
 const config = z.object({ SEED_ADMIN_EMAIL: z.string().email(), SEED_ADMIN_PASSWORD: z.string().min(8).regex(/[A-Za-z]/).regex(/\d/), SEED_DEMO_PASSWORD: z.string().min(8).regex(/[A-Za-z]/).regex(/\d/).optional(), BCRYPT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12), UPLOAD_DIR: z.string().default('./uploads'), NODE_ENV: z.enum(['development', 'production', 'test']).default('development') }).parse(process.env);
 const prisma = new PrismaClient();
@@ -35,8 +36,8 @@ async function main() {
     for (const demo of demos) {
       const user = await prisma.user.upsert({
         where: { email: demo.email },
-        update: { passwordHash: demoPasswordHash, failedLoginCount: 0, lockedUntil: null },
-        create: { ...demo, passwordHash: demoPasswordHash, role: 'ENTERPRISE', mustChangePassword: true },
+        update: { passwordHash: demoPasswordHash, failedLoginCount: 0, lockedUntil: null, company: companyMembership(demo.companyName) },
+        create: { ...demo, company: companyMembership(demo.companyName), passwordHash: demoPasswordHash, role: 'ENTERPRISE', mustChangePassword: true },
       });
       if (!(await prisma.jobDescription.findFirst({ where: { ownerId: user.id } }))) {
         await prisma.jobDescription.create({ data: { ownerId: user.id, createdById: user.id, title: 'Chuyên viên tuyển dụng (demo)', description: 'Quản lý quy trình tuyển dụng, sàng lọc hồ sơ và phối hợp với các bộ phận.', requiredSkills: ['tuyển dụng', 'giao tiếp', 'nhân sự'], minExperience: 1 } });

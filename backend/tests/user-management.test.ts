@@ -77,6 +77,7 @@ describe('enterprise account administration over HTTP with a mocked database', (
     expect(body.data).toMatchObject({ email: 'new@example.test', role: 'ENTERPRISE', mustChangePassword: true });
     const data = mocks.user.create.mock.calls[0][0].data;
     expect(await bcrypt.compare('Temporary123', data.passwordHash)).toBe(true);
+    expect(data.company).toEqual({ connectOrCreate: { where: { key: 'công ty' }, create: { name: 'Công ty', key: 'công ty' } } });
   });
   it('rejects duplicate email with a Vietnamese 409', async () => {
     const response = await request('POST', '/users', { email: 'hr@example.test', fullName: 'HR', companyName: 'Công ty', password: 'Temporary123' });

@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({ login: vi.fn(), user: null as null | { id: str
 vi.mock('../features/auth/authStore', () => ({ useAuthStore: () => ({ user: mocks.user, status: mocks.status, login: mocks.login }) }));
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); mocks.user = null; mocks.status = 'unauthenticated'; });
-const renderLogin = () => render(<MemoryRouter initialEntries={['/login']}><Routes><Route path="/login" element={<LoginPage/>}/><Route path="/jobs" element={<div>Trang công việc</div>}/><Route path="/admin/dashboard" element={<div>Dashboard quản trị</div>}/><Route path="/admin/users" element={<div>Quản lý tài khoản</div>}/><Route path="/change-password" element={<div>Đổi mật khẩu</div>}/></Routes></MemoryRouter>);
+const renderLogin = () => render(<MemoryRouter initialEntries={['/login']}><Routes><Route path="/login" element={<LoginPage/>}/><Route path="/" element={<div>Trang công việc</div>}/><Route path="/admin/dashboard" element={<div>Dashboard quản trị</div>}/><Route path="/admin/users" element={<div>Quản lý tài khoản</div>}/><Route path="/change-password" element={<div>Đổi mật khẩu</div>}/></Routes></MemoryRouter>);
 
 describe('LoginPage', () => {
   it('redirects ADMIN to its dashboard after login', async () => {
@@ -29,7 +29,7 @@ describe('LoginPage', () => {
     expect(mocks.login).not.toHaveBeenCalled();
   });
 
-  it('shows server errors and redirects ENTERPRISE to jobs after login', async () => {
+  it('shows server errors and redirects ENTERPRISE to dashboard after login', async () => {
     const user = userEvent.setup(); renderLogin();
     mocks.login.mockRejectedValueOnce({ response: { data: { error: { message: 'Email hoặc mật khẩu không đúng' } } } });
     await user.type(screen.getByLabelText('Email'), 'hr@example.com'); await user.type(screen.getByLabelText('Mật khẩu'), 'badpass123');

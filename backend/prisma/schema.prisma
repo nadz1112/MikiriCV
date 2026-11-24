@@ -18,12 +18,28 @@ enum ExtractionStatus {
   FAILED
 }
 
+model Company {
+  id        String    @id @default(uuid())
+  name      String
+  key       String    @unique
+  plan      String    @default("FREE")
+  billingCycle String @default("MONTHLY")
+  quotaMonth DateTime? @db.Date
+  monthlyUsed Int     @default(0)
+  users     User[]
+  aiUsage   AiUsage[]
+
+  @@map("companies")
+}
+
 model User {
   id                 String    @id @default(uuid())
   email              String    @unique
   passwordHash       String
   fullName           String
   companyName        String?
+  companyId          String?
+  company            Company?  @relation(fields: [companyId], references: [id], onDelete: Restrict)
   role               UserRole
   isActive           Boolean   @default(true)
   mustChangePassword Boolean   @default(false)
@@ -40,6 +56,7 @@ model User {
   aiUsage            AiUsage[]
 
   @@map("users")
+  @@index([companyId])
 }
 
 model JobDescription {
@@ -67,6 +84,7 @@ model Candidate {
   email             String?
   phone             String?
   rawText           String        @default("") @db.Text
+  pageCount         Int?
   searchText        String        @default("") @db.Text
   skills            String[]
   yearsOfExperience Int           @default(0)
@@ -113,6 +131,10 @@ model MatchResult {
   summary          String         @db.Text
   matchedSkills    String[]
   missingSkills    String[]
+  highlights       String[]       @default([])
+  skillAnalysis    String[]       @default([])
+  redFlags         String[]       @default([])
+  interviewQuestions String[]     @default([])
   createdAt        DateTime       @default(now())
   updatedAt        DateTime?      @updatedAt
   inputTokens      Int?
@@ -128,6 +150,8 @@ model MatchResult {
 model AiUsage {
   id           String   @id @default(uuid())
   enterpriseId String?
+  companyId    String?
+  company      Company? @relation(fields: [companyId], references: [id], onDelete: Restrict)
   enterprise   User?    @relation(fields: [enterpriseId], references: [id], onDelete: SetNull)
   model        String
   inputTokens  Int?
@@ -138,5 +162,6 @@ model AiUsage {
 
   @@index([day])
   @@index([enterpriseId, day])
+  @@index([companyId, day])
   @@map("ai_usage")
 }

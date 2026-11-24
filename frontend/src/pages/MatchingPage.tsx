@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { MatchingControlPanel } from '../features/matching/components/MatchingControlPanel';
 import { MatchingConfirmModal } from '../features/matching/components/MatchingConfirmModal';
@@ -6,6 +6,9 @@ import { MatchingResultsTable } from '../features/matching/components/MatchingRe
 import { useMatching } from '../features/matching/hooks/useMatching';
 import { CandidateInsightDrawer } from '../components/dashboard/CandidateInsightDrawer';
 import { DeleteConfirmModal } from '../components/dashboard/DeleteConfirmModal';
+import { getSubscription, type Subscription } from '../services/subscriptionApi';
+import { SubscriptionPlans } from '../components/common/SubscriptionPlans';
+import { ComparisonExport } from '../features/matching/components/ComparisonExport';
 
 interface MatchingLocationState {
   selectedCandidateIds?: string[];
@@ -47,6 +50,13 @@ export const MatchingPage: React.FC = () => {
     setCandidateToDelete,
     handleConfirmDeleteCandidate,
   } = useMatching(navState?.jobId, navState?.selectedCandidateIds);
+  const [subscription, setSubscription] = useState<Subscription>();
+  const [subscriptionError, setSubscriptionError] = useState('');
+  useEffect(() => {
+    const controller = new AbortController();
+    void getSubscription(controller.signal).then((value) => { if (!controller.signal.aborted) { setSubscription(value); setSubscriptionError(''); } }).catch(() => { if (!controller.signal.aborted) setSubscriptionError('Không thể tải gói dịch vụ và hạn mức doanh nghiệp.'); });
+    return () => controller.abort();
+  }, [isRunning]);
 
   return (
     <div className="space-y-6 pb-12">
@@ -59,6 +69,7 @@ export const MatchingPage: React.FC = () => {
       </div>
 
       {/* Bảng điều khiển Chọn JD & Chọn tập ứng viên */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-5"><h2 className="text-lg font-bold">Gói dịch vụ và hạn mức doanh nghiệp</h2>{subscriptionError && <p role="alert" className="mt-2 text-sm text-red-700">{subscriptionError}</p>}<SubscriptionPlans subscription={subscription} /></section>
       <MatchingControlPanel
         jobs={jobs}
         selectedJob={selectedJob}
@@ -79,6 +90,7 @@ export const MatchingPage: React.FC = () => {
       />
 
       {/* Bảng xếp hạng ứng viên theo JD */}
+      <ComparisonExport jobId={selectedJobId} candidateIds={matchingResults.map((result) => result.candidateId)} plus={subscription?.name === 'PLUS'} />
       <MatchingResultsTable
         selectedJobId={selectedJobId}
         jobTitle={selectedJob?.title}

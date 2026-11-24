@@ -18,9 +18,12 @@ const pdfJs = require('pdf-parse/lib/pdf.js/v2.0.550/build/pdf.js') as {
   getDocument(options: { data: Uint8Array; verbosity: number; worker: PdfWorker }): { promise: Promise<PdfDocument>; destroy(): Promise<void> };
 };
 
-export interface TextExtractor { extract(filePath: string): Promise<string> }
+export interface TextExtractor { extract(filePath: string): Promise<string>; extractDocument?(filePath: string): Promise<{ text: string; pageCount: number | null }> }
 export class PdfTextExtractor implements TextExtractor {
   async extract(filePath: string): Promise<string> {
+    return (await this.extractDocument(filePath)).text;
+  }
+  async extractDocument(filePath: string): Promise<{ text: string; pageCount: number }> {
     // PDF.js expects Uint8Array slice semantics; a Node Buffer can corrupt offsets.
     const data = new Uint8Array(await fs.readFile(filePath));
     const worker = new pdfJs.PDFWorker({ verbosity: 0 });
@@ -43,7 +46,7 @@ export class PdfTextExtractor implements TextExtractor {
         }
         pages.push(text);
       }
-      return pages.join('\n\n');
+      return { text: pages.join('\n\n'), pageCount: document.numPages };
     } finally {
       try { await task?.destroy(); } finally { worker.destroy(); }
     }

@@ -8,6 +8,11 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('../src/config/database.js', () => ({ prisma: mocks.prisma }));
 vi.mock('../src/config/gemini.js', () => ({ geminiModel: { generateContent: mocks.generateContent } }));
+vi.mock('../src/services/subscription.service.js', async (importOriginal) => ({
+  ...await importOriginal<object>(),
+  reserveAnalyses: vi.fn(async (_id: string, count: number) => ({ name: 'FREE', companyId: 'company-a', reserved: count, monthDate: new Date(), maxPages: 2, maxCharacters: 3000 })),
+  refundAnalyses: vi.fn(),
+}));
 describe('matching usage history', () => {
   let service: typeof import('../src/services/matching.service.js').matchingService;
   const dto = { jobDescriptionId: 'jd', candidateIds: ['cv'] };
@@ -22,9 +27,9 @@ describe('matching usage history', () => {
     vi.clearAllMocks();
     mocks.prisma.jobDescription.findUnique.mockResolvedValue({ id: 'jd', ownerId: 'hr', title: 'JD', description: '', minExperience: 0, requiredSkills: [] });
     mocks.prisma.candidate.findMany.mockResolvedValue([{ id: 'cv', fullName: 'Ứng viên mẫu', rawText: 'Nội dung mẫu', skills: ['React'], yearsOfExperience: 3, extractionStatus: 'SUCCESS' }]);
-    mocks.prisma.matchResult.upsert.mockResolvedValue({ id: 'result', candidateId: 'cv', jobDescriptionId: 'jd', createdAt: new Date(), score: 75, summary: 'OK', matchedSkills: [], missingSkills: [] });
+    mocks.prisma.matchResult.upsert.mockResolvedValue({ id: 'result', candidateId: 'cv', jobDescriptionId: 'jd', createdAt: new Date(), score: 75, summary: 'OK', matchedSkills: [], missingSkills: [], highlights: ['React', 'Experience', 'Verify skills'] });
     mocks.prisma.aiUsage.create.mockResolvedValue({});
-    mocks.generateContent.mockResolvedValue({ response: { usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 20 }, text: () => JSON.stringify({ score: 75, summary: 'Phù hợp', matchedSkills: [], missingSkills: [] }) } });
+    mocks.generateContent.mockResolvedValue({ response: { usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 20 }, text: () => JSON.stringify({ score: 75, summary: 'Phù hợp', matchedSkills: [], missingSkills: [], highlights: ['React', 'Experience', 'Verify skills'] }) } });
   });
   it('records every call when the same result is evaluated again', async () => {
     await service.runMatching(dto, 'hr');
@@ -35,7 +40,7 @@ describe('matching usage history', () => {
     expect(mocks.prisma.candidate.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ['cv'] }, ownerId: 'hr' } }));
   });
   it('keeps missing provider token counts nullable', async () => {
-    mocks.generateContent.mockResolvedValue({ response: { text: () => JSON.stringify({ score: 75, summary: 'Phù hợp', matchedSkills: [], missingSkills: [] }) } });
+    mocks.generateContent.mockResolvedValue({ response: { text: () => JSON.stringify({ score: 75, summary: 'Phù hợp', matchedSkills: [], missingSkills: [], highlights: ['React', 'Experience', 'Verify skills'] }) } });
     await service.runMatching(dto, 'hr');
     expect(mocks.prisma.aiUsage.create).toHaveBeenCalledWith({ data: expect.objectContaining({ inputTokens: null, outputTokens: null }) });
   });
