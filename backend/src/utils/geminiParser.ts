@@ -90,8 +90,13 @@ function parseDetailedResult(parsed: Record<string, unknown>, weights?: Record<s
   };
 }
 
-export function sanitizeAndParseGeminiResponse(rawText: string, weights?: Record<string, number>): AiMatchingResult {
+export function sanitizeAndParseGeminiResponse(
+  rawText: string,
+  options?: Record<string, number> | 'FREE' | 'PLUS',
+): AiMatchingResult {
   try {
+    const weights = typeof options === 'object' ? options : undefined;
+    const plan = typeof options === 'string' ? options : undefined;
     const cleaned = rawText
       .replace(/^```json\s*/i, '')
       .replace(/^```\s*/i, '')
@@ -115,16 +120,20 @@ export function sanitizeAndParseGeminiResponse(rawText: string, weights?: Record
       || !Array.isArray(parsed.missingSkills) || !parsed.missingSkills.every((skill: unknown) => typeof skill === 'string')) {
       throw new Error('INVALID_AI_RESPONSE');
     }
-    const score = parsed.score as number;
-    const summary = parsed.summary as string;
-    const matchedSkills = parsed.matchedSkills as string[];
-    const missingSkills = parsed.missingSkills as string[];
+    const { score, summary, matchedSkills, missingSkills } = parsed;
+    const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === 'string' && item.trim().length > 0);
+    if (plan && (!strings(parsed.highlights) || parsed.highlights.length !== 3)) throw new Error('MISSING_HIGHLIGHTS');
+    if (plan === 'PLUS' && (!strings(parsed.skillAnalysis) || !parsed.skillAnalysis.length || !strings(parsed.redFlags) || !strings(parsed.interviewQuestions) || parsed.interviewQuestions.length < 3)) throw new Error('MISSING_PLUS_REPORT');
 
     return {
       score,
       summary,
       matchedSkills,
       missingSkills,
+      highlights: strings(parsed.highlights) ? parsed.highlights : [],
+      skillAnalysis: plan === 'PLUS' ? parsed.skillAnalysis as string[] : [],
+      redFlags: plan === 'PLUS' ? parsed.redFlags as string[] : [],
+      interviewQuestions: plan === 'PLUS' ? parsed.interviewQuestions as string[] : [],
     };
   } catch (error) {
     // Do not log provider output, which can contain sensitive prompt data.

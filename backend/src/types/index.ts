@@ -49,6 +49,9 @@ export interface AiMatchingResult {
   confidence?: 'high' | 'medium' | 'low';
   limitations?: string[];
   evidence?: CvTestEvidence[];
+  highlights?: string[];
+  skillAnalysis?: string[];
+  redFlags?: string[];
 }
 
 export type CvTestCategory =
@@ -139,4 +142,3 @@ export interface DashboardStats {
     createdAt: Date;
   }>;
 }
-

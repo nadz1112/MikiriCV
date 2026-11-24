@@ -51,6 +51,8 @@ export async function evaluateCandidateWithAi(
   candidate: EvaluatableCandidate,
   aiProvider: AIMatchingProvider,
   ownerId?: string,
+  plan?: 'FREE' | 'PLUS',
+  companyId?: string | null,
 ) {
   let saving = false;
   let inputTokens: number | null = null;
@@ -78,7 +80,7 @@ export async function evaluateCandidateWithAi(
     const aiResponse = await aiProvider.generateEvaluation(prompt);
     inputTokens = aiResponse.inputTokens;
     outputTokens = aiResponse.outputTokens;
-    const parsedResult = sanitizeAndParseGeminiResponse(aiResponse.rawText, weights);
+    const parsedResult = sanitizeAndParseGeminiResponse(aiResponse.rawText, plan ?? weights);
 
     saving = true;
     const savedMatch = await prisma.matchResult.upsert({
@@ -98,12 +100,15 @@ export async function evaluateCandidateWithAi(
         summary: parsedResult.summary,
         matchedSkills: parsedResult.matchedSkills,
         missingSkills: parsedResult.missingSkills,
+        highlights: parsedResult.highlights ?? [],
+        skillAnalysis: parsedResult.skillAnalysis ?? [],
+        redFlags: parsedResult.redFlags ?? [],
         matchLevel: parsedResult.matchLevel ?? null,
         scoreBreakdown: parsedResult.scoreBreakdown as Prisma.InputJsonValue | undefined,
         strengths: parsedResult.strengths as Prisma.InputJsonValue | undefined,
         gaps: parsedResult.gapsAndConcerns as Prisma.InputJsonValue | undefined,
         requirementsAnalysis: parsedResult.requirementsAnalysis as Prisma.InputJsonValue | undefined,
-        interviewQuestions: parsedResult.interviewQuestions as Prisma.InputJsonValue | undefined,
+        interviewQuestions: parsedResult.interviewQuestions,
         careerPotential: parsedResult.careerPotential as Prisma.InputJsonValue | undefined,
         confidence: parsedResult.confidence ?? null,
         limitations: parsedResult.limitations as Prisma.InputJsonValue | undefined,
@@ -124,12 +129,15 @@ export async function evaluateCandidateWithAi(
         summary: parsedResult.summary,
         matchedSkills: parsedResult.matchedSkills,
         missingSkills: parsedResult.missingSkills,
+        highlights: parsedResult.highlights ?? [],
+        skillAnalysis: parsedResult.skillAnalysis ?? [],
+        redFlags: parsedResult.redFlags ?? [],
         matchLevel: parsedResult.matchLevel ?? null,
         scoreBreakdown: parsedResult.scoreBreakdown as Prisma.InputJsonValue | undefined,
         strengths: parsedResult.strengths as Prisma.InputJsonValue | undefined,
         gaps: parsedResult.gapsAndConcerns as Prisma.InputJsonValue | undefined,
         requirementsAnalysis: parsedResult.requirementsAnalysis as Prisma.InputJsonValue | undefined,
-        interviewQuestions: parsedResult.interviewQuestions as Prisma.InputJsonValue | undefined,
+        interviewQuestions: parsedResult.interviewQuestions,
         careerPotential: parsedResult.careerPotential as Prisma.InputJsonValue | undefined,
         confidence: parsedResult.confidence ?? null,
         limitations: parsedResult.limitations as Prisma.InputJsonValue | undefined,
@@ -166,6 +174,7 @@ export async function evaluateCandidateWithAi(
       await prisma.aiUsage.create({
         data: {
           enterpriseId: ownerId ?? job.ownerId,
+          companyId: companyId ?? null,
           model: aiProvider.modelName,
           inputTokens,
           outputTokens,
@@ -181,4 +190,3 @@ export async function evaluateCandidateWithAi(
     }
   }
 }
-

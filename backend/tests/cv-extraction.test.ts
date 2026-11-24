@@ -34,6 +34,7 @@ it('extracts recoverable PDF text without repeating hex warnings, but rejects un
     const file = path.join(dir, 'cv.pdf');
     await writeFile(file, pdfWithInvalidHex());
     expect(await new PdfTextExtractor().extract(file)).toContain('Hello');
+    expect(await new PdfTextExtractor().extractDocument(file)).toMatchObject({ pageCount: 1, text: expect.stringContaining('Hello') });
     expect(log.mock.calls.flat().join(' ')).not.toContain('Ignoring invalid character');
     await writeFile(file, Buffer.from('not a pdf'));
     await expect(new PdfTextExtractor().extract(file)).rejects.toThrow();

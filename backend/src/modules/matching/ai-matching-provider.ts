@@ -25,7 +25,7 @@ export class GeminiMatchingProvider implements AIMatchingProvider {
     const geminiResponse = await withRetry(
       () => geminiModel.generateContent(prompt, { timeout: 60000 }),
       {
-        retries: env.AI_MAX_RETRIES,
+        retries: env.NODE_ENV === 'test' ? 0 : env.AI_MAX_RETRIES,
         baseMs: env.NODE_ENV === 'test' ? 0 : 1000,
         shouldRetry: isTransientAiError,
       },
@@ -39,4 +39,3 @@ export class GeminiMatchingProvider implements AIMatchingProvider {
 }
 
 export const geminiMatchingProvider = new GeminiMatchingProvider();
-

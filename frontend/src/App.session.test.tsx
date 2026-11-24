@@ -10,13 +10,13 @@ const state = vi.hoisted(() => ({
 }));
 vi.mock('./features/auth/authStore', () => ({ useAuthStore: () => state }));
 vi.mock('./components/common/Navbar', () => ({ Navbar: () => null }));
-vi.mock('./pages/JobsPage', () => ({ JobsPage: () => <Link to="/candidates">Mở danh sách CV</Link> }));
+vi.mock('./pages/DashboardPage', () => ({ DashboardPage: () => <Link to="/candidates">Mở danh sách CV</Link> }));
 vi.mock('./pages/CandidatesPage', () => ({ CandidatesPage: () => <div>Danh sách CV kiểm tra</div> }));
 vi.mock('./pages/LoginPage', () => ({ LoginPage: () => <div>Trang đăng nhập kiểm tra</div> }));
 afterEach(() => { cleanup(); vi.clearAllMocks(); window.history.replaceState({}, '', '/'); });
 describe('khôi phục phiên và điều hướng', () => {
   it('không kiểm tra lại phiên khi chuyển trang hoặc nhận sự kiện hết phiên', async () => {
-    window.history.replaceState({}, '', '/jobs');
+    window.history.replaceState({}, '', '/');
     render(<App/>);
     expect(state.fetchMe).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByText('Mở danh sách CV'));

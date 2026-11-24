@@ -56,18 +56,20 @@ interface MatchResultRaw {
   strengths?: unknown;
   gaps?: unknown;
   requirementsAnalysis?: unknown;
-  interviewQuestions?: unknown;
   careerPotential?: unknown;
   confidence?: string | null;
   limitations?: unknown;
   evidence?: unknown;
   candidate?: CandidateSummaryRaw;
+  interviewQuestions?: unknown;
+  highlights?: string[]; skillAnalysis?: string[]; redFlags?: string[];
 }
 
 export function toMatchResultDto(match: MatchResultRaw) {
   return {
     id: match.id, candidateId: match.candidateId, jobDescriptionId: match.jobDescriptionId,
     score: match.score, summary: match.summary, matchedSkills: match.matchedSkills, missingSkills: match.missingSkills,
+    highlights: match.highlights ?? [], skillAnalysis: match.skillAnalysis ?? [], redFlags: match.redFlags ?? [],
     createdAt: match.createdAt.toISOString(),
     matchLevel: match.matchLevel ?? undefined,
     scoreBreakdown: match.scoreBreakdown ?? undefined,

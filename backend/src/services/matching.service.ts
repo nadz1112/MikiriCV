@@ -7,6 +7,9 @@ import { toMatchResultDto } from '../modules/candidates/candidate.mapper.js';
 import { geminiMatchingProvider, type AIMatchingProvider } from '../modules/matching/ai-matching-provider.js';
 import { evaluateCandidateWithAi, safeMatchingCandidateSelect } from '../modules/matching/evaluate-candidate.js';
 import { matchingJobRunner } from '../modules/matching/matching-job.runner.js';
+import { PdfTextExtractor } from '../modules/candidates/text-extractor.js';
+import { reserveAnalyses, refundAnalyses, checkDocuments } from './subscription.service.js';
+import path from 'path';
 
 function formatMatchingJobDto(job: {
   id: string;
@@ -75,48 +78,82 @@ export class MatchingService {
     }
 
     const jobWhere = { id: jobDescriptionId, ...(ownerId ? { ownerId } : {}) };
-    const job =
-      typeof prisma.jobDescription.findFirst === 'function'
-        ? await prisma.jobDescription.findFirst({ where: jobWhere })
-        : await (prisma.jobDescription.findUnique as any)({ where: jobWhere });
+    const job = typeof prisma.jobDescription.findFirst === 'function'
+      ? await prisma.jobDescription.findFirst({ where: jobWhere, include: { owner: { select: { companyId: true } } } })
+      : await (prisma.jobDescription.findUnique as any)({ where: jobWhere });
 
-    if (!job) {
-      throw new AppError(404, 'JOB_NOT_FOUND', 'Không tìm thấy Job Description');
-    }
+    if (!job) throw new AppError(404, 'JOB_NOT_FOUND', 'Không tìm thấy Job Description');
 
     const candidates = await prisma.candidate.findMany({
-      where: {
-        id: { in: candidateIds },
-        ...(ownerId ? { ownerId } : {}),
-      },
+      where: { id: { in: candidateIds }, ...(ownerId ? { ownerId } : {}) },
       select: {
         id: true,
         fullName: true,
         email: true,
         phone: true,
         fileName: true,
+        fileUrl: true,
         rawText: true,
         skills: true,
         yearsOfExperience: true,
+        education: true,
         extractionStatus: true,
+        pageCount: true,
       },
     });
 
     if (candidates.length !== candidateIds.length) {
       throw new AppError(404, 'CANDIDATE_NOT_FOUND', 'Không tìm thấy một hoặc nhiều ứng viên hợp lệ');
     }
-
     if (candidates.some((candidate) => candidate.extractionStatus === 'FAILED')) {
       throw new AppError(422, 'CV_EXTRACTION_FAILED', 'Có CV chưa trích xuất được nội dung. Vui lòng kiểm tra lại hồ sơ đã chọn.');
     }
 
-    const results = [];
     for (const candidate of candidates) {
-      const matchDto = await evaluateCandidateWithAi(job, candidate, this.aiProvider, ownerId);
-      results.push(matchDto);
+      if (candidate.pageCount == null && candidate.fileName?.toLowerCase().endsWith('.pdf')) {
+        try {
+          const root = path.resolve(process.cwd(), env.UPLOAD_DIR);
+          const filePath = candidate.fileUrl.startsWith('/uploads/')
+            ? path.resolve(root, path.basename(candidate.fileUrl))
+            : path.resolve(candidate.fileUrl);
+          if (!filePath.startsWith(`${root}${path.sep}`)) throw new Error('INVALID_CV_PATH');
+          candidate.pageCount = (await new PdfTextExtractor().extractDocument(filePath)).pageCount;
+        } catch {
+          throw new AppError(422, 'CV_PAGE_COUNT_UNAVAILABLE', 'Không thể kiểm tra số trang CV. Vui lòng tải lại file PDF hợp lệ.');
+        }
+      }
     }
 
-    return results;
+    const ticket = await reserveAnalyses(ownerId ?? job.ownerId, candidateIds.length);
+    const results = [];
+    let completed = 0;
+    let failed = false;
+    try {
+      checkDocuments(ticket, candidates);
+      for (const candidate of candidates) {
+        const matchDto = await evaluateCandidateWithAi(
+          job,
+          candidate,
+          this.aiProvider,
+          ownerId,
+          ticket.name,
+          ticket.companyId,
+        );
+        results.push(matchDto);
+        completed++;
+      }
+      return results;
+    } catch (error) {
+      failed = true;
+      throw error;
+    } finally {
+      try {
+        await refundAnalyses(ticket, ticket.reserved - completed);
+      } catch {
+        console.error('ANALYSIS_QUOTA_REFUND_FAILED');
+        if (!failed) throw new AppError(500, 'QUOTA_REFUND_FAILED', 'Không thể hoàn lượt chưa sử dụng. Vui lòng liên hệ quản trị viên.');
+      }
+    }
   }
 
   async createMatchingJob(dto: RunMatchingDto, ownerId: string) {

@@ -77,6 +77,9 @@ export interface Candidate {
 export interface CandidatePage { data: Candidate[]; total: number; page: number; limit: number }
 
 export interface MatchResult {
+  highlights?: string[];
+  skillAnalysis?: string[];
+  redFlags?: string[];
   id: string;
   candidateId: string;
   jobDescriptionId: string;
@@ -190,4 +193,3 @@ export interface MatchingJob {
   finishedAt: string | null;
   items?: MatchingJobItem[];
 }
-
