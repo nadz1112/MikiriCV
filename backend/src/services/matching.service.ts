@@ -1,35 +1,78 @@
 import { env } from '../config/env.js';
-import { vietnamDay } from './admin-dashboard.service.js';
 import { prisma } from '../config/database.js';
-import { geminiModel } from '../config/gemini.js';
 import { RunMatchingDto } from '../types/index.js';
-import { sanitizeAndParseGeminiResponse } from '../utils/geminiParser.js';
 import { AppError } from '../common/errors/app-error.js';
-import { toAiError } from '../utils/ai-error.js';
+import type { AuthUser } from '../middlewares/auth.middleware.js';
 import { toMatchResultDto } from '../modules/candidates/candidate.mapper.js';
-import { assertSafeAiMatchingPayload, buildAiMatchingPayload, buildAiMatchingPrompt } from '../modules/candidates/ai-matching-payload.js';
-import { resolveCvTestWeights } from '../modules/evaluation/score-calculator.js';
-import { isTransientAiError, withRetry } from '../utils/retry.js';
-import type { Prisma } from '@prisma/client';
+import { geminiMatchingProvider, type AIMatchingProvider } from '../modules/matching/ai-matching-provider.js';
+import { evaluateCandidateWithAi, safeMatchingCandidateSelect } from '../modules/matching/evaluate-candidate.js';
+import { matchingJobRunner } from '../modules/matching/matching-job.runner.js';
 
-const safeCandidateSelect = {
-  id: true,
-  fullName: true,
-  email: true,
-  phone: true,
-  skills: true,
-  yearsOfExperience: true,
-  education: true,
-  fileName: true,
-  extractionStatus: true,
-  extractionMessage: true,
-  createdAt: true,
-} as const;
+function formatMatchingJobDto(job: {
+  id: string;
+  jobDescriptionId: string;
+  status: string;
+  total: number;
+  processed: number;
+  failed: number;
+  cancelRequested: boolean;
+  errorMessage: string | null;
+  createdAt: Date;
+  startedAt: Date | null;
+  finishedAt: Date | null;
+  items?: Array<{
+    id: string;
+    candidateId: string;
+    status: string;
+    attempts: number;
+    errorCode: string | null;
+    errorMessage: string | null;
+    finishedAt: Date | null;
+    candidate?: { id: string; fullName: string };
+  }>;
+}) {
+  return {
+    id: job.id,
+    jobDescriptionId: job.jobDescriptionId,
+    status: job.status,
+    total: job.total,
+    processed: job.processed,
+    failed: job.failed,
+    cancelRequested: job.cancelRequested,
+    errorMessage: job.errorMessage,
+    createdAt: job.createdAt.toISOString(),
+    startedAt: job.startedAt ? job.startedAt.toISOString() : null,
+    finishedAt: job.finishedAt ? job.finishedAt.toISOString() : null,
+    ...(job.items
+      ? {
+          items: job.items.map((item) => ({
+            id: item.id,
+            candidateId: item.candidateId,
+            candidateName: item.candidate?.fullName ?? 'Ứng viên',
+            status: item.status,
+            attempts: item.attempts,
+            errorCode: item.errorCode,
+            errorMessage: item.errorMessage,
+            finishedAt: item.finishedAt ? item.finishedAt.toISOString() : null,
+          })),
+        }
+      : {}),
+  };
+}
 
 export class MatchingService {
+  constructor(
+    private readonly aiProvider: AIMatchingProvider = geminiMatchingProvider,
+    private readonly runner: { enqueue(jobId: string): void } = matchingJobRunner,
+  ) {}
+
   async runMatching(dto: RunMatchingDto, ownerId?: string) {
     const { jobDescriptionId } = dto;
     const candidateIds = [...new Set(dto.candidateIds)];
+
+    if (candidateIds.length > env.SYNC_MATCH_MAX) {
+      throw new AppError(422, 'SYNC_BATCH_TOO_LARGE', 'Số ứng viên vượt giới hạn xử lý trực tiếp, hãy dùng chế độ chạy nền');
+    }
 
     const jobWhere = { id: jobDescriptionId, ...(ownerId ? { ownerId } : {}) };
     const job =
@@ -68,136 +111,155 @@ export class MatchingService {
     }
 
     const results = [];
-
-    // Xử lý từng ứng viên với Gemini (có thể batch tuần tự để tránh rate limit)
     for (const candidate of candidates) {
-      let saving = false;
-      let inputTokens: number | null = null;
-      let outputTokens: number | null = null;
-      let succeeded = false;
-      try {
-        const weights = resolveCvTestWeights(job.evaluationConfig);
-        const payload = buildAiMatchingPayload(job, candidate);
-        assertSafeAiMatchingPayload(payload);
-        const prompt = buildAiMatchingPrompt(payload, weights);
-        if (typeof prisma.jobDescription.update === 'function') {
-          await prisma.jobDescription.update({
-            where: { id: job.id },
-            data: { jdAnalysis: payload.job as unknown as Prisma.InputJsonValue, analyzedAt: new Date() },
-          });
-        }
-        if (typeof prisma.candidate.update === 'function') {
-          await prisma.candidate.update({
-            where: { id: candidate.id },
-            data: { structuredProfile: payload.candidate as unknown as Prisma.InputJsonValue, profileVersion: 'cvtest-1.0', profileAnalyzedAt: new Date() },
-          });
-        }
-
-        const geminiResponse = await withRetry(
-          () => geminiModel.generateContent(prompt, { timeout: 60000 }),
-          {
-            retries: env.AI_MAX_RETRIES,
-            baseMs: env.NODE_ENV === 'test' ? 0 : 1000,
-            shouldRetry: isTransientAiError,
-          },
-        );
-        inputTokens = geminiResponse.response.usageMetadata?.promptTokenCount ?? null;
-        outputTokens = geminiResponse.response.usageMetadata?.candidatesTokenCount ?? null;
-        const rawText = geminiResponse.response.text();
-        const parsedResult = sanitizeAndParseGeminiResponse(rawText, weights);
-
-        // Lưu hoặc cập nhật (Upsert) vào PostgreSQL
-        saving = true;
-        const savedMatch = await prisma.matchResult.upsert({
-          where: {
-            candidateId_jobDescriptionId: {
-              candidateId: candidate.id,
-              jobDescriptionId: job.id,
-            },
-          },
-          update: {
-            inputTokens,
-            outputTokens,
-            updatedAt: new Date(),
-            score: parsedResult.score,
-            summary: parsedResult.summary,
-            matchedSkills: parsedResult.matchedSkills,
-            missingSkills: parsedResult.missingSkills,
-            matchLevel: parsedResult.matchLevel ?? null,
-            scoreBreakdown: parsedResult.scoreBreakdown as Prisma.InputJsonValue | undefined,
-            strengths: parsedResult.strengths as Prisma.InputJsonValue | undefined,
-            gaps: parsedResult.gapsAndConcerns as Prisma.InputJsonValue | undefined,
-            requirementsAnalysis: parsedResult.requirementsAnalysis as Prisma.InputJsonValue | undefined,
-            interviewQuestions: parsedResult.interviewQuestions as Prisma.InputJsonValue | undefined,
-            careerPotential: parsedResult.careerPotential as Prisma.InputJsonValue | undefined,
-            confidence: parsedResult.confidence ?? null,
-            limitations: parsedResult.limitations as Prisma.InputJsonValue | undefined,
-            evidence: parsedResult.scoreBreakdown?.flatMap((item) => item.evidence) as Prisma.InputJsonValue | undefined,
-            candidateProfileSnapshot: payload.candidate as unknown as Prisma.InputJsonValue,
-            jdAnalysisSnapshot: payload.job as unknown as Prisma.InputJsonValue,
-            evaluationConfig: job.evaluationConfig as Prisma.InputJsonValue | undefined,
-          },
-          create: {
-            inputTokens,
-            outputTokens,
-            updatedAt: new Date(),
-            candidateId: candidate.id,
-            jobDescriptionId: job.id,
-            score: parsedResult.score,
-            summary: parsedResult.summary,
-            matchedSkills: parsedResult.matchedSkills,
-            missingSkills: parsedResult.missingSkills,
-            matchLevel: parsedResult.matchLevel ?? null,
-            scoreBreakdown: parsedResult.scoreBreakdown as Prisma.InputJsonValue | undefined,
-            strengths: parsedResult.strengths as Prisma.InputJsonValue | undefined,
-            gaps: parsedResult.gapsAndConcerns as Prisma.InputJsonValue | undefined,
-            requirementsAnalysis: parsedResult.requirementsAnalysis as Prisma.InputJsonValue | undefined,
-            interviewQuestions: parsedResult.interviewQuestions as Prisma.InputJsonValue | undefined,
-            careerPotential: parsedResult.careerPotential as Prisma.InputJsonValue | undefined,
-            confidence: parsedResult.confidence ?? null,
-            limitations: parsedResult.limitations as Prisma.InputJsonValue | undefined,
-            evidence: parsedResult.scoreBreakdown?.flatMap((item) => item.evidence) as Prisma.InputJsonValue | undefined,
-            candidateProfileSnapshot: payload.candidate as unknown as Prisma.InputJsonValue,
-            jdAnalysisSnapshot: payload.job as unknown as Prisma.InputJsonValue,
-            evaluationConfig: job.evaluationConfig as Prisma.InputJsonValue | undefined,
-          },
-          include: {
-            candidate: {
-              select: safeCandidateSelect,
-            },
-          },
-        });
-
-        results.push(toMatchResultDto(savedMatch));
-        succeeded = true;
-      } catch (err: any) {
-        // A CV deleted while the provider was running must never be recreated or saved.
-        if (err?.code === 'P2003' || err?.code === 'P2025') {
-          throw new AppError(409, 'MATCHING_DATA_CHANGED', 'CV hoặc JD đã bị xóa trong lúc chấm điểm. Vui lòng tải lại danh sách.');
-        }
-        if (saving) throw err;
-        const failure = toAiError(err);
-        console.warn('AI matching failed', {
-          code: failure.code,
-          upstreamStatus: typeof err?.status === 'number' ? err.status : undefined,
-          model: geminiModel.model,
-        });
-        throw failure;
-      } finally {
-        try {
-          await prisma.aiUsage.create({ data: {
-            enterpriseId: ownerId ?? job.ownerId,
-            model: env.GEMINI_MODEL, inputTokens, outputTokens, succeeded, day: vietnamDay(),
-          } });
-        } catch {
-          console.error('AI_USAGE_RECORDING_FAILED');
-          // Keep the original provider/database failure visible if recording also fails.
-          if (succeeded) throw new AppError(500, 'AI_USAGE_RECORDING_FAILED', 'Đã lưu kết quả đánh giá nhưng chưa ghi được lịch sử sử dụng AI. Vui lòng tải lại kết quả và kiểm tra backend.');
-        }
-      }
+      const matchDto = await evaluateCandidateWithAi(job, candidate, this.aiProvider, ownerId);
+      results.push(matchDto);
     }
 
     return results;
+  }
+
+  async createMatchingJob(dto: RunMatchingDto, ownerId: string) {
+    const { jobDescriptionId } = dto;
+    const candidateIds = [...new Set(dto.candidateIds)];
+
+    const job = await prisma.jobDescription.findFirst({
+      where: { id: jobDescriptionId, ownerId },
+      select: { id: true },
+    });
+    if (!job) {
+      throw new AppError(404, 'JOB_NOT_FOUND', 'Không tìm thấy Job Description');
+    }
+
+    const candidates = await prisma.candidate.findMany({
+      where: { id: { in: candidateIds }, ownerId },
+      select: { id: true, extractionStatus: true },
+    });
+    if (candidates.length !== candidateIds.length) {
+      throw new AppError(404, 'CANDIDATE_NOT_FOUND', 'Không tìm thấy một hoặc nhiều ứng viên hợp lệ');
+    }
+
+    const byId = new Map(candidates.map((c) => [c.id, c]));
+    const now = new Date();
+    let skippedCount = 0;
+    const itemCreates = candidateIds.map((candidateId) => {
+      const candidate = byId.get(candidateId)!;
+      if (candidate.extractionStatus === 'FAILED') {
+        skippedCount++;
+        return {
+          candidateId,
+          status: 'SKIPPED' as const,
+          attempts: 0,
+          errorCode: 'CANDIDATE_NOT_READABLE',
+          errorMessage: 'CV chưa đọc được nội dung nên không thể chấm điểm',
+          finishedAt: now,
+        };
+      }
+      return {
+        candidateId,
+        status: 'PENDING' as const,
+        attempts: 0,
+      };
+    });
+
+    const allSkipped = skippedCount === candidateIds.length;
+    const created = await prisma.matchingJob.create({
+      data: {
+        jobDescriptionId,
+        ownerId,
+        status: allSkipped ? 'COMPLETED' : 'QUEUED',
+        total: candidateIds.length,
+        processed: skippedCount,
+        failed: 0,
+        finishedAt: allSkipped ? now : null,
+        items: {
+          create: itemCreates,
+        },
+      },
+      include: {
+        items: {
+          orderBy: { id: 'asc' },
+          include: {
+            candidate: { select: { id: true, fullName: true } },
+          },
+        },
+      },
+    });
+
+    if (!allSkipped) {
+      this.runner.enqueue(created.id);
+    }
+
+    return formatMatchingJobDto(created);
+  }
+
+  async getMatchingJob(jobId: string, user: AuthUser, includeItems = false) {
+    const where = {
+      id: jobId,
+      ...(user.role === 'ADMIN' ? {} : { ownerId: user.id }),
+    };
+
+    const job = await prisma.matchingJob.findFirst({
+      where,
+      include: includeItems
+        ? {
+            items: {
+              orderBy: { id: 'asc' },
+              include: {
+                candidate: { select: { id: true, fullName: true } },
+              },
+            },
+          }
+        : undefined,
+    });
+
+    if (!job) {
+      throw new AppError(404, 'MATCHING_JOB_NOT_FOUND', 'Không tìm thấy tiến trình đánh giá');
+    }
+
+    return formatMatchingJobDto(job);
+  }
+
+  async cancelMatchingJob(jobId: string, ownerId: string) {
+    const job = await prisma.matchingJob.findFirst({
+      where: { id: jobId, ownerId },
+    });
+    if (!job) {
+      throw new AppError(404, 'MATCHING_JOB_NOT_FOUND', 'Không tìm thấy tiến trình đánh giá');
+    }
+
+    if (['COMPLETED', 'CANCELLED', 'FAILED'].includes(job.status)) {
+      throw new AppError(409, 'MATCHING_JOB_NOT_CANCELLABLE', 'Tiến trình đã kết thúc, không thể hủy');
+    }
+
+    if (job.status === 'QUEUED') {
+      const now = new Date();
+      const skipped = await prisma.matchingJobItem.updateMany({
+        where: { jobId, status: 'PENDING' },
+        data: {
+          status: 'SKIPPED',
+          errorCode: 'JOB_CANCELLED',
+          errorMessage: 'Đã hủy theo yêu cầu',
+          finishedAt: now,
+        },
+      });
+      const cancelled = await prisma.matchingJob.update({
+        where: { id: jobId },
+        data: {
+          cancelRequested: true,
+          status: 'CANCELLED',
+          finishedAt: now,
+          ...(skipped.count > 0 ? { processed: { increment: skipped.count } } : {}),
+        },
+      });
+      return formatMatchingJobDto(cancelled);
+    }
+
+    const updated = await prisma.matchingJob.update({
+      where: { id: jobId },
+      data: { cancelRequested: true },
+    });
+    return formatMatchingJobDto(updated);
   }
 
   async getLeaderboardByJobId(jobDescriptionId: string, ownerId?: string) {
@@ -206,7 +268,7 @@ export class MatchingService {
       matchResults: {
         include: {
           candidate: {
-            select: safeCandidateSelect,
+            select: safeMatchingCandidateSelect,
           },
         },
         orderBy: { score: 'desc' as const },

@@ -116,3 +116,24 @@ it('shows a loading state until the detail response arrives', async () => {
   await user.click(screen.getByRole('button', { name: 'Ứng viên mẫu' }));
   expect(screen.getByRole('status').textContent).toContain('Đang tải chi tiết ứng viên');
 });
+
+it('shows reextract button only to HR for failed/warning candidates and calls reextract API', async () => {
+  const user = userEvent.setup();
+  const reextract = vi.spyOn(candidateApi, 'reextract').mockResolvedValue({
+    success: true,
+    message: 'Đã trích xuất lại',
+    data: { ...candidate, extractionStatus: 'SUCCESS' },
+  });
+  const refresh = vi.fn();
+
+  auth.user.role = 'ADMIN';
+  show({ ...candidate, extractionStatus: 'FAILED', extractionMessage: 'Lỗi đọc file' }, refresh);
+  expect(screen.queryByRole('button', { name: /Thử lại trích xuất/ })).toBeNull();
+  cleanup();
+
+  auth.user.role = 'ENTERPRISE';
+  show({ ...candidate, extractionStatus: 'FAILED', extractionMessage: 'Lỗi đọc file' }, refresh);
+  await user.click(screen.getByRole('button', { name: /Thử lại trích xuất/ }));
+  expect(reextract).toHaveBeenCalledWith('cv');
+  expect(refresh).toHaveBeenCalledOnce();
+});

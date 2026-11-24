@@ -59,6 +59,19 @@ export class CandidateController {
       next(error);
     }
   }
+
+  async reextractCandidate(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const candidate = await candidateService.reextract(req.params.id, req.user!);
+      res.json({
+        success: true,
+        message: 'Đã trích xuất lại thông tin hồ sơ',
+        data: candidate,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export const candidateController = new CandidateController();

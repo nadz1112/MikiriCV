@@ -162,3 +162,32 @@ export interface DashboardStats {
   }>;
 }
 
+export type MatchingJobStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'CANCELLED' | 'FAILED';
+export type MatchingItemStatus = 'PENDING' | 'DONE' | 'FAILED' | 'SKIPPED';
+
+export interface MatchingJobItem {
+  id: string;
+  candidateId: string;
+  candidateName: string;
+  status: MatchingItemStatus;
+  attempts: number;
+  errorCode: string | null;
+  errorMessage: string | null;
+  finishedAt: string | null;
+}
+
+export interface MatchingJob {
+  id: string;
+  jobDescriptionId: string;
+  status: MatchingJobStatus;
+  total: number;
+  processed: number;
+  failed: number;
+  cancelRequested: boolean;
+  errorMessage: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  items?: MatchingJobItem[];
+}
+

@@ -18,6 +18,21 @@ enum ExtractionStatus {
   FAILED
 }
 
+enum MatchingJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum MatchingItemStatus {
+  PENDING
+  DONE
+  FAILED
+  SKIPPED
+}
+
 model User {
   id                 String    @id @default(uuid())
   email              String    @unique
@@ -37,6 +52,7 @@ model User {
   createdJobs        JobDescription[] @relation("JobCreator")
   candidates         Candidate[]
   uploadedCandidates Candidate[] @relation("CandidateUploader")
+  matchingJobs       MatchingJob[]
   aiUsage            AiUsage[]
 
   @@map("users")
@@ -56,6 +72,7 @@ model JobDescription {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   matchResults   MatchResult[]
+  matchingJobs   MatchingJob[]
   ownerId        String
   owner          User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   createdById    String?
@@ -86,6 +103,7 @@ model Candidate {
   profileAnalyzedAt DateTime?
   createdAt         DateTime      @default(now())
   matchResults      MatchResult[]
+  jobItems          MatchingJobItem[]
   ownerId           String
   owner             User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   uploadedById      String?
@@ -123,6 +141,8 @@ model MatchResult {
   missingSkills    String[]
   createdAt        DateTime       @default(now())
   updatedAt        DateTime?      @updatedAt
+  modelName        String?
+  promptVersion    String?
   inputTokens      Int?
   outputTokens     Int?
   matchLevel       String?
@@ -145,6 +165,48 @@ model MatchResult {
 
   @@unique([candidateId, jobDescriptionId])
   @@map("match_results")
+}
+
+model MatchingJob {
+  id               String            @id @default(uuid())
+  jobDescriptionId String
+  ownerId          String
+  status           MatchingJobStatus @default(QUEUED)
+  total            Int
+  processed        Int               @default(0)
+  failed           Int               @default(0)
+  cancelRequested  Boolean           @default(false)
+  errorMessage     String?
+  createdAt        DateTime          @default(now())
+  startedAt        DateTime?
+  finishedAt       DateTime?
+
+  jobDescription   JobDescription    @relation(fields: [jobDescriptionId], references: [id], onDelete: Cascade)
+  owner            User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  items            MatchingJobItem[]
+
+  @@index([status])
+  @@index([jobDescriptionId, createdAt(sort: Desc)])
+  @@index([ownerId])
+  @@map("matching_jobs")
+}
+
+model MatchingJobItem {
+  id           String             @id @default(uuid())
+  jobId        String
+  candidateId  String
+  status       MatchingItemStatus @default(PENDING)
+  attempts     Int                @default(0)
+  errorCode    String?
+  errorMessage String?
+  finishedAt   DateTime?
+
+  job          MatchingJob        @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  candidate    Candidate          @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, candidateId])
+  @@index([jobId, status])
+  @@map("matching_job_items")
 }
 
 model AiUsage {

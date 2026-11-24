@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { AlertTriangle, AlertCircle, FileText, ExternalLink, ChevronLeft, ChevronRight, ArrowUpDown, Trash2 } from 'lucide-react';
+import { AlertTriangle, AlertCircle, FileText, ExternalLink, ChevronLeft, ChevronRight, ArrowUpDown, RotateCcw, Trash2 } from 'lucide-react';
 import { CandidateItem, candidateApi } from '../api/candidateApi';
 import { useCandidateFeatureStore } from '../store/candidateStore';
 import { DeleteConfirmModal } from '../../../components/dashboard/DeleteConfirmModal';
@@ -41,6 +41,7 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
 
   const [candidateToDelete, setCandidateToDelete] = useState<Candidate | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [reextractingId, setReextractingId] = useState<string | null>(null);
   const [detailCandidate, setDetailCandidate] = useState<Candidate | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState('');
@@ -60,6 +61,24 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
     }
   };
   useAutoRefresh((signal) => detailCandidate ? openDetail(detailCandidate, true, signal) : undefined, isAdmin && Boolean(detailCandidate) && !detailLoading);
+
+  const handleReextract = async (candidateId: string) => {
+    if (reextractingId) return;
+    setReextractingId(candidateId);
+    try {
+      const res = await candidateApi.reextract(candidateId);
+      if (res.data?.extractionStatus === 'FAILED') {
+        toast.error(res.data.extractionMessage || 'Vẫn chưa thể đọc nội dung văn bản từ tệp CV');
+      } else {
+        toast.success(res.message || 'Đã trích xuất lại thông tin hồ sơ');
+      }
+      onCandidateDeleted?.();
+    } catch {
+      // Lỗi hiển thị qua httpClient interceptor
+    } finally {
+      setReextractingId(null);
+    }
+  };
 
   const handleConfirmDelete = async () => {
     if (!candidateToDelete) return;
@@ -305,6 +324,18 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        {!isAdmin && (candidate.extractionStatus === 'FAILED' || candidate.extractionStatus === 'WARNING') && (
+                          <button
+                            type="button"
+                            disabled={reextractingId === candidate.id}
+                            onClick={() => void handleReextract(candidate.id)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                            title="Thử lại trích xuất"
+                          >
+                            <RotateCcw className={`h-3 w-3 ${reextractingId === candidate.id ? 'animate-spin' : ''}`} />
+                            <span>{reextractingId === candidate.id ? 'Đang đọc...' : 'Thử lại trích xuất'}</span>
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => window.open(`/api/candidates/${candidate.id}/file`, '_blank', 'noopener,noreferrer')}

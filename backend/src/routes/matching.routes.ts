@@ -28,8 +28,33 @@ const runMatchingSchema = z.object({
   candidateIds: z.array(z.string()).min(1, 'Cần chọn ít nhất 1 ứng viên để chấm điểm'),
 });
 
+const createMatchingJobSchema = z.object({
+  jobDescriptionId: z.string().uuid('ID của Job Description không hợp lệ'),
+  candidateIds: z.array(z.string().uuid('ID ứng viên không hợp lệ')).min(1, 'Cần chọn ít nhất 1 ứng viên để chấm điểm').max(200, 'Tối đa 200 ứng viên mỗi tiến trình'),
+});
+
+const jobIdParamsSchema = z.object({
+  id: z.string().uuid('Mã tiến trình đánh giá không hợp lệ'),
+});
+
+const getJobQuerySchema = z.object({
+  include: z.enum(['items']).optional(),
+});
+
 router.post('/run', requireRole('ENTERPRISE'), matchingLimiter, validateRequest({ body: runMatchingSchema }), (req, res, next) =>
   matchingController.runMatching(req, res, next)
+);
+
+router.post('/jobs', requireRole('ENTERPRISE'), matchingLimiter, validateRequest({ body: createMatchingJobSchema }), (req, res, next) =>
+  matchingController.createMatchingJob(req, res, next)
+);
+
+router.get('/jobs/:id', validateRequest({ params: jobIdParamsSchema, query: getJobQuerySchema }), (req, res, next) =>
+  matchingController.getMatchingJob(req, res, next)
+);
+
+router.post('/jobs/:id/cancel', requireRole('ENTERPRISE'), validateRequest({ params: jobIdParamsSchema }), (req, res, next) =>
+  matchingController.cancelMatchingJob(req, res, next)
 );
 
 router.get('/leaderboard/:jobDescriptionId', (req, res, next) =>

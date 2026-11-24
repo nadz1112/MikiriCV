@@ -31,6 +31,7 @@ router.post('/upload', requireRole('ENTERPRISE'), uploadLimiter, validateRequest
 router.get('/', validateRequest({ query: listCandidatesQuery }), (req, res, next) => candidateController.getCandidates(req, res, next));
 router.get('/:id/file', validateRequest({ params: candidateFileParamsSchema, query: candidateFileQuerySchema }), (req, res, next) => candidateController.getCandidateFile(req, res, next));
 router.get('/:id', (req, res, next) => candidateController.getCandidateById(req, res, next));
+router.post('/:id/reextract', requireRole('ENTERPRISE'), validateRequest({ params: candidateFileParamsSchema }), (req, res, next) => candidateController.reextractCandidate(req, res, next));
 router.delete('/:id', (req, res, next) => candidateController.deleteCandidate(req, res, next));
 
 export default router;

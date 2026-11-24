@@ -13,6 +13,7 @@
     "prisma:seed": "tsx prisma/seed.ts",
     "seed:candidates": "tsx src/scripts/seed-candidates.ts",
     "cleanup:idempotency": "tsx src/scripts/cleanup-idempotency-keys.ts",
+    "maintenance:orphans": "tsx src/scripts/maintenance-orphans.ts",
     "test": "vitest run"
   },
   "dependencies": {

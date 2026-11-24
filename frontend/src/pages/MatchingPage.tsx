@@ -2,6 +2,7 @@ import React from 'react';
 import { useLocation } from 'react-router-dom';
 import { MatchingControlPanel } from '../features/matching/components/MatchingControlPanel';
 import { MatchingConfirmModal } from '../features/matching/components/MatchingConfirmModal';
+import { MatchingJobProgressPanel } from '../features/matching/components/MatchingJobProgressPanel';
 import { MatchingResultsTable } from '../features/matching/components/MatchingResultsTable';
 import { useMatching } from '../features/matching/hooks/useMatching';
 import { CandidateInsightDrawer } from '../components/dashboard/CandidateInsightDrawer';
@@ -29,6 +30,8 @@ export const MatchingPage: React.FC = () => {
     isLoadingLeaderboard,
     isConfirmModalOpen,
     isRunning,
+    activeJob,
+    isCancellingJob,
     insightCandidate,
     insightMatchResult,
     candidateToDelete,
@@ -42,6 +45,9 @@ export const MatchingPage: React.FC = () => {
     openConfirmModal,
     closeConfirmModal,
     handleRunMatching,
+    handleCancelJob,
+    handleRetryFailedItems,
+    dismissActiveJob,
     handleOpenInsight,
     handleCloseInsight,
     setCandidateToDelete,
@@ -77,6 +83,17 @@ export const MatchingPage: React.FC = () => {
         onClearSelection={clearSelection}
         onOpenConfirm={openConfirmModal}
       />
+
+      {activeJob && (
+        <MatchingJobProgressPanel
+          job={activeJob}
+          isCancelling={isCancellingJob}
+          isRetrying={isRunning}
+          onCancel={() => void handleCancelJob()}
+          onRetryFailed={() => void handleRetryFailedItems()}
+          onDismiss={dismissActiveJob}
+        />
+      )}
 
       {/* Bảng xếp hạng ứng viên theo JD */}
       <MatchingResultsTable

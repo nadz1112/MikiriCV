@@ -169,6 +169,16 @@ export class CandidateRepository {
     });
   }
 
+  async updateExtraction(id: string, ownerId: string | undefined, data: Prisma.CandidateUpdateInput) {
+    const existing = await this.findOwned(id, ownerId);
+    if (!existing) return null;
+    await prisma.candidate.update({
+      where: { id },
+      data,
+    });
+    return this.findDetail(id, ownerId);
+  }
+
   findIdempotency(key: string) {
     return prisma.idempotencyKey.findUnique({ where: { key } });
   }

@@ -1,10 +1,16 @@
 import { httpClient } from '../../../shared/api/httpClient';
-import { ApiResponse, Candidate, JobDescription, MatchResult } from '../../../types';
+import { ApiResponse, Candidate, JobDescription, MatchResult, MatchingJob } from '../../../types';
 
 export interface RunMatchingResponse {
   success: boolean;
   message?: string;
   data?: MatchResult[];
+}
+
+export interface MatchingJobResponse {
+  success: boolean;
+  message?: string;
+  data?: MatchingJob;
 }
 
 export const matchingFeatureApi = {
@@ -19,6 +25,26 @@ export const matchingFeatureApi = {
         timeout: 180000,
       },
     );
+    return res.data;
+  },
+
+  createJob: async (jobDescriptionId: string, candidateIds: string[]): Promise<MatchingJobResponse> => {
+    const res = await httpClient.post<MatchingJobResponse>('/matching/jobs', {
+      jobDescriptionId,
+      candidateIds,
+    });
+    return res.data;
+  },
+
+  getJob: async (jobId: string, includeItems = true): Promise<MatchingJob | undefined> => {
+    const res = await httpClient.get<MatchingJobResponse>(
+      `/matching/jobs/${jobId}${includeItems ? '?include=items' : ''}`,
+    );
+    return res.data.data;
+  },
+
+  cancelJob: async (jobId: string): Promise<MatchingJobResponse> => {
+    const res = await httpClient.post<MatchingJobResponse>(`/matching/jobs/${jobId}/cancel`);
     return res.data;
   },
 
