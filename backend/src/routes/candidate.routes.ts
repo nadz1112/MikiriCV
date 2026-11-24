@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
+import { randomUUID } from 'crypto';
 import { candidateController } from '../controllers/candidate.controller.js';
 import { upload } from '../middlewares/upload.middleware.js';
 import { validateRequest } from '../middlewares/validate.middleware.js';
@@ -7,7 +9,21 @@ import { requireRole } from '../middlewares/auth.middleware.js';
 import { candidateFileParamsSchema, candidateFileQuerySchema, listCandidatesQuery, uploadHeadersSchema } from '../modules/candidates/candidate.schema.js';
 
 const router = Router();
-router.post('/upload', requireRole('ENTERPRISE'), validateRequest({}), (req, _res, next) => {
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  skip: () => env.NODE_ENV === 'test',
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: { code: 'RATE_LIMITED', message: 'Bạn tải lên CV quá nhanh, vui lòng thử lại sau.' },
+      requestId: req.requestId || randomUUID(),
+    });
+  },
+});
+router.post('/upload', requireRole('ENTERPRISE'), uploadLimiter, validateRequest({}), (req, _res, next) => {
   const parsed = uploadHeadersSchema.safeParse({ idempotencyKey: req.get('Idempotency-Key') });
   if (!parsed.success) { next(parsed.error); return; }
   next();

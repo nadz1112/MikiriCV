@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest';
-import { calculateCvTestScore, getMatchLevel } from '../src/modules/evaluation/score-calculator.js';
+import { describe, expect, it, vi } from 'vitest';
+import { calculateCvTestScore, getMatchLevel, resolveCvTestWeights } from '../src/modules/evaluation/score-calculator.js';
+import { analyzeJobDescription } from '../src/modules/evaluation/jd-analyzer.js';
+import { buildAiMatchingPrompt } from '../src/modules/candidates/ai-matching-payload.js';
+import { FieldParser } from '../src/modules/candidates/field-parser.js';
+import { isTransientAiError, withRetry } from '../src/utils/retry.js';
 import { sanitizeAndParseGeminiResponse } from '../src/utils/geminiParser.js';
 import type { CvTestCategoryAssessment } from '../src/types/index.js';
 
@@ -46,5 +50,86 @@ describe('CVTest evaluation structure', () => {
       matchedSkills: [],
       missingSkills: [],
     }))).toThrow();
+  });
+
+  it('distinguishes senior from lead in JD level analysis', () => {
+    const seniorJd = analyzeJobDescription({
+      title: 'Senior Backend Developer',
+      description: 'Xây dựng hệ thống backend Node.js chịu tải cao và tối ưu truy vấn.',
+      requiredSkills: ['Node.js'],
+      minExperience: 4,
+    });
+    const leadJd = analyzeJobDescription({
+      title: 'Tech Lead Backend',
+      description: 'Dẫn dắt đội ngũ kỹ sư và thiết kế kiến trúc hệ thống.',
+      requiredSkills: ['Node.js'],
+      minExperience: 6,
+    });
+    expect(seniorJd.level).toBe('senior');
+    expect(leadJd.level).toBe('lead');
+  });
+
+  it('validates custom weights and injects them into prompt inside cv_profile', () => {
+    const weights = resolveCvTestWeights({
+      weights: {
+        skill_matching: 35,
+        experience_relevance: 25,
+        project_achievement: 20,
+        soft_skills: 10,
+        education_certification: 5,
+        cv_quality: 5,
+      },
+    });
+    expect(weights.skill_matching).toBe(35);
+    expect(() => resolveCvTestWeights({
+      weights: {
+        skill_matching: 50,
+        experience_relevance: 20,
+        project_achievement: 20,
+        soft_skills: 15,
+        education_certification: 10,
+        cv_quality: 10,
+      },
+    })).toThrow();
+
+    const prompt = buildAiMatchingPrompt({
+      job: analyzeJobDescription({
+        title: 'Senior Backend',
+        description: 'Phát triển REST API bằng Node.js và PostgreSQL.',
+        requiredSkills: ['Node.js'],
+        minExperience: 3,
+      }),
+      candidate: {
+        skills: ['Node.js'],
+        yearsOfExperience: 3,
+        experienceEvidence: [],
+        projectEvidence: [],
+        softSkillEvidence: [],
+        educationEvidence: [],
+        cvQuality: { hasSections: true, hasDates: true, hasConsistentStructure: false },
+        limitations: [],
+      },
+    }, weights);
+    expect(prompt).toContain('<cv_profile>');
+    expect(prompt).toContain('1 skill_matching (35)');
+  });
+
+  it('retries transient AI errors but fails fast on configuration errors', async () => {
+    const transientFn = vi.fn()
+      .mockRejectedValueOnce({ status: 429 })
+      .mockResolvedValueOnce('ok');
+    const res = await withRetry(transientFn, { retries: 2, baseMs: 0, shouldRetry: isTransientAiError });
+    expect(res).toBe('ok');
+    expect(transientFn).toHaveBeenCalledTimes(2);
+
+    const authFn = vi.fn().mockRejectedValue({ status: 401 });
+    await expect(withRetry(authFn, { retries: 2, baseMs: 0, shouldRetry: isTransientAiError })).rejects.toMatchObject({ status: 401 });
+    expect(authFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('extracts candidate education line when present', () => {
+    const parser = new FieldParser();
+    const parsed = parser.parse('Nguyễn Văn A\nĐại học Bách Khoa Hà Nội - Kỹ sư CNTT\nKinh nghiệm 3 năm React', 'CV_Nguyen_Van_A.pdf');
+    expect(parsed.education).toContain('Đại học Bách Khoa');
   });
 });

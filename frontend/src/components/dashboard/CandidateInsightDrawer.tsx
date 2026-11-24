@@ -20,6 +20,26 @@ import {
 } from 'lucide-react';
 import { Candidate, MatchResult } from '../../types';
 
+const STATUS_BADGE_MAP = {
+  not_found: { label: 'Chưa tìm thấy', className: 'bg-slate-200/70 text-slate-700' },
+  insufficient_evidence: { label: 'Thiếu bằng chứng', className: 'bg-amber-100 text-amber-800' },
+  partially_matched: { label: 'Đáp ứng một phần', className: 'bg-sky-100 text-sky-800' },
+  matched: { label: 'Đáp ứng', className: 'bg-emerald-100 text-emerald-800' },
+  strongly_matched: { label: 'Đáp ứng tốt', className: 'bg-emerald-200 text-emerald-900' },
+} as const;
+
+const CONFIDENCE_LABEL_MAP = {
+  high: 'Tin cậy cao',
+  medium: 'Tin cậy trung bình',
+  low: 'Tin cậy thấp',
+} as const;
+
+const POTENTIAL_LABEL_MAP = {
+  positive_evidence: { label: 'Có dấu hiệu tích cực', className: 'bg-emerald-100 text-emerald-800' },
+  mixed_evidence: { label: 'Bằng chứng đa chiều', className: 'bg-amber-100 text-amber-800' },
+  insufficient_evidence: { label: 'Chưa đủ bằng chứng', className: 'bg-slate-200 text-slate-700' },
+} as const;
+
 interface CandidateInsightDrawerProps {
   isOpen: boolean;
   onClose: () => void;
@@ -260,6 +280,14 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
                         </span>
                         <span className="text-sm font-bold text-blue-700">{item.score}/{item.maxScore}</span>
                       </div>
+                      <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px]">
+                        <span className={`rounded-full px-2 py-0.5 font-medium ${STATUS_BADGE_MAP[item.status].className}`}>
+                          {STATUS_BADGE_MAP[item.status].label}
+                        </span>
+                        <span className="rounded-full bg-white px-2 py-0.5 font-medium text-slate-500 border border-slate-200">
+                          {CONFIDENCE_LABEL_MAP[item.confidence]}
+                        </span>
+                      </div>
                       <p className="mt-2 text-xs leading-relaxed text-slate-600">{item.reason}</p>
                       {item.evidence?.length > 0 && (
                         <ul className="mt-2 space-y-1 text-[11px] text-slate-500">
@@ -298,6 +326,52 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
               </div>
             )}
 
+            {matchResult?.requirementsAnalysis && matchResult.requirementsAnalysis.length > 0 && (
+              <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5">
+                <h3 className="text-sm font-bold text-slate-800">Phân tích yêu cầu theo JD</h3>
+                <div className="space-y-2.5">
+                  {matchResult.requirementsAnalysis.map((req, index) => (
+                    <div key={`${req.requirement}-${index}`} className="rounded-xl border border-slate-100 bg-slate-50 p-3.5 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-slate-800">{req.requirement}</span>
+                          <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${req.priority === 'required' ? 'bg-rose-100 text-rose-700' : 'bg-violet-100 text-violet-700'}`}>
+                            {req.priority === 'required' ? 'Bắt buộc' : 'Ưu tiên'}
+                          </span>
+                        </div>
+                        <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${STATUS_BADGE_MAP[req.status]?.className ?? 'bg-slate-200 text-slate-700'}`}>
+                          {STATUS_BADGE_MAP[req.status]?.label ?? req.status}
+                        </span>
+                      </div>
+                      {req.evidence?.length > 0 && (
+                        <ul className="mt-2 space-y-1 text-[11px] text-slate-600">
+                          {req.evidence.slice(0, 2).map((ev, evIdx) => (
+                            <li key={evIdx}><strong>{ev.source}</strong> · {ev.section}: {ev.text}</li>
+                          ))}
+                        </ul>
+                      )}
+                      {req.gap && (
+                        <p className="mt-1.5 text-[11px] text-amber-700">Cần xác minh: {req.gap}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {matchResult?.careerPotential && (
+              <div className="rounded-2xl border border-sky-200 bg-sky-50/50 p-4 space-y-1.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold text-sky-900">Tiềm năng phát triển (Career Potential)</h3>
+                  <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${POTENTIAL_LABEL_MAP[matchResult.careerPotential.assessment]?.className ?? 'bg-slate-200 text-slate-700'}`}>
+                    {POTENTIAL_LABEL_MAP[matchResult.careerPotential.assessment]?.label ?? matchResult.careerPotential.assessment}
+                  </span>
+                </div>
+                <p className="text-xs leading-relaxed text-slate-700">{matchResult.careerPotential.reason}</p>
+                <p className="text-[11px] italic text-sky-800">Nhận xét bổ trợ — không cộng vào tổng 100 điểm.</p>
+              </div>
+            )}
+
             {matchResult?.interviewQuestions && matchResult.interviewQuestions.length > 0 && (
               <div className="rounded-2xl border border-indigo-200 bg-indigo-50/50 p-5">
                 <h3 className="text-sm font-bold text-indigo-800">Câu hỏi phỏng vấn gợi ý</h3>
@@ -308,9 +382,14 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
             )}
 
             {matchResult && (
-              <div className="flex flex-wrap gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
-                {matchResult.confidence && <span>Độ tin cậy: <strong>{matchResult.confidence}</strong></span>}
-                {matchResult.matchLevel && <span>Mức phù hợp: <strong>{matchResult.matchLevel}</strong></span>}
+              <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
+                <div className="flex flex-wrap gap-3">
+                  {matchResult.confidence && <span>Độ tin cậy: <strong>{CONFIDENCE_LABEL_MAP[matchResult.confidence]}</strong></span>}
+                  {matchResult.matchLevel && <span>Mức phù hợp: <strong>{matchResult.matchLevel}</strong></span>}
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Kết quả AI chỉ hỗ trợ sàng lọc; nhà tuyển dụng cần xem hồ sơ gốc và xác minh khi phỏng vấn.
+                </p>
               </div>
             )}
             {matchResult?.limitations && matchResult.limitations.length > 0 && (

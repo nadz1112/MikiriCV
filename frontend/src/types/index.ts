@@ -1,3 +1,31 @@
+export type CvTestCategory =
+  | 'skill_matching'
+  | 'experience_relevance'
+  | 'project_achievement'
+  | 'soft_skills'
+  | 'education_certification'
+  | 'cv_quality';
+
+export type CvTestWeights = Record<CvTestCategory, number>;
+
+export interface CvTestEvaluationConfig {
+  weights?: CvTestWeights;
+}
+
+export interface CvTestEvidence {
+  source: 'CV' | 'JD';
+  section: string;
+  text: string;
+}
+
+export interface CvTestRequirementAnalysis {
+  requirement: string;
+  priority: 'required' | 'preferred';
+  status: 'not_found' | 'insufficient_evidence' | 'partially_matched' | 'matched' | 'strongly_matched';
+  evidence: CvTestEvidence[];
+  gap?: string;
+}
+
 export interface JobDescription {
   id: string;
   title: string;
@@ -5,7 +33,7 @@ export interface JobDescription {
   requiredSkills: string[];
   minExperience: number;
   preferredSkills?: string[];
-  evaluationConfig?: Record<string, unknown>;
+  evaluationConfig?: CvTestEvaluationConfig;
   createdAt: string;
   updatedAt: string;
   createdById?: string | null;
@@ -70,12 +98,12 @@ export interface MatchResult {
   }>;
   strengths?: string[];
   gapsAndConcerns?: string[];
-  requirementsAnalysis?: unknown[];
+  requirementsAnalysis?: CvTestRequirementAnalysis[];
   interviewQuestions?: string[];
   careerPotential?: { assessment: 'positive_evidence' | 'insufficient_evidence' | 'mixed_evidence'; reason: string };
   confidence?: 'high' | 'medium' | 'low';
   limitations?: string[];
-  evidence?: Array<{ source: 'CV' | 'JD'; section: string; text: string }>;
+  evidence?: CvTestEvidence[];
   candidate?: Candidate;
   jobDescription?: JobDescription;
 }

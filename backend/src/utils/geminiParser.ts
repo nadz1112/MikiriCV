@@ -1,4 +1,4 @@
-import { AiMatchingResult, CvTestCategory, CvTestCategoryAssessment } from '../types/index.js';
+import { AiMatchingResult, CvTestCareerPotential, CvTestCategory, CvTestCategoryAssessment, CvTestRequirementAnalysis } from '../types/index.js';
 import { AppError } from '../common/errors/app-error.js';
 import { calculateCvTestScore, getMatchLevel } from '../modules/evaluation/score-calculator.js';
 
@@ -10,6 +10,8 @@ const categories: CvTestCategory[] = [
   'education_certification',
   'cv_quality',
 ];
+const requirementStatuses = ['not_found', 'insufficient_evidence', 'partially_matched', 'matched', 'strongly_matched'] as const;
+const potentialAssessments = ['positive_evidence', 'insufficient_evidence', 'mixed_evidence'] as const;
 
 function validEvidence(value: unknown): boolean {
   if (!Array.isArray(value)) return true;
@@ -17,6 +19,37 @@ function validEvidence(value: unknown): boolean {
     && (item.source === 'CV' || item.source === 'JD')
     && typeof item.section === 'string'
     && typeof item.text === 'string');
+}
+
+function sanitizeRequirementsAnalysis(value: unknown): CvTestRequirementAnalysis[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+    .filter((item) =>
+      typeof item.requirement === 'string'
+      && (item.priority === 'required' || item.priority === 'preferred')
+      && requirementStatuses.includes(item.status as (typeof requirementStatuses)[number])
+      && validEvidence(item.evidence),
+    )
+    .map((item) => ({
+      requirement: String(item.requirement).trim(),
+      priority: item.priority as 'required' | 'preferred',
+      status: item.status as CvTestRequirementAnalysis['status'],
+      evidence: Array.isArray(item.evidence) ? item.evidence as CvTestRequirementAnalysis['evidence'] : [],
+      ...(typeof item.gap === 'string' && item.gap.trim() ? { gap: item.gap.trim() } : {}),
+    }));
+}
+
+function sanitizeCareerPotential(value: unknown): CvTestCareerPotential | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (!potentialAssessments.includes(candidate.assessment as (typeof potentialAssessments)[number]) || typeof candidate.reason !== 'string') {
+    return undefined;
+  }
+  return {
+    assessment: candidate.assessment as CvTestCareerPotential['assessment'],
+    reason: candidate.reason.trim(),
+  };
 }
 
 function parseDetailedResult(parsed: Record<string, unknown>, weights?: Record<string, number>): AiMatchingResult {
@@ -28,7 +61,7 @@ function parseDetailedResult(parsed: Record<string, unknown>, weights?: Record<s
     || typeof item.reason !== 'string'
     || !validEvidence(item.evidence)
     || !Array.isArray(item.gaps)
-    || !['not_found', 'insufficient_evidence', 'partially_matched', 'matched', 'strongly_matched'].includes(item.status)
+    || !requirementStatuses.includes(item.status)
     || !['high', 'medium', 'low'].includes(item.confidence)
   )) throw new Error('INVALID_AI_RESPONSE');
 
@@ -49,9 +82,9 @@ function parseDetailedResult(parsed: Record<string, unknown>, weights?: Record<s
     scoreBreakdown: breakdown,
     strengths: parsed.strengths,
     gapsAndConcerns: parsed.gapsAndConcerns,
-    requirementsAnalysis: Array.isArray(parsed.requirementsAnalysis) ? parsed.requirementsAnalysis as AiMatchingResult['requirementsAnalysis'] : [],
+    requirementsAnalysis: sanitizeRequirementsAnalysis(parsed.requirementsAnalysis),
     interviewQuestions: parsed.interviewQuestions,
-    careerPotential: parsed.careerPotential as AiMatchingResult['careerPotential'],
+    careerPotential: sanitizeCareerPotential(parsed.careerPotential),
     confidence: parsed.confidence as AiMatchingResult['confidence'],
     limitations: parsed.limitations,
   };

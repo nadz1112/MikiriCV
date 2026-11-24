@@ -1,5 +1,5 @@
 import { httpClient } from '../../../shared/api/httpClient';
-import { ApiResponse, JobDescription, JobStats } from '../../../types';
+import { ApiResponse, CvTestEvaluationConfig, JobDescription, JobStats } from '../../../types';
 
 export interface JobPayload {
   title: string;
@@ -7,7 +7,7 @@ export interface JobPayload {
   requiredSkills: string[];
   minExperience: number;
   preferredSkills?: string[];
-  evaluationConfig?: Record<string, unknown>;
+  evaluationConfig?: CvTestEvaluationConfig;
 }
 
 export const jobFeatureApi = {

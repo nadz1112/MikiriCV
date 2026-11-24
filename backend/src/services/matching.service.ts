@@ -8,6 +8,8 @@ import { AppError } from '../common/errors/app-error.js';
 import { toAiError } from '../utils/ai-error.js';
 import { toMatchResultDto } from '../modules/candidates/candidate.mapper.js';
 import { assertSafeAiMatchingPayload, buildAiMatchingPayload, buildAiMatchingPrompt } from '../modules/candidates/ai-matching-payload.js';
+import { resolveCvTestWeights } from '../modules/evaluation/score-calculator.js';
+import { isTransientAiError, withRetry } from '../utils/retry.js';
 import type { Prisma } from '@prisma/client';
 
 const safeCandidateSelect = {
@@ -74,9 +76,10 @@ export class MatchingService {
       let outputTokens: number | null = null;
       let succeeded = false;
       try {
+        const weights = resolveCvTestWeights(job.evaluationConfig);
         const payload = buildAiMatchingPayload(job, candidate);
         assertSafeAiMatchingPayload(payload);
-        const prompt = buildAiMatchingPrompt(payload);
+        const prompt = buildAiMatchingPrompt(payload, weights);
         if (typeof prisma.jobDescription.update === 'function') {
           await prisma.jobDescription.update({
             where: { id: job.id },
@@ -90,12 +93,18 @@ export class MatchingService {
           });
         }
 
-        const geminiResponse = await geminiModel.generateContent(prompt, { timeout: 60000 });
+        const geminiResponse = await withRetry(
+          () => geminiModel.generateContent(prompt, { timeout: 60000 }),
+          {
+            retries: env.AI_MAX_RETRIES,
+            baseMs: env.NODE_ENV === 'test' ? 0 : 1000,
+            shouldRetry: isTransientAiError,
+          },
+        );
         inputTokens = geminiResponse.response.usageMetadata?.promptTokenCount ?? null;
         outputTokens = geminiResponse.response.usageMetadata?.candidatesTokenCount ?? null;
         const rawText = geminiResponse.response.text();
-        const evaluationConfig = job.evaluationConfig as { weights?: Record<string, number> } | null;
-        const parsedResult = sanitizeAndParseGeminiResponse(rawText, evaluationConfig?.weights);
+        const parsedResult = sanitizeAndParseGeminiResponse(rawText, weights);
 
         // Lưu hoặc cập nhật (Upsert) vào PostgreSQL
         saving = true;

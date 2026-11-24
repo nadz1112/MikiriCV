@@ -36,7 +36,7 @@ export function analyzeJobDescription(job: {
   if (/(intern|thực tập)/i.test(lower)) level = 'intern';
   else if (/(junior|fresher)/i.test(lower)) level = 'junior';
   else if (/(middle|mid-level)/i.test(lower)) level = 'middle';
-  else if (/(senior|lead|principal)/i.test(lower)) level = 'lead';
+  else if (/(lead|principal|staff|architect|trưởng nhóm)/i.test(lower)) level = 'lead';
   else if (/senior/i.test(lower)) level = 'senior';
 
   const responsibilities = redactPii(job.description)

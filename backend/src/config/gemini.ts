@@ -53,7 +53,31 @@ export const geminiModel = genAI.getGenerativeModel({
         },
         strengths: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
         gapsAndConcerns: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-        requirementsAnalysis: { type: SchemaType.ARRAY, items: { type: SchemaType.OBJECT } },
+        requirementsAnalysis: {
+          type: SchemaType.ARRAY,
+          items: {
+            type: SchemaType.OBJECT,
+            properties: {
+              requirement: { type: SchemaType.STRING },
+              priority: { type: SchemaType.STRING, format: 'enum', enum: ['required', 'preferred'] },
+              status: { type: SchemaType.STRING, format: 'enum', enum: ['not_found', 'insufficient_evidence', 'partially_matched', 'matched', 'strongly_matched'] },
+              evidence: {
+                type: SchemaType.ARRAY,
+                items: {
+                  type: SchemaType.OBJECT,
+                  properties: {
+                    source: { type: SchemaType.STRING, format: 'enum', enum: ['CV', 'JD'] },
+                    section: { type: SchemaType.STRING },
+                    text: { type: SchemaType.STRING },
+                  },
+                  required: ['source', 'section', 'text'],
+                },
+              },
+              gap: { type: SchemaType.STRING },
+            },
+            required: ['requirement', 'priority', 'status', 'evidence'],
+          },
+        },
         interviewQuestions: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
         careerPotential: { type: SchemaType.OBJECT, properties: { assessment: { type: SchemaType.STRING, format: 'enum', enum: ['positive_evidence', 'insufficient_evidence', 'mixed_evidence'] }, reason: { type: SchemaType.STRING } }, required: ['assessment', 'reason'] },
         confidence: { type: SchemaType.STRING, format: 'enum', enum: ['high', 'medium', 'low'] },

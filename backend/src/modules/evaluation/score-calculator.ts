@@ -1,6 +1,15 @@
 import { AppError } from '../../common/errors/app-error.js';
 import type { CvTestCategory, CvTestCategoryAssessment } from '../../types/index.js';
 
+export const CVTEST_CATEGORIES: CvTestCategory[] = [
+  'skill_matching',
+  'experience_relevance',
+  'project_achievement',
+  'soft_skills',
+  'education_certification',
+  'cv_quality',
+];
+
 export const CVTEST_DEFAULT_WEIGHTS: Record<CvTestCategory, number> = {
   skill_matching: 25,
   experience_relevance: 20,
@@ -9,6 +18,31 @@ export const CVTEST_DEFAULT_WEIGHTS: Record<CvTestCategory, number> = {
   education_certification: 10,
   cv_quality: 10,
 };
+
+/** Resolve custom CVTest weights from a JD config and guarantee they sum to 100. */
+export function resolveCvTestWeights(config?: unknown): Record<CvTestCategory, number> {
+  if (!config || typeof config !== 'object' || !('weights' in config) || !(config as { weights?: unknown }).weights) {
+    return { ...CVTEST_DEFAULT_WEIGHTS };
+  }
+  const rawWeights = (config as { weights?: Record<string, unknown> }).weights;
+  if (!rawWeights || typeof rawWeights !== 'object') {
+    throw new AppError(400, 'EVALUATION_CONFIG_INVALID', 'Trọng số đánh giá phải gồm đủ 6 nhóm với tổng bằng 100.');
+  }
+  const resolved = {} as Record<CvTestCategory, number>;
+  let sum = 0;
+  for (const category of CVTEST_CATEGORIES) {
+    const value = rawWeights[category];
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 100) {
+      throw new AppError(400, 'EVALUATION_CONFIG_INVALID', 'Trọng số đánh giá phải gồm đủ 6 nhóm với tổng bằng 100.');
+    }
+    resolved[category] = value;
+    sum += value;
+  }
+  if (sum !== 100) {
+    throw new AppError(400, 'EVALUATION_CONFIG_INVALID', 'Trọng số đánh giá phải gồm đủ 6 nhóm với tổng bằng 100.');
+  }
+  return resolved;
+}
 
 export function calculateCvTestScore(
   breakdown: CvTestCategoryAssessment[],
