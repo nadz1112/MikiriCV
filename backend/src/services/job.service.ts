@@ -1,6 +1,7 @@
 import { prisma } from '../config/database.js';
 import { CreateJobDto, UpdateJobDto, JobStats, JobScoreDistribution } from '../types/index.js';
 import type { AuthUser } from '../middlewares/auth.middleware.js';
+import type { Prisma } from '@prisma/client';
 
 export function buildJobScope(user: AuthUser) {
   return user.role === 'ADMIN' ? {} : { createdById: user.id };
@@ -139,6 +140,8 @@ export class JobService {
         description: data.description,
         requiredSkills: data.requiredSkills,
         minExperience: data.minExperience ?? 0,
+        preferredSkills: data.preferredSkills ?? [],
+        evaluationConfig: data.evaluationConfig as Prisma.InputJsonValue | undefined,
         ownerId: user.id,
         createdById: user.id,
       },
@@ -149,7 +152,14 @@ export class JobService {
     await this.getJobById(id, user);
     return prisma.jobDescription.update({
       where: { id },
-      data,
+      data: {
+        title: data.title,
+        description: data.description,
+        requiredSkills: data.requiredSkills,
+        minExperience: data.minExperience,
+        preferredSkills: data.preferredSkills ?? [],
+        evaluationConfig: data.evaluationConfig as Prisma.InputJsonValue | undefined,
+      },
       include: {
         _count: {
           select: { matchResults: true },

@@ -13,6 +13,7 @@ import { FieldParser } from '../modules/candidates/field-parser.js';
 import { skillNormalizer } from '../modules/skills/skill-dictionary.js';
 import { ListCandidatesQuery } from '../modules/candidates/candidate.schema.js';
 import { jobService } from './job.service.js';
+import { localFileStorage } from '../modules/storage/file-storage.js';
 import { getUserSubscription, checkDocuments } from './subscription.service.js';
 
 const repo = new CandidateRepository();
@@ -22,6 +23,41 @@ const typeByExt: Record<string, string> = { '.pdf': 'application/pdf', '.docx': 
 type UploadError = { fileName: string; code: 'FILE_TOO_LARGE' | 'UNSUPPORTED_FILE_TYPE' | 'PLAN_DOCUMENT_LIMIT'; message: string };
 
 function appError(status: number, code: string, message: string) { return new AppError(status, code, message); }
+
+async function extractCandidateFields(filePath: string, expectedMime: string, fileName: string) {
+  let rawText = '';
+  let pageCount: number | null = null;
+  let extractionStatus: 'SUCCESS' | 'WARNING' | 'FAILED' = 'SUCCESS';
+  let extractionMessage: string | null = null;
+  let fields = parser.parse('', fileName);
+  try {
+    const extractor = ExtractorFactory.create(expectedMime);
+    if (extractor.extractDocument) {
+      const document = await extractor.extractDocument(filePath);
+      rawText = document.text.trim();
+      pageCount = document.pageCount;
+    } else {
+      rawText = (await extractor.extract(filePath)).trim();
+    }
+    if (!rawText) throw new Error('EMPTY_TEXT');
+    fields = parser.parse(rawText, fileName);
+    const missing: string[] = [];
+    if (!fields.email) missing.push('email');
+    if (!fields.phone) missing.push('số điện thoại');
+    if (fields.skills.length === 0) missing.push('kỹ năng');
+    if (missing.length) {
+      extractionStatus = 'WARNING';
+      extractionMessage = `Đã đọc nội dung nhưng chưa tìm thấy ${missing.join(', ')}.`;
+    }
+  } catch {
+    rawText = '';
+    pageCount = null;
+    extractionStatus = 'FAILED';
+    extractionMessage = failedMessage;
+    fields = { ...parser.parse('', fileName), email: null, phone: null, skills: [], yearsOfExperience: 0, education: null };
+  }
+  return { rawText, pageCount, extractionStatus, extractionMessage, fields };
+}
 
 export class CandidateService {
   async upload(files: Express.Multer.File[], idempotencyKey: string, user: AuthUser) {
@@ -79,7 +115,7 @@ export class CandidateService {
         const contentHash = crypto.createHash('sha256').update(bytes).digest('hex');
         const safeName = path.basename(file.originalname.replace(/\\/g, '/')).replace(/[\x00-\x1f\x7f]/g, '').replace(/[\\/:*?"<>|]/g, '_').trim() || 'ho-so';
         const storedName = `${crypto.randomUUID()}-${safeName}`;
-        const storedPath = path.join(path.resolve(process.cwd(), env.UPLOAD_DIR), storedName);
+        const storedPath = path.join(localFileStorage.uploadRoot, storedName);
         await fs.rename(file.path, storedPath);
         processedPaths[processedPaths.length - 1] = storedPath;
         let rawText = '';
@@ -91,17 +127,25 @@ export class CandidateService {
           const extractor = ExtractorFactory.create(expectedMime);
           if (extractor.extractDocument) {
             const document = await extractor.extractDocument(storedPath);
-            rawText = document.text.trim(); pageCount = document.pageCount;
-          } else rawText = (await extractor.extract(storedPath)).trim();
+            rawText = document.text.trim();
+            pageCount = document.pageCount;
+          } else {
+            rawText = (await extractor.extract(storedPath)).trim();
+          }
           if (!rawText) throw new Error('EMPTY_TEXT');
           fields = parser.parse(rawText, safeName);
           const missing: string[] = [];
           if (!fields.email) missing.push('email');
           if (!fields.phone) missing.push('số điện thoại');
           if (fields.skills.length === 0) missing.push('kỹ năng');
-          if (missing.length) { extractionStatus = 'WARNING'; extractionMessage = `Đã đọc nội dung nhưng chưa tìm thấy ${missing.join(', ')}.`; }
+          if (missing.length) {
+            extractionStatus = 'WARNING';
+            extractionMessage = `Đã đọc nội dung nhưng chưa tìm thấy ${missing.join(', ')}.`;
+          }
         } catch {
-          rawText = ''; extractionStatus = 'FAILED'; extractionMessage = failedMessage;
+          rawText = '';
+          extractionStatus = 'FAILED';
+          extractionMessage = failedMessage;
           fields = { ...parser.parse('', safeName), email: null, phone: null, skills: [], yearsOfExperience: 0 };
         }
         try { checkDocuments(subscription, [{ rawText, pageCount }]); }
@@ -196,12 +240,7 @@ export class CandidateService {
     // Database deletion (including MatchResult cascades) must succeed first.
     await repo.delete(id, ownerId);
     try {
-      const uploadRoot = path.resolve(process.cwd(), env.UPLOAD_DIR);
-      const filePath = candidate.fileUrl.startsWith('/uploads/')
-        ? path.resolve(uploadRoot, path.basename(candidate.fileUrl))
-        : path.resolve(candidate.fileUrl);
-      if (!filePath.startsWith(`${uploadRoot}${path.sep}`)) throw new Error('INVALID_UPLOAD_PATH');
-      await fs.unlink(filePath);
+      await localFileStorage.remove(candidate.fileUrl);
     } catch {
       console.warn('CANDIDATE_FILE_DELETE_FAILED');
     }
@@ -209,15 +248,57 @@ export class CandidateService {
     return { success: true, message: 'Đã xóa ứng viên thành công' };
   }
 
+  async reextract(id: string, user: AuthUser) {
+    const ownerId = user.role === 'ADMIN' ? undefined : user.id;
+    const candidate = await repo.findOwned(id, ownerId);
+    if (!candidate) throw appError(404, 'CANDIDATE_NOT_FOUND', 'Không tìm thấy ứng viên');
+
+    const ext = path.extname(candidate.fileName).toLowerCase();
+    const expectedMime = typeByExt[ext];
+    if (!expectedMime) {
+      throw appError(415, 'UNSUPPORTED_FILE_TYPE', 'Chỉ chấp nhận tệp PDF hoặc DOCX hợp lệ');
+    }
+
+    let filePath: string;
+    try {
+      filePath = localFileStorage.resolveSafePath(candidate.fileUrl);
+    } catch {
+      throw appError(409, 'FILE_NOT_FOUND', 'Không tìm thấy tệp CV gốc trên máy chủ. Vui lòng xóa hồ sơ và tải lên tệp mới.');
+    }
+
+    if (!(await localFileStorage.exists(filePath))) {
+      throw appError(409, 'FILE_NOT_FOUND', 'Không tìm thấy tệp CV gốc trên máy chủ. Vui lòng xóa hồ sơ và tải lên tệp mới.');
+    }
+
+    const { rawText, pageCount, extractionStatus, extractionMessage, fields } = await extractCandidateFields(filePath, expectedMime, candidate.fileName);
+    if (user.role !== 'ADMIN' && extractionStatus !== 'FAILED') {
+      const subscription = await getUserSubscription(user.id);
+      checkDocuments(subscription, [{ rawText, pageCount }]);
+    }
+    const updated = await repo.updateExtraction(id, ownerId, {
+      fullName: fields.fullName,
+      email: fields.email,
+      phone: fields.phone,
+      rawText,
+      pageCount,
+      searchText: normalizeForSearch(`${fields.fullName} ${rawText}`),
+      skills: fields.skills,
+      yearsOfExperience: fields.yearsOfExperience,
+      education: fields.education,
+      extractionStatus,
+      extractionMessage,
+    });
+    if (!updated) throw appError(404, 'CANDIDATE_NOT_FOUND', 'Không tìm thấy ứng viên');
+    return toCandidateDetailDto(updated);
+  }
+
   async getFile(id: string, user: AuthUser) {
     const candidate = await repo.findOwned(id, user.role === 'ADMIN' ? undefined : user.id);
     if (!candidate) throw appError(404, 'CANDIDATE_NOT_FOUND', 'Không tìm thấy ứng viên');
-    const uploadRoot = path.resolve(process.cwd(), env.UPLOAD_DIR);
-    const filePath = candidate.fileUrl.startsWith('/uploads/')
-      ? path.resolve(uploadRoot, path.basename(candidate.fileUrl))
-      : path.resolve(candidate.fileUrl);
-    if (!filePath.startsWith(`${uploadRoot}${path.sep}`)) throw appError(404, 'FILE_NOT_FOUND', 'Không tìm thấy tệp CV gốc');
-    await fs.access(filePath).catch(() => { throw appError(404, 'FILE_NOT_FOUND', 'Không tìm thấy tệp CV gốc'); });
+    const filePath = localFileStorage.resolveSafePath(candidate.fileUrl);
+    if (!(await localFileStorage.exists(filePath))) {
+      throw appError(404, 'FILE_NOT_FOUND', 'Không tìm thấy tệp CV gốc');
+    }
     return { filePath, fileName: candidate.fileName, contentType: typeByExt[path.extname(candidate.fileName).toLowerCase()] ?? 'application/octet-stream' };
   }
 }

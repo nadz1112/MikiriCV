@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Users, Sparkles, LayoutDashboard, FileCheck, ChevronDown, KeyRound, LogOut, Shield } from 'lucide-react';
+import { Briefcase, Users, Sparkles, LayoutDashboard, FileCheck, ChevronDown, KeyRound, LogOut, Shield } from 'lucide-react';
 import { useAuthStore } from '../../features/auth/authStore';
 
 export const Navbar: React.FC = () => {
@@ -8,7 +8,7 @@ export const Navbar: React.FC = () => {
   if (!user) return null;
   const navItems = user.role === 'ADMIN'
     ? [{ to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard }, { to: '/admin/users', label: 'Quản lý tài khoản', icon: Shield }, { to: '/candidates', label: 'Quản lý CV', icon: Users }]
-    : [{ to: '/', label: 'Bảng điều khiển', icon: LayoutDashboard }, { to: '/candidates', label: 'Quản lý CV', icon: Users }, { to: '/matching', label: 'AI Matching Studio', icon: Sparkles }];
+    : [{ to: '/', label: 'Bảng điều khiển', icon: LayoutDashboard }, { to: '/jobs', label: 'Quản lý JD', icon: Briefcase }, { to: '/candidates', label: 'Quản lý CV', icon: Users }, { to: '/matching', label: 'AI Matching Studio', icon: Sparkles }];
   return <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur w-full">
     <div className="mx-auto flex h-16 w-full max-w-[1920px] items-center justify-between px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 2xl:px-16"><NavLink to={user.role === 'ADMIN' ? '/admin/dashboard' : '/'} className="flex items-center gap-2"><span className="rounded-xl bg-blue-700 p-2 text-white"><FileCheck size={21}/></span><span className="text-xl font-bold text-blue-700">CVMikiri</span></NavLink>
       <nav className="hidden items-center gap-1 md:flex">{navItems.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to} className={({ isActive }) => `flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${isActive ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-100'}`}><Icon size={16}/>{label}</NavLink>)}</nav>

@@ -1,10 +1,34 @@
 import { ModalPortal } from '../../../components/common/ModalPortal';
 import React, { useEffect, useState } from 'react';
 import { z } from 'zod';
-import { AlertTriangle, Plus, X } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, Plus, RotateCcw, SlidersHorizontal, X } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { JobDescription } from '../../../types';
+import { CvTestCategory, CvTestWeights, JobDescription } from '../../../types';
 import { jobFeatureApi, JobPayload } from '../api/jobApi';
+
+const DEFAULT_WEIGHTS: CvTestWeights = {
+  skill_matching: 25,
+  experience_relevance: 20,
+  project_achievement: 20,
+  soft_skills: 15,
+  education_certification: 10,
+  cv_quality: 10,
+};
+
+const WEIGHT_LABELS: Array<{ key: CvTestCategory; label: string }> = [
+  { key: 'skill_matching', label: 'Khớp kỹ năng' },
+  { key: 'experience_relevance', label: 'Kinh nghiệm liên quan' },
+  { key: 'project_achievement', label: 'Dự án & thành tựu' },
+  { key: 'soft_skills', label: 'Kỹ năng mềm' },
+  { key: 'education_certification', label: 'Học vấn & chứng chỉ' },
+  { key: 'cv_quality', label: 'Chất lượng CV' },
+];
+
+const weightValueSchema = z
+  .number('Trọng số phải là số')
+  .int('Trọng số phải là số nguyên')
+  .min(0, 'Trọng số không được âm')
+  .max(100, 'Trọng số tối đa là 100');
 
 const jobFormSchema = z.object({
   title: z
@@ -24,6 +48,20 @@ const jobFormSchema = z.object({
     .int('Số năm kinh nghiệm phải là số nguyên')
     .min(0, 'Số năm kinh nghiệm không được âm')
     .max(30, 'Số năm kinh nghiệm tối đa là 30 năm'),
+  preferredSkills: z.array(z.string().trim().min(1)).optional(),
+  weights: z
+    .object({
+      skill_matching: weightValueSchema,
+      experience_relevance: weightValueSchema,
+      project_achievement: weightValueSchema,
+      soft_skills: weightValueSchema,
+      education_certification: weightValueSchema,
+      cv_quality: weightValueSchema,
+    })
+    .refine(
+      (weights) => Object.values(weights).reduce((sum, value) => sum + value, 0) === 100,
+      { message: 'Tổng trọng số 6 nhóm tiêu chí phải đúng bằng 100' },
+    ),
 });
 
 const SUGGESTED_SKILLS = [
@@ -56,7 +94,11 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
   const [description, setDescription] = useState('');
   const [skills, setSkills] = useState<string[]>([]);
   const [skillInput, setSkillInput] = useState('');
+  const [preferredSkills, setPreferredSkills] = useState<string[]>([]);
+  const [preferredSkillInput, setPreferredSkillInput] = useState('');
   const [minExperience, setMinExperience] = useState('0');
+  const [weights, setWeights] = useState<CvTestWeights>({ ...DEFAULT_WEIGHTS });
+  const [showWeights, setShowWeights] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
@@ -67,14 +109,23 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
       setTitle(editingJob.title);
       setDescription(editingJob.description);
       setSkills(editingJob.requiredSkills);
+      setPreferredSkills(editingJob.preferredSkills ?? []);
       setSkillInput('');
+      setPreferredSkillInput('');
       setMinExperience(String(editingJob.minExperience));
+      const savedWeights = editingJob.evaluationConfig?.weights;
+      setWeights(savedWeights ? { ...DEFAULT_WEIGHTS, ...savedWeights } : { ...DEFAULT_WEIGHTS });
+      setShowWeights(Boolean(savedWeights));
     } else {
       setTitle('');
       setDescription('');
       setSkills([]);
+      setPreferredSkills([]);
       setSkillInput('');
+      setPreferredSkillInput('');
       setMinExperience('0');
+      setWeights({ ...DEFAULT_WEIGHTS });
+      setShowWeights(false);
     }
   }, [isOpen, editingJob]);
 
@@ -130,6 +181,8 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
       description,
       requiredSkills: mergedSkills,
       minExperience: Number(minExperience),
+      preferredSkills,
+      weights,
     });
 
     if (!parsed.success) {
@@ -140,13 +193,18 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
           fieldErrors[key] = issue.message;
         }
       });
+      if (fieldErrors.weights) setShowWeights(true);
       setErrors(fieldErrors);
       return;
     }
 
     setErrors({});
     setSubmitting(true);
-    const payload: JobPayload = parsed.data;
+    const { weights: validWeights, ...rest } = parsed.data;
+    const payload: JobPayload = {
+      ...rest,
+      evaluationConfig: { weights: validWeights },
+    };
 
     try {
       if (editingJob) {
@@ -344,7 +402,52 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
             </div>
           </div>
 
-          {/* 4. Số năm kinh nghiệm tối thiểu */}
+          {/* 4. Kỹ năng ưu tiên */}
+          <div>
+            <label htmlFor="job-preferred-skills" className="mb-1 block text-xs font-semibold text-slate-700">
+              Kỹ năng ưu tiên / Nice-to-have
+            </label>
+            <input
+              id="job-preferred-skills"
+              type="text"
+              value={preferredSkillInput}
+              onChange={(e) => setPreferredSkillInput(e.target.value)}
+              onBlur={() => {
+                const items = preferredSkillInput.split(',').map((item) => item.trim()).filter(Boolean);
+                if (items.length > 0) {
+                  setPreferredSkills((current) => [...new Set([...current, ...items])]);
+                  setPreferredSkillInput('');
+                }
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' && event.key !== ',') return;
+                event.preventDefault();
+                const items = preferredSkillInput.split(',').map((item) => item.trim()).filter(Boolean);
+                if (items.length > 0) {
+                  setPreferredSkills((current) => [...new Set([...current, ...items])]);
+                  setPreferredSkillInput('');
+                }
+              }}
+              placeholder="Ví dụ: Kubernetes, AWS"
+              className="w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+            />
+            {preferredSkills.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {preferredSkills.map((skill) => (
+                  <button
+                    type="button"
+                    key={skill}
+                    onClick={() => setPreferredSkills((current) => current.filter((item) => item !== skill))}
+                    className="rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700"
+                  >
+                    {skill} ×
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 5. Số năm kinh nghiệm tối thiểu */}
           <div>
             <label htmlFor="job-experience" className="mb-1 block text-xs font-semibold text-slate-700">
               Số năm kinh nghiệm tối thiểu
@@ -368,6 +471,69 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
             />
             {errors.minExperience && (
               <p className="mt-1 text-xs font-medium text-rose-600">{errors.minExperience}</p>
+            )}
+          </div>
+
+          {/* 6. Trọng số 6 nhóm tiêu chí CVTest (Tổng 100) */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setShowWeights((current) => !current)}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 hover:text-blue-700"
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5 text-blue-600" />
+                <span>Tùy chỉnh trọng số chấm điểm (Tổng 100)</span>
+                {showWeights ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              </button>
+              <span className="text-[11px] font-medium text-slate-500">
+                Hiện tại: {WEIGHT_LABELS.map(({ key }) => weights[key]).join('/')}
+              </span>
+            </div>
+
+            {showWeights && (
+              <div className="mt-3 space-y-3 border-t border-slate-200/80 pt-3">
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                  {WEIGHT_LABELS.map(({ key, label }) => (
+                    <label key={key} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs">
+                      <span className="font-medium text-slate-700">{label}</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={1}
+                        aria-label={`Trọng số ${label}`}
+                        value={weights[key]}
+                        onChange={(e) => {
+                          const nextVal = e.target.value === '' ? 0 : Number(e.target.value);
+                          setWeights((prev) => ({ ...prev, [key]: Number.isFinite(nextVal) ? nextVal : 0 }));
+                          if (errors.weights) setErrors((prev) => ({ ...prev, weights: '' }));
+                        }}
+                        className="w-16 rounded-lg border border-slate-200 px-2 py-1 text-right font-semibold text-slate-800 focus:border-blue-500 focus:outline-none"
+                      />
+                    </label>
+                  ))}
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className={`font-semibold ${Object.values(weights).reduce((s, v) => s + v, 0) === 100 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                    Tổng điểm tối đa: {Object.values(weights).reduce((s, v) => s + v, 0)}/100
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWeights({ ...DEFAULT_WEIGHTS });
+                      setErrors((prev) => ({ ...prev, weights: '' }));
+                    }}
+                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-100"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    <span>Đặt lại mặc định</span>
+                  </button>
+                </div>
+                {errors.weights && (
+                  <p className="text-xs font-medium text-rose-600">{errors.weights}</p>
+                )}
+              </div>
             )}
           </div>
 

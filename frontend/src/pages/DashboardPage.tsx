@@ -8,6 +8,7 @@ import {
   TrendingUp,
   Search,
   RefreshCw,
+  PlusCircle,
   CheckCircle2,
   Eye,
   Trash2,
@@ -362,6 +363,11 @@ export const DashboardPage: React.FC = () => {
             </span>
             <span className="text-xs text-slate-400">Job Descriptions</span>
           </div>
+          <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+            <Link to="/jobs" className="text-blue-600 font-semibold hover:underline inline-flex items-center gap-1">
+              Quản lý JD <ArrowRight className="w-3 h-3" />
+            </Link>
+          </div>
         </div>
 
         {/* Card 2: Hồ sơ ứng viên */}
@@ -504,6 +510,15 @@ export const DashboardPage: React.FC = () => {
                 <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto">
                   Biểu đồ phân tích điểm số sẽ hiển thị khi có dữ liệu vị trí tuyển dụng và kết quả đánh giá.
                 </p>
+                <div className="pt-2">
+                  <Link
+                    to="/jobs"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold shadow-sm hover:bg-blue-700 transition"
+                  >
+                    <PlusCircle className="w-4 h-4" />
+                    <span>Tạo Job Description mới</span>
+                  </Link>
+                </div>
               </div>
             ) : !currentJob ? (
               <div className="glass-panel p-8 text-center rounded-2xl border border-slate-200 text-slate-500 text-sm">

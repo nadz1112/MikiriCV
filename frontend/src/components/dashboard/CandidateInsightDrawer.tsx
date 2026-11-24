@@ -20,6 +20,26 @@ import {
 } from 'lucide-react';
 import { Candidate, MatchResult } from '../../types';
 
+const STATUS_BADGE_MAP = {
+  not_found: { label: 'Chưa tìm thấy', className: 'bg-slate-200/70 text-slate-700' },
+  insufficient_evidence: { label: 'Thiếu bằng chứng', className: 'bg-amber-100 text-amber-800' },
+  partially_matched: { label: 'Đáp ứng một phần', className: 'bg-sky-100 text-sky-800' },
+  matched: { label: 'Đáp ứng', className: 'bg-emerald-100 text-emerald-800' },
+  strongly_matched: { label: 'Đáp ứng tốt', className: 'bg-emerald-200 text-emerald-900' },
+} as const;
+
+const CONFIDENCE_LABEL_MAP = {
+  high: 'Tin cậy cao',
+  medium: 'Tin cậy trung bình',
+  low: 'Tin cậy thấp',
+} as const;
+
+const POTENTIAL_LABEL_MAP = {
+  positive_evidence: { label: 'Có dấu hiệu tích cực', className: 'bg-emerald-100 text-emerald-800' },
+  mixed_evidence: { label: 'Bằng chứng đa chiều', className: 'bg-amber-100 text-amber-800' },
+  insufficient_evidence: { label: 'Chưa đủ bằng chứng', className: 'bg-slate-200 text-slate-700' },
+} as const;
+
 interface CandidateInsightDrawerProps {
   isOpen: boolean;
   onClose: () => void;
@@ -241,8 +261,145 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
               </div>
             )}
 
+            {matchResult?.scoreBreakdown && matchResult.scoreBreakdown.length > 0 && (
+              <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5">
+                <h3 className="text-sm font-bold text-slate-800">Phân tích theo 6 nhóm tiêu chí</h3>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {matchResult.scoreBreakdown.map((item) => (
+                    <div key={item.category} className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs font-semibold text-slate-700">
+                          {({
+                            skill_matching: 'Khớp kỹ năng',
+                            experience_relevance: 'Kinh nghiệm liên quan',
+                            project_achievement: 'Dự án & thành tựu',
+                            soft_skills: 'Kỹ năng mềm',
+                            education_certification: 'Học vấn & chứng chỉ',
+                            cv_quality: 'Chất lượng CV',
+                          } as const)[item.category]}
+                        </span>
+                        <span className="text-sm font-bold text-blue-700">{item.score}/{item.maxScore}</span>
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px]">
+                        <span className={`rounded-full px-2 py-0.5 font-medium ${STATUS_BADGE_MAP[item.status].className}`}>
+                          {STATUS_BADGE_MAP[item.status].label}
+                        </span>
+                        <span className="rounded-full bg-white px-2 py-0.5 font-medium text-slate-500 border border-slate-200">
+                          {CONFIDENCE_LABEL_MAP[item.confidence]}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xs leading-relaxed text-slate-600">{item.reason}</p>
+                      {item.evidence?.length > 0 && (
+                        <ul className="mt-2 space-y-1 text-[11px] text-slate-500">
+                          {item.evidence.slice(0, 3).map((evidence, index) => (
+                            <li key={`${item.category}-${index}`}><strong>{evidence.source}</strong> · {evidence.section}: {evidence.text}</li>
+                          ))}
+                        </ul>
+                      )}
+                      {item.gaps?.length > 0 && (
+                        <p className="mt-2 text-[11px] text-amber-700">Cần xác minh: {item.gaps.join('; ')}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {matchResult && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {matchResult.strengths && matchResult.strengths.length > 0 && (
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
+                    <h3 className="text-sm font-bold text-emerald-800">Điểm mạnh có bằng chứng</h3>
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-emerald-800">
+                      {matchResult.strengths.map((strength, index) => <li key={index}>{strength}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {matchResult.gapsAndConcerns && matchResult.gapsAndConcerns.length > 0 && (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+                    <h3 className="text-sm font-bold text-amber-800">Điểm cần xác minh</h3>
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-800">
+                      {matchResult.gapsAndConcerns.map((gap, index) => <li key={index}>{gap}</li>)}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {matchResult?.requirementsAnalysis && matchResult.requirementsAnalysis.length > 0 && (
+              <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5">
+                <h3 className="text-sm font-bold text-slate-800">Phân tích yêu cầu theo JD</h3>
+                <div className="space-y-2.5">
+                  {matchResult.requirementsAnalysis.map((req, index) => (
+                    <div key={`${req.requirement}-${index}`} className="rounded-xl border border-slate-100 bg-slate-50 p-3.5 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-slate-800">{req.requirement}</span>
+                          <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${req.priority === 'required' ? 'bg-rose-100 text-rose-700' : 'bg-violet-100 text-violet-700'}`}>
+                            {req.priority === 'required' ? 'Bắt buộc' : 'Ưu tiên'}
+                          </span>
+                        </div>
+                        <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${STATUS_BADGE_MAP[req.status]?.className ?? 'bg-slate-200 text-slate-700'}`}>
+                          {STATUS_BADGE_MAP[req.status]?.label ?? req.status}
+                        </span>
+                      </div>
+                      {req.evidence?.length > 0 && (
+                        <ul className="mt-2 space-y-1 text-[11px] text-slate-600">
+                          {req.evidence.slice(0, 2).map((ev, evIdx) => (
+                            <li key={evIdx}><strong>{ev.source}</strong> · {ev.section}: {ev.text}</li>
+                          ))}
+                        </ul>
+                      )}
+                      {req.gap && (
+                        <p className="mt-1.5 text-[11px] text-amber-700">Cần xác minh: {req.gap}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {matchResult?.careerPotential && (
+              <div className="rounded-2xl border border-sky-200 bg-sky-50/50 p-4 space-y-1.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold text-sky-900">Tiềm năng phát triển (Career Potential)</h3>
+                  <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${POTENTIAL_LABEL_MAP[matchResult.careerPotential.assessment]?.className ?? 'bg-slate-200 text-slate-700'}`}>
+                    {POTENTIAL_LABEL_MAP[matchResult.careerPotential.assessment]?.label ?? matchResult.careerPotential.assessment}
+                  </span>
+                </div>
+                <p className="text-xs leading-relaxed text-slate-700">{matchResult.careerPotential.reason}</p>
+                <p className="text-[11px] italic text-sky-800">Nhận xét bổ trợ — không cộng vào tổng 100 điểm.</p>
+              </div>
+            )}
+
+            {matchResult?.interviewQuestions && matchResult.interviewQuestions.length > 0 && (
+              <div className="rounded-2xl border border-indigo-200 bg-indigo-50/50 p-5">
+                <h3 className="text-sm font-bold text-indigo-800">Câu hỏi phỏng vấn gợi ý</h3>
+                <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs text-slate-700">
+                  {matchResult.interviewQuestions.map((question, index) => <li key={index}>{question}</li>)}
+                </ol>
+              </div>
+            )}
+
+            {matchResult && (
+              <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
+                <div className="flex flex-wrap gap-3">
+                  {matchResult.confidence && <span>Độ tin cậy: <strong>{CONFIDENCE_LABEL_MAP[matchResult.confidence]}</strong></span>}
+                  {matchResult.matchLevel && <span>Mức phù hợp: <strong>{matchResult.matchLevel}</strong></span>}
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Kết quả AI chỉ hỗ trợ sàng lọc; nhà tuyển dụng cần xem hồ sơ gốc và xác minh khi phỏng vấn.
+                </p>
+              </div>
+            )}
+            {matchResult?.limitations && matchResult.limitations.length > 0 && (
+              <div className="rounded-xl border border-slate-200 p-4 text-xs text-slate-600">
+                <strong>Giới hạn dữ liệu:</strong> {matchResult.limitations.join('; ')}
+              </div>
+            )}
+
             {/* 2 Cột Gestalt: Kỹ năng khớp (Xanh) vs Kỹ năng thiếu (Đỏ nhạt) */}
-            {matchResult && ([['3 điểm nổi bật', matchResult.highlights], ['Phân tích kỹ năng', matchResult.skillAnalysis], ['Điểm cần xác minh (Red flags)', matchResult.redFlags], ['Câu hỏi phỏng vấn gợi ý', matchResult.interviewQuestions]] as const).map(([title, items]) => items && items.length > 0 ? <section key={title} className="rounded-xl border border-slate-200 bg-white p-4"><h3 className="font-semibold text-slate-800">{title}</h3><ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-600">{items.map((item, index) => <li key={index}>{item}</li>)}</ul></section> : null)}
+            {matchResult && ([['3 điểm nổi bật', matchResult.highlights], ['Phân tích kỹ năng', matchResult.skillAnalysis], ['Điểm cần xác minh (Red flags)', matchResult.redFlags]] as const).map(([title, items]) => items && items.length > 0 ? <section key={title} className="rounded-xl border border-slate-200 bg-white p-4"><h3 className="font-semibold text-slate-800">{title}</h3><ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-600">{items.map((item, index) => <li key={index}>{item}</li>)}</ul></section> : null)}
             {matchResult && (
               <div className="space-y-3">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">

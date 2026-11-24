@@ -1,9 +1,39 @@
+export type CvTestCategory =
+  | 'skill_matching'
+  | 'experience_relevance'
+  | 'project_achievement'
+  | 'soft_skills'
+  | 'education_certification'
+  | 'cv_quality';
+
+export type CvTestWeights = Record<CvTestCategory, number>;
+
+export interface CvTestEvaluationConfig {
+  weights?: CvTestWeights;
+}
+
+export interface CvTestEvidence {
+  source: 'CV' | 'JD';
+  section: string;
+  text: string;
+}
+
+export interface CvTestRequirementAnalysis {
+  requirement: string;
+  priority: 'required' | 'preferred';
+  status: 'not_found' | 'insufficient_evidence' | 'partially_matched' | 'matched' | 'strongly_matched';
+  evidence: CvTestEvidence[];
+  gap?: string;
+}
+
 export interface JobDescription {
   id: string;
   title: string;
   description: string;
   requiredSkills: string[];
   minExperience: number;
+  preferredSkills?: string[];
+  evaluationConfig?: CvTestEvaluationConfig;
   createdAt: string;
   updatedAt: string;
   createdById?: string | null;
@@ -50,7 +80,6 @@ export interface MatchResult {
   highlights?: string[];
   skillAnalysis?: string[];
   redFlags?: string[];
-  interviewQuestions?: string[];
   id: string;
   candidateId: string;
   jobDescriptionId: string;
@@ -59,6 +88,25 @@ export interface MatchResult {
   matchedSkills: string[];
   missingSkills: string[];
   createdAt: string;
+  matchLevel?: 'strong_match' | 'good_match' | 'partial_match' | 'low_match';
+  scoreBreakdown?: Array<{
+    category: 'skill_matching' | 'experience_relevance' | 'project_achievement' | 'soft_skills' | 'education_certification' | 'cv_quality';
+    score: number;
+    maxScore: number;
+    reason: string;
+    evidence: Array<{ source: 'CV' | 'JD'; section: string; text: string }>;
+    gaps: string[];
+    status: 'not_found' | 'insufficient_evidence' | 'partially_matched' | 'matched' | 'strongly_matched';
+    confidence: 'high' | 'medium' | 'low';
+  }>;
+  strengths?: string[];
+  gapsAndConcerns?: string[];
+  requirementsAnalysis?: CvTestRequirementAnalysis[];
+  interviewQuestions?: string[];
+  careerPotential?: { assessment: 'positive_evidence' | 'insufficient_evidence' | 'mixed_evidence'; reason: string };
+  confidence?: 'high' | 'medium' | 'low';
+  limitations?: string[];
+  evidence?: CvTestEvidence[];
   candidate?: Candidate;
   jobDescription?: JobDescription;
 }
@@ -117,3 +165,31 @@ export interface DashboardStats {
   }>;
 }
 
+export type MatchingJobStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'CANCELLED' | 'FAILED';
+export type MatchingItemStatus = 'PENDING' | 'DONE' | 'FAILED' | 'SKIPPED';
+
+export interface MatchingJobItem {
+  id: string;
+  candidateId: string;
+  candidateName: string;
+  status: MatchingItemStatus;
+  attempts: number;
+  errorCode: string | null;
+  errorMessage: string | null;
+  finishedAt: string | null;
+}
+
+export interface MatchingJob {
+  id: string;
+  jobDescriptionId: string;
+  status: MatchingJobStatus;
+  total: number;
+  processed: number;
+  failed: number;
+  cancelRequested: boolean;
+  errorMessage: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  items?: MatchingJobItem[];
+}

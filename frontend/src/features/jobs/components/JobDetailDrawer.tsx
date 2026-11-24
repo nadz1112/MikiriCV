@@ -162,6 +162,45 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({
                 </span>
               ))}
             </div>
+            {detail.preferredSkills && detail.preferredSkills.length > 0 && (
+              <div className="pt-2">
+                <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  Kỹ năng ưu tiên (Nice-to-have)
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {detail.preferredSkills.map((skill, idx) => (
+                    <span
+                      key={`pref-${skill}-${idx}`}
+                      className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700"
+                    >
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+
+          {/* Trọng số đánh giá CVTest */}
+          <section className="space-y-2.5">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Bộ trọng số đánh giá (Tổng 100 điểm)
+            </h3>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {([
+                ['skill_matching', 'Khớp kỹ năng', 25],
+                ['experience_relevance', 'Kinh nghiệm', 20],
+                ['project_achievement', 'Dự án & thành tựu', 20],
+                ['soft_skills', 'Kỹ năng mềm', 15],
+                ['education_certification', 'Học vấn & chứng chỉ', 10],
+                ['cv_quality', 'Chất lượng CV', 10],
+              ] as const).map(([key, label, fallback]) => (
+                <div key={key} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 text-xs">
+                  <span className="text-slate-600">{label}</span>
+                  <span className="font-bold text-slate-900">{detail.evaluationConfig?.weights?.[key] ?? fallback}đ</span>
+                </div>
+              ))}
+            </div>
           </section>
 
           {/* Mô tả chi tiết */}

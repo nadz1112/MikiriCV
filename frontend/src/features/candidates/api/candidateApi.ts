@@ -102,6 +102,11 @@ export const candidateApi = {
     return res.data.data;
   },
 
+  reextract: async (id: string): Promise<{ success: boolean; message?: string; data: Candidate }> => {
+    const res = await httpClient.post<{ success: boolean; message?: string; data: Candidate }>(`/candidates/${id}/reextract`);
+    return res.data;
+  },
+
   delete: async (id: string): Promise<{ success: boolean; message: string }> => {
     const res = await httpClient.delete<{ success: boolean; message: string }>(`/candidates/${id}`);
     return res.data;

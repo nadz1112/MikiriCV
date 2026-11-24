@@ -3,8 +3,16 @@ import { ZodError } from 'zod';
 import { randomUUID } from 'crypto';
 import multer from 'multer';
 
-export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction): void {
-  const requestId = randomUUID();
+declare global {
+  namespace Express {
+    interface Request {
+      requestId?: string;
+    }
+  }
+}
+
+export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction): void {
+  const requestId = req.requestId || randomUUID();
   if (err instanceof multer.MulterError) {
     const tooLarge = err.code === 'LIMIT_FILE_SIZE';
     const tooMany = err.code === 'LIMIT_FILE_COUNT';

@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useJobStore } from '../../../store/useJobStore';
 import { useCandidateStore } from '../../../store/useCandidateStore';
 import { useMatchingFeatureStore } from '../store/matchingStore';
 import { matchingFeatureApi } from '../api/matchingApi';
-import { Candidate, MatchResult } from '../../../types';
+import { Candidate, MatchResult, MatchingJob } from '../../../types';
 import { candidateApi } from '../../../services/candidateApi';
+
+const TERMINAL_JOB_STATUSES = new Set(['COMPLETED', 'CANCELLED', 'FAILED']);
 
 export function useMatching(initialJobId?: string, initialCandidateIds?: string[]) {
   const { jobs, fetchJobs } = useJobStore();
@@ -29,6 +31,9 @@ export function useMatching(initialJobId?: string, initialCandidateIds?: string[
   const [matchingResults, setMatchingResults] = useState<MatchResult[]>([]);
   const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+  const [activeJob, setActiveJob] = useState<MatchingJob | null>(null);
+  const [isCancellingJob, setIsCancellingJob] = useState(false);
+  const announcedTerminalJobId = useRef<string | null>(null);
 
   const [insightCandidate, setInsightCandidate] = useState<Candidate | null>(null);
   const [insightMatchResult, setInsightMatchResult] = useState<MatchResult | null>(null);
@@ -69,7 +74,61 @@ export function useMatching(initialJobId?: string, initialCandidateIds?: string[
     void loadLeaderboard(selectedJobId);
   }, [selectedJobId, loadLeaderboard]);
 
-  // Bản đồ candidateId -> score của JD đang chọn
+  const notifyTerminalJob = useCallback((job: MatchingJob) => {
+    if (announcedTerminalJobId.current === job.id) return;
+    announcedTerminalJobId.current = job.id;
+
+    const items = job.items ?? [];
+    const doneCount = items.length ? items.filter((item) => item.status === 'DONE').length : Math.max(0, job.processed - job.failed);
+    const failedCount = items.length ? items.filter((item) => item.status === 'FAILED').length : job.failed;
+    const skippedCount = items.length ? items.filter((item) => item.status === 'SKIPPED').length : 0;
+
+    if (job.status === 'FAILED') {
+      toast.error(job.errorMessage || 'Tiến trình AI Matching thất bại');
+    } else if (failedCount === 0 && skippedCount === 0) {
+      toast.success(`Hoàn tất đánh giá ${doneCount}/${job.total} ứng viên`);
+    } else {
+      toast.error(`Đã đánh giá ${doneCount}/${job.total} ứng viên; ${failedCount} hồ sơ lỗi, ${skippedCount} bỏ qua/đã hủy`);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!activeJob || TERMINAL_JOB_STATUSES.has(activeJob.status)) return;
+    if (typeof matchingFeatureApi.getJob !== 'function') return;
+
+    let cancelled = false;
+    let lastProcessed = activeJob.processed;
+
+    const pollOnce = async () => {
+      try {
+        const updated = await matchingFeatureApi.getJob(activeJob.id, true);
+        if (cancelled || !updated) return;
+        setActiveJob(updated);
+        if (updated.processed > lastProcessed) {
+          lastProcessed = updated.processed;
+          void loadLeaderboard(updated.jobDescriptionId);
+          void fetchJobs();
+        }
+        if (TERMINAL_JOB_STATUSES.has(updated.status)) {
+          notifyTerminalJob(updated);
+          void loadLeaderboard(updated.jobDescriptionId);
+          void fetchJobs();
+        }
+      } catch {
+        // Keep polling while server recovers or retry on next tick.
+      }
+    };
+
+    const timer = setInterval(() => {
+      void pollOnce();
+    }, 2000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [activeJob, loadLeaderboard, fetchJobs, notifyTerminalJob]);
+
   const scoredByCandidateId = useMemo(() => {
     const map = new Map<string, number>();
     matchingResults.forEach((m) => {
@@ -78,7 +137,6 @@ export function useMatching(initialJobId?: string, initialCandidateIds?: string[
     return map;
   }, [matchingResults]);
 
-  // Danh sách ứng viên hợp lệ (loại trừ FAILED) và lọc theo tìm kiếm / chưa chấm
   const selectableCandidates = useMemo(() => {
     const q = candidateSearch.trim().toLowerCase();
     return candidates.filter((c) => {
@@ -110,6 +168,26 @@ export function useMatching(initialJobId?: string, initialCandidateIds?: string[
     }
   };
 
+  const startAsyncJob = useCallback(
+    async (jobId: string, candidateIds: string[]) => {
+      announcedTerminalJobId.current = null;
+      const res = await matchingFeatureApi.createJob(jobId, candidateIds);
+      if (!res.success || !res.data) {
+        throw new Error(res.message || 'Không thể khởi tạo tiến trình AI Matching');
+      }
+      setActiveJob(res.data);
+      closeConfirmModal();
+      if (TERMINAL_JOB_STATUSES.has(res.data.status)) {
+        notifyTerminalJob(res.data);
+        await loadLeaderboard(jobId);
+        void fetchJobs();
+      } else {
+        toast.success(res.message || `Đã đưa ${res.data.total} ứng viên vào hàng đợi chấm điểm`);
+      }
+    },
+    [closeConfirmModal, fetchJobs, loadLeaderboard, notifyTerminalJob],
+  );
+
   const handleRunMatching = async () => {
     if (isRunning) return;
     if (!selectedJobId) {
@@ -138,6 +216,12 @@ export function useMatching(initialJobId?: string, initialCandidateIds?: string[
         toast.error('Không còn CV hợp lệ để chấm điểm.');
         return;
       }
+
+      if (candidateIds.length > 1 && typeof matchingFeatureApi.createJob === 'function') {
+        await startAsyncJob(selectedJobId, candidateIds);
+        return;
+      }
+
       const res = await matchingFeatureApi.run(selectedJobId, candidateIds);
       if (!res.success) throw new Error(res.message || 'AI Matching thất bại');
       const count = res.data?.length ?? candidateIds.length;
@@ -152,6 +236,46 @@ export function useMatching(initialJobId?: string, initialCandidateIds?: string[
       closeConfirmModal();
     }
   };
+
+  const handleCancelJob = async () => {
+    if (!activeJob || isCancellingJob || TERMINAL_JOB_STATUSES.has(activeJob.status)) return;
+    setIsCancellingJob(true);
+    try {
+      const res = await matchingFeatureApi.cancelJob(activeJob.id);
+      if (res.data) {
+        setActiveJob((prev) => ({ ...(prev ?? {}), ...res.data! }));
+        if (TERMINAL_JOB_STATUSES.has(res.data.status)) {
+          notifyTerminalJob(res.data);
+          void loadLeaderboard(res.data.jobDescriptionId);
+        } else {
+          toast.success('Đã gửi yêu cầu dừng; các hồ sơ đang chạy dở sẽ hoàn tất');
+        }
+      }
+    } catch {
+      // Lỗi hiển thị qua interceptor
+    } finally {
+      setIsCancellingJob(false);
+    }
+  };
+
+  const handleRetryFailedItems = async () => {
+    if (!activeJob) return;
+    const failedIds = (activeJob.items ?? [])
+      .filter((item) => item.status === 'FAILED')
+      .map((item) => item.candidateId);
+    if (failedIds.length === 0) return;
+
+    setIsRunning(true);
+    try {
+      await startAsyncJob(activeJob.jobDescriptionId, failedIds);
+    } catch (error) {
+      if (error instanceof Error && !('response' in error)) toast.error(error.message);
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  const dismissActiveJob = () => setActiveJob(null);
 
   const handleOpenInsight = async (result: MatchResult) => {
     setInsightMatchResult(result);
@@ -216,6 +340,8 @@ export function useMatching(initialJobId?: string, initialCandidateIds?: string[
     isLoadingLeaderboard,
     isConfirmModalOpen,
     isRunning,
+    activeJob,
+    isCancellingJob,
     insightCandidate,
     insightMatchResult,
     candidateToDelete,
@@ -229,6 +355,9 @@ export function useMatching(initialJobId?: string, initialCandidateIds?: string[
     openConfirmModal,
     closeConfirmModal,
     handleRunMatching,
+    handleCancelJob,
+    handleRetryFailedItems,
+    dismissActiveJob,
     handleOpenInsight,
     handleCloseInsight,
     setCandidateToDelete,

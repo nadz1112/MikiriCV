@@ -11,7 +11,21 @@ export class FieldParser {
     // Chỉ nhận số 0–30 nằm cùng cụm “kinh nghiệm/experience” trong phạm vi 40 ký tự.
     const expMatch = text.match(/(?:kinh\s+nghiệm|experience)[^\n]{0,40}?(\d{1,2})\s*\+?\s*(?:năm|years?)(?!\w)|(?:\d{1,2})\s*\+?\s*(?:năm|years?)[^\n]{0,40}?(?:kinh\s+nghiệm|experience)/i);
     const years = expMatch ? Number(expMatch[1] ?? expMatch[0].match(/\d{1,2}/)?.[0] ?? 0) : 0;
-    return { fullName, email, phone, yearsOfExperience: years <= 30 ? years : 0, skills: skillNormalizer.detect(text), education: null };
+    return { fullName, email, phone, yearsOfExperience: years <= 30 ? years : 0, skills: skillNormalizer.detect(text), education: this.extractEducation(text) };
+  }
+
+  private extractEducation(text: string): string | null {
+    const line = text
+      .split(/\r?\n/)
+      .map((entry) => entry.trim())
+      .find((entry) =>
+        entry.length >= 6
+        && entry.length <= 120
+        && !entry.includes('@')
+        && !/(?:\+84|0)\d{8,10}/.test(entry)
+        && /(?:^|[^\p{L}\p{N}])(đại\s+học|cao\s+đẳng|học\s+viện|thạc\s+sĩ|cử\s+nhân|kỹ\s+sư|university|college|bachelor|master)(?:$|[^\p{L}\p{N}])/iu.test(entry),
+      );
+    return line ?? null;
   }
 
   private extractPhone(text: string): string | null {

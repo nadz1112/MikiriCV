@@ -11,5 +11,35 @@ services:
     volumes:
       - mikiricv-postgres:/var/lib/postgresql/data
 
+  backend:
+    profiles: ["full"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    env_file:
+      - ./backend/.env
+    environment:
+      PORT: 4000
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/mikiricv?schema=public
+    ports:
+      - "4000:4000"
+    volumes:
+      - mikiricv-uploads:/app/uploads
+
+  frontend:
+    profiles: ["full"]
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+
 volumes:
   mikiricv-postgres:
+  mikiricv-uploads:

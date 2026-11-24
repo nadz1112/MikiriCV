@@ -2,6 +2,7 @@ import express, { Express } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
+import { randomUUID } from 'crypto';
 import apiRouter from './routes/index.js';
 import { errorHandler } from './middlewares/error.middleware.js';
 import { env } from './config/env.js';
@@ -9,6 +10,13 @@ import { requireCsrf } from './middlewares/auth.middleware.js';
 
 export function createApp(): Express {
   const app = express();
+  app.use((req, res, next) => {
+    const incomingId = req.get('X-Request-Id')?.trim();
+    const requestId = incomingId || randomUUID();
+    req.requestId = requestId;
+    res.setHeader('X-Request-Id', requestId);
+    next();
+  });
   app.use(helmet());
   app.use(cors({ origin: env.CORS_ORIGIN.split(',').map((value) => value.trim()), credentials: true }));
   app.use(cookieParser());
