@@ -8,7 +8,7 @@ import { geminiMatchingProvider, type AIMatchingProvider } from '../modules/matc
 import { evaluateCandidateWithAi, safeMatchingCandidateSelect } from '../modules/matching/evaluate-candidate.js';
 import { matchingJobRunner } from '../modules/matching/matching-job.runner.js';
 import { PdfTextExtractor } from '../modules/candidates/text-extractor.js';
-import { localFileStorage } from '../modules/storage/file-storage.js';
+import { fileStorage } from '../modules/storage/file-storage.js';
 import { reserveAnalyses, refundAnalyses, checkDocuments, getUserSubscription } from './subscription.service.js';
 
 async function ensurePdfPageCounts(
@@ -17,8 +17,10 @@ async function ensurePdfPageCounts(
   for (const candidate of candidates) {
     if (candidate.pageCount == null && candidate.fileName?.toLowerCase().endsWith('.pdf')) {
       try {
-        const filePath = localFileStorage.resolveSafePath(candidate.fileUrl);
-        candidate.pageCount = (await new PdfTextExtractor().extractDocument(filePath)).pageCount;
+        const doc = await fileStorage.withLocalFile(candidate.fileUrl, (filePath) =>
+          new PdfTextExtractor().extractDocument(filePath),
+        );
+        candidate.pageCount = doc.pageCount;
       } catch {
         throw new AppError(422, 'CV_PAGE_COUNT_UNAVAILABLE', 'Không thể kiểm tra số trang CV. Vui lòng tải lại file PDF hợp lệ.');
       }

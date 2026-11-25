@@ -26,6 +26,11 @@ const envSchema = z.object({
   MAX_FILE_SIZE_MB: z.coerce.number().int().positive().default(10),
   MAX_FILES_PER_REQUEST: z.coerce.number().int().positive().max(100).default(20),
   UPLOAD_DIR: z.string().default('./uploads'),
+  STORAGE_DRIVER: z.enum(['local', 'cloudinary']).default('local'),
+  CLOUDINARY_CLOUD_NAME: z.string().trim().optional(),
+  CLOUDINARY_API_KEY: z.string().trim().optional(),
+  CLOUDINARY_API_SECRET: z.string().trim().optional(),
+  CLOUDINARY_FOLDER: z.string().trim().min(1).default('mikiricv/cvs'),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET ph\u1ea3i c\u00f3 \u00edt nh\u1ea5t 32 k\u00fd t\u1ef1'),
   JWT_ACCESS_EXPIRES_IN: z.string().regex(/^\d+(s|m|h|d)$/).default('15m'),
@@ -37,6 +42,18 @@ const envSchema = z.object({
   LOGIN_LOCK_MINUTES: z.coerce.number().int().positive().default(15),
   SEED_ADMIN_EMAIL: z.string().email().optional(),
   SEED_ADMIN_PASSWORD: z.string().optional(),
+}).superRefine((data, ctx) => {
+  if (data.STORAGE_DRIVER === 'cloudinary' && data.NODE_ENV !== 'test') {
+    if (!data.CLOUDINARY_CLOUD_NAME) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['CLOUDINARY_CLOUD_NAME'], message: 'CLOUDINARY_CLOUD_NAME là bắt buộc khi STORAGE_DRIVER=cloudinary' });
+    }
+    if (!data.CLOUDINARY_API_KEY) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['CLOUDINARY_API_KEY'], message: 'CLOUDINARY_API_KEY là bắt buộc khi STORAGE_DRIVER=cloudinary' });
+    }
+    if (!data.CLOUDINARY_API_SECRET) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['CLOUDINARY_API_SECRET'], message: 'CLOUDINARY_API_SECRET là bắt buộc khi STORAGE_DRIVER=cloudinary' });
+    }
+  }
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
