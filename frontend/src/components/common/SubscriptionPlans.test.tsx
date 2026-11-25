@@ -23,8 +23,9 @@ it('lets admin manage the company quota without pricing or sales cards', async (
   expect(screen.getByText('Còn lại')).toBeTruthy();
   expect(screen.queryByLabelText('Chu kỳ tính phí')).toBeNull();
   fireEvent.change(screen.getByLabelText('Hạn mức phân tích mỗi tháng'), { target: { value: 'PLUS' } });
+  fireEvent.change(screen.getByLabelText('Chu kỳ thanh toán'), { target: { value: 'YEARLY' } });
   fireEvent.click(screen.getByRole('button', { name: 'Lưu hạn mức' }));
-  await waitFor(() => expect(mocks.update).toHaveBeenCalledWith('co', 'PLUS', 'MONTHLY'));
+  await waitFor(() => expect(mocks.update).toHaveBeenCalledWith('co', 'PLUS', 'YEARLY'));
   expect(updated).toHaveBeenCalledTimes(1);
 });
 it('keeps failed plan changes visible', async () => {

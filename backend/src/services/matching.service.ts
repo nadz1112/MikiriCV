@@ -9,7 +9,7 @@ import { evaluateCandidateWithAi, safeMatchingCandidateSelect } from '../modules
 import { matchingJobRunner } from '../modules/matching/matching-job.runner.js';
 import { PdfTextExtractor } from '../modules/candidates/text-extractor.js';
 import { localFileStorage } from '../modules/storage/file-storage.js';
-import { reserveAnalyses, refundAnalyses, checkDocuments } from './subscription.service.js';
+import { reserveAnalyses, refundAnalyses, checkDocuments, getUserSubscription } from './subscription.service.js';
 
 async function ensurePdfPageCounts(
   candidates: Array<{ pageCount: number | null; fileName?: string | null; fileUrl: string }>,
@@ -382,7 +382,21 @@ export class MatchingService {
       throw new AppError(404, 'JOB_NOT_FOUND', 'Không tìm thấy Job Description');
     }
 
-    return { ...job, matchResults: job.matchResults.map(toMatchResultDto) };
+    let plan: 'FREE' | 'PLUS' | undefined;
+    if (ownerId && typeof prisma.user?.findUnique === 'function') {
+      try {
+        plan = (await getUserSubscription(ownerId)).name;
+      } catch {
+        plan = undefined;
+      }
+    }
+
+    return {
+      ...job,
+      matchResults: (job.matchResults as Array<Parameters<typeof toMatchResultDto>[0]>).map((match) =>
+        toMatchResultDto(match, plan),
+      ),
+    };
   }
 }
 

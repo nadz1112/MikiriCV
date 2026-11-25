@@ -3,6 +3,43 @@ import { env } from './env.js';
 
 const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
 
+export const geminiFreeModel = genAI.getGenerativeModel({
+  model: env.GEMINI_MODEL,
+  generationConfig: {
+    responseMimeType: 'application/json',
+    temperature: 0.2,
+    responseSchema: {
+      type: SchemaType.OBJECT,
+      properties: {
+        score: {
+          type: SchemaType.INTEGER,
+          description: 'Điểm số phù hợp từ 0 đến 100',
+        },
+        summary: {
+          type: SchemaType.STRING,
+          description: 'Tóm tắt ngắn gọn nhận xét mức độ phù hợp bằng tiếng Việt',
+        },
+        matchedSkills: {
+          type: SchemaType.ARRAY,
+          items: { type: SchemaType.STRING },
+          description: 'Danh sách các kỹ năng ứng viên đáp ứng đúng yêu cầu của JD',
+        },
+        missingSkills: {
+          type: SchemaType.ARRAY,
+          items: { type: SchemaType.STRING },
+          description: 'Danh sách các kỹ năng quan trọng JD yêu cầu mà CV còn thiếu',
+        },
+        highlights: {
+          type: SchemaType.ARRAY,
+          items: { type: SchemaType.STRING },
+          description: 'Đúng 3 điểm nổi bật ngắn gọn nhất của ứng viên theo JD',
+        },
+      },
+      required: ['score', 'summary', 'matchedSkills', 'missingSkills', 'highlights'],
+    },
+  },
+});
+
 export const geminiModel = genAI.getGenerativeModel({
   model: env.GEMINI_MODEL,
   generationConfig: {
@@ -28,6 +65,21 @@ export const geminiModel = genAI.getGenerativeModel({
           type: SchemaType.ARRAY,
           items: { type: SchemaType.STRING },
           description: 'Danh sách các kỹ năng quan trọng JD yêu cầu mà CV còn thiếu',
+        },
+        highlights: {
+          type: SchemaType.ARRAY,
+          items: { type: SchemaType.STRING },
+          description: '3 điểm nổi bật chính của ứng viên',
+        },
+        skillAnalysis: {
+          type: SchemaType.ARRAY,
+          items: { type: SchemaType.STRING },
+          description: 'Phân tích chi tiết từng nhóm kỹ năng chuyên môn',
+        },
+        redFlags: {
+          type: SchemaType.ARRAY,
+          items: { type: SchemaType.STRING },
+          description: 'Các điểm khuyết hoặc rủi ro cần xác minh trong CV',
         },
         matchLevel: {
           type: SchemaType.STRING,

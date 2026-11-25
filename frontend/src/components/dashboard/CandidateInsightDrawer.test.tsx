@@ -111,6 +111,7 @@ const matchResult: MatchResult = {
     reason: 'Thể hiện tiến bộ rõ qua các dự án gần đây.',
   },
   interviewQuestions: ['Bạn đã tối ưu hiệu năng API Node.js như thế nào?'],
+  highlights: ['3 năm kinh nghiệm Node.js', 'Làm chủ PostgreSQL', 'Phát triển REST API chuẩn mực'],
   limitations: [],
 };
 
@@ -122,6 +123,7 @@ it('renders CVTest breakdown, requirementsAnalysis, careerPotential and human-in
       candidate={candidate}
       matchResult={matchResult}
       jobTitle="Backend Node.js"
+      plan="PLUS"
       onDeleteRequest={vi.fn()}
     />,
   );
@@ -134,5 +136,27 @@ it('renders CVTest breakdown, requirementsAnalysis, careerPotential and human-in
   expect(screen.getByText('Tiềm năng phát triển (Career Potential)')).toBeTruthy();
   expect(screen.getByText('Nhận xét bổ trợ — không cộng vào tổng 100 điểm.')).toBeTruthy();
   expect(screen.getByText(/Kết quả AI chỉ hỗ trợ sàng lọc/)).toBeTruthy();
+});
+
+it('renders only score, summary, 3 highlights, skills contrast and PLUS upgrade card for FREE plan', () => {
+  render(
+    <CandidateInsightDrawer
+      isOpen
+      onClose={vi.fn()}
+      candidate={candidate}
+      matchResult={matchResult}
+      jobTitle="Backend Node.js"
+      plan="FREE"
+      onDeleteRequest={vi.fn()}
+    />,
+  );
+
+  expect(screen.getByText('Tóm tắt nhanh 3 điểm nổi bật của ứng viên')).toBeTruthy();
+  expect(screen.getByText('3 năm kinh nghiệm Node.js')).toBeTruthy();
+  expect(screen.getByRole('region', { name: 'Tính năng nâng cao Gói PLUS' })).toBeTruthy();
+  expect(screen.queryByText('Phân tích theo 6 nhóm tiêu chí')).toBeNull();
+  expect(screen.queryByText('Phân tích yêu cầu theo JD')).toBeNull();
+  expect(screen.queryByText('Tiềm năng phát triển (Career Potential)')).toBeNull();
+  expect(screen.queryByText('Câu hỏi phỏng vấn gợi ý')).toBeNull();
 });
 

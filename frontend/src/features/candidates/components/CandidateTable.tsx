@@ -5,6 +5,7 @@ import { useCandidateFeatureStore } from '../store/candidateStore';
 import { DeleteConfirmModal } from '../../../components/dashboard/DeleteConfirmModal';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../../auth/authStore';
+import { useSubscriptionStore } from '../../subscription/subscriptionStore';
 import type { Candidate } from '../../../types';
 import { CandidateInsightDrawer } from '../../../components/dashboard/CandidateInsightDrawer';
 import { useAutoRefresh } from '../../../shared/hooks/useAutoRefresh';
@@ -29,9 +30,12 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
   onCandidateDeleted,
 }) => {
   const isAdmin = useAuthStore((state) => state.user?.role === 'ADMIN');
+  const subscription = useSubscriptionStore((state) => state.subscription);
+  const isFreePlan = !isAdmin && subscription?.name === 'FREE';
   const {
     selectedCandidateIds,
     toggleSelect,
+    selectSingle,
     toggleSelectAll,
     filter,
     setSort,
@@ -239,15 +243,19 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
             <thead className="bg-slate-50 text-[11px] uppercase font-semibold text-slate-500 tracking-wider border-b border-slate-200">
               <tr>
                 {!isAdmin && <th className="w-10 px-4 py-3">
-                  <input
-                    type="checkbox"
-                    ref={headerCheckboxRef}
-                    checked={isAllVisibleSelected}
-                    disabled={selectableVisibleIds.length === 0}
-                    onChange={() => toggleSelectAll(selectableVisibleIds)}
-                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
-                    title="Chọn tất cả hồ sơ hợp lệ đang hiển thị"
-                  />
+                  {isFreePlan ? (
+                    <span className="text-[10px] font-semibold text-slate-400">1 CV</span>
+                  ) : (
+                    <input
+                      type="checkbox"
+                      ref={headerCheckboxRef}
+                      checked={isAllVisibleSelected}
+                      disabled={selectableVisibleIds.length === 0}
+                      onChange={() => toggleSelectAll(selectableVisibleIds)}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                      title="Chọn tất cả hồ sơ hợp lệ đang hiển thị"
+                    />
+                  )}
                 </th>}
                 <th className="px-4 py-3">Họ tên</th>
                 {isAdmin && <th className="px-4 py-3">Người tải lên</th>}
@@ -275,7 +283,7 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
                         type="checkbox"
                         checked={isSelected}
                         disabled={candidate.extractionStatus === 'FAILED'}
-                        onChange={() => toggleSelect(candidate.id)}
+                        onChange={() => (isFreePlan ? selectSingle(candidate.id) : toggleSelect(candidate.id))}
                         title={
                           candidate.extractionStatus === 'FAILED'
                             ? 'Hồ sơ lỗi trích xuất không thể đưa vào AI Matching'

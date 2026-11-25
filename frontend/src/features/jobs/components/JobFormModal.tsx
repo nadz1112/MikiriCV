@@ -1,10 +1,11 @@
 import { ModalPortal } from '../../../components/common/ModalPortal';
 import React, { useEffect, useState } from 'react';
 import { z } from 'zod';
-import { AlertTriangle, ChevronDown, ChevronUp, Plus, RotateCcw, SlidersHorizontal, X } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, Lock, Plus, RotateCcw, SlidersHorizontal, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { CvTestCategory, CvTestWeights, JobDescription } from '../../../types';
 import { jobFeatureApi, JobPayload } from '../api/jobApi';
+import { useSubscriptionStore } from '../../subscription/subscriptionStore';
 
 const DEFAULT_WEIGHTS: CvTestWeights = {
   skill_matching: 25,
@@ -80,6 +81,7 @@ const SUGGESTED_SKILLS = [
 interface JobFormModalProps {
   isOpen: boolean;
   editingJob: JobDescription | null;
+  plan?: 'FREE' | 'PLUS';
   onClose: () => void;
   onSuccess: (job: JobDescription, isEdit: boolean) => void;
 }
@@ -87,9 +89,12 @@ interface JobFormModalProps {
 export const JobFormModal: React.FC<JobFormModalProps> = ({
   isOpen,
   editingJob,
+  plan,
   onClose,
   onSuccess,
 }) => {
+  const storePlan = useSubscriptionStore((state) => state.subscription?.name);
+  const isFreePlan = (plan ?? storePlan) === 'FREE';
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [skills, setSkills] = useState<string[]>([]);
@@ -113,7 +118,7 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
       setSkillInput('');
       setPreferredSkillInput('');
       setMinExperience(String(editingJob.minExperience));
-      const savedWeights = editingJob.evaluationConfig?.weights;
+      const savedWeights = !isFreePlan ? editingJob.evaluationConfig?.weights : undefined;
       setWeights(savedWeights ? { ...DEFAULT_WEIGHTS, ...savedWeights } : { ...DEFAULT_WEIGHTS });
       setShowWeights(Boolean(savedWeights));
     } else {
@@ -127,7 +132,7 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
       setWeights({ ...DEFAULT_WEIGHTS });
       setShowWeights(false);
     }
-  }, [isOpen, editingJob]);
+  }, [isOpen, editingJob, isFreePlan]);
 
   if (!isOpen) return null;
 
@@ -203,7 +208,7 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
     const { weights: validWeights, ...rest } = parsed.data;
     const payload: JobPayload = {
       ...rest,
-      evaluationConfig: { weights: validWeights },
+      ...(isFreePlan ? {} : { evaluationConfig: { weights: validWeights } }),
     };
 
     try {
@@ -484,6 +489,12 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
               >
                 <SlidersHorizontal className="h-3.5 w-3.5 text-blue-600" />
                 <span>Tùy chỉnh trọng số chấm điểm (Tổng 100)</span>
+                {isFreePlan && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                    <Lock className="h-2.5 w-2.5" />
+                    Gói PLUS
+                  </span>
+                )}
                 {showWeights ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
               </button>
               <span className="text-[11px] font-medium text-slate-500">
@@ -493,6 +504,11 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
 
             {showWeights && (
               <div className="mt-3 space-y-3 border-t border-slate-200/80 pt-3">
+                {isFreePlan && (
+                  <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    Tùy chỉnh trọng số 6 tiêu chí dành cho gói PLUS. Gói FREE sử dụng bộ trọng số tiêu chuẩn (25/20/20/15/10/10).
+                  </p>
+                )}
                 <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                   {WEIGHT_LABELS.map(({ key, label }) => (
                     <label key={key} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs">
@@ -502,6 +518,7 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
                         min={0}
                         max={100}
                         step={1}
+                        disabled={isFreePlan}
                         aria-label={`Trọng số ${label}`}
                         value={weights[key]}
                         onChange={(e) => {
@@ -509,7 +526,7 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
                           setWeights((prev) => ({ ...prev, [key]: Number.isFinite(nextVal) ? nextVal : 0 }));
                           if (errors.weights) setErrors((prev) => ({ ...prev, weights: '' }));
                         }}
-                        className="w-16 rounded-lg border border-slate-200 px-2 py-1 text-right font-semibold text-slate-800 focus:border-blue-500 focus:outline-none"
+                        className="w-16 rounded-lg border border-slate-200 px-2 py-1 text-right font-semibold text-slate-800 focus:border-blue-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400"
                       />
                     </label>
                   ))}
@@ -520,11 +537,12 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
                   </span>
                   <button
                     type="button"
+                    disabled={isFreePlan}
                     onClick={() => {
                       setWeights({ ...DEFAULT_WEIGHTS });
                       setErrors((prev) => ({ ...prev, weights: '' }));
                     }}
-                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-100"
+                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50"
                   >
                     <RotateCcw className="h-3 w-3" />
                     <span>Đặt lại mặc định</span>

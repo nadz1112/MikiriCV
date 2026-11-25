@@ -3,13 +3,18 @@ import { updateSubscription, type Subscription } from '../../services/subscripti
 
 export function SubscriptionPlans({ subscription, admin = false, onUpdated }: { subscription?: Subscription; admin?: boolean; onUpdated?: () => void }) {
   const [plan, setPlan] = useState<'FREE' | 'PLUS'>('FREE');
+  const [billingCycle, setBillingCycle] = useState<'MONTHLY' | 'YEARLY'>('MONTHLY');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  useEffect(() => { setPlan(subscription?.name ?? 'FREE'); setError(''); }, [subscription?.companyId, subscription?.name, subscription?.billingCycle]);
+  useEffect(() => {
+    setPlan(subscription?.name ?? 'FREE');
+    setBillingCycle(subscription?.billingCycle ?? 'MONTHLY');
+    setError('');
+  }, [subscription?.companyId, subscription?.name, subscription?.billingCycle]);
   const save = async () => {
     if (!subscription || saving) return;
     setSaving(true); setError('');
-    try { await updateSubscription(subscription.companyId, plan, subscription.billingCycle); onUpdated?.(); }
+    try { await updateSubscription(subscription.companyId, plan, plan === 'FREE' ? 'MONTHLY' : billingCycle); onUpdated?.(); }
     catch { setError(admin ? 'Không thể cập nhật hạn mức doanh nghiệp. Vui lòng thử lại.' : 'Không thể cập nhật gói dịch vụ. Vui lòng thử lại.'); }
     finally { setSaving(false); }
   };
@@ -23,7 +28,7 @@ export function SubscriptionPlans({ subscription, admin = false, onUpdated }: { 
       ].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-3"><p className="text-sm text-slate-500">{label}</p><p className="mt-1 text-lg font-semibold">{value}</p></div>)}</div>
       <progress aria-label="Lượt CV đã sử dụng trong tháng" max={subscription.monthlyLimit} value={Math.min(subscription.used, subscription.monthlyLimit)} className="mt-3 h-3 w-full accent-blue-700" />
       <p className="mt-2 text-sm text-slate-600">Tháng {subscription.month.slice(0, 7)} · Hạn mức dùng chung cho tất cả HR trong doanh nghiệp. Token đầu vào, đầu ra và chi phí AI thực tế được thống kê riêng ở trên.</p>
-      <div className="mt-4 flex flex-wrap items-end gap-3"><label className="text-sm font-medium">Hạn mức phân tích mỗi tháng<select aria-label="Hạn mức phân tích mỗi tháng" disabled={saving} value={plan} onChange={(event) => setPlan(event.target.value as 'FREE' | 'PLUS')} className="mt-1 block rounded-lg border border-slate-300 bg-white px-3 py-2"><option value="FREE">10 lượt CV (FREE)</option><option value="PLUS">300 lượt CV (PLUS)</option></select></label><button disabled={saving} onClick={() => void save()} className="rounded-lg bg-blue-700 px-4 py-2 font-semibold text-white disabled:opacity-50">{saving ? 'Đang lưu…' : 'Lưu hạn mức'}</button></div>
+      <div className="mt-4 flex flex-wrap items-end gap-3"><label className="text-sm font-medium">Hạn mức phân tích mỗi tháng<select aria-label="Hạn mức phân tích mỗi tháng" disabled={saving} value={plan} onChange={(event) => setPlan(event.target.value as 'FREE' | 'PLUS')} className="mt-1 block rounded-lg border border-slate-300 bg-white px-3 py-2"><option value="FREE">10 lượt CV (FREE)</option><option value="PLUS">300 lượt CV (PLUS)</option></select></label>{plan === 'PLUS' && <label className="text-sm font-medium">Chu kỳ thanh toán<select aria-label="Chu kỳ thanh toán" disabled={saving} value={billingCycle} onChange={(event) => setBillingCycle(event.target.value as 'MONTHLY' | 'YEARLY')} className="mt-1 block rounded-lg border border-slate-300 bg-white px-3 py-2"><option value="MONTHLY">Theo tháng</option><option value="YEARLY">Theo năm</option></select></label>}<button disabled={saving} onClick={() => void save()} className="rounded-lg bg-blue-700 px-4 py-2 font-semibold text-white disabled:opacity-50">{saving ? 'Đang lưu…' : 'Lưu hạn mức'}</button></div>
       <p className="mt-2 text-sm text-slate-500">Thay đổi áp dụng cho toàn doanh nghiệp và giữ nguyên số lượt đã dùng. Hạn mức làm mới đầu tháng theo giờ Việt Nam; lần chấm lỗi được hoàn lượt.</p>
     </> : <p className="mt-2 text-sm text-slate-600">Chọn doanh nghiệp ở bộ lọc phía trên để xem số lượt đã dùng, còn lại và điều chỉnh hạn mức.</p>}
     {error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}

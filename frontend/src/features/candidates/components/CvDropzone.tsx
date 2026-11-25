@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { candidateApi, CandidateItem } from '../api/candidateApi';
+import { useSubscriptionStore } from '../../subscription/subscriptionStore';
 
 export type UploadState = 'pending' | 'uploading' | 'parsed' | 'warning' | 'failed' | 'rejected';
 
@@ -34,40 +35,51 @@ const extOf = (name: string) => {
 
 interface CvDropzoneProps {
   onUploadSuccess?: () => void;
+  plan?: 'FREE' | 'PLUS';
 }
 
-export const CvDropzone: React.FC<CvDropzoneProps> = ({ onUploadSuccess }) => {
+export const CvDropzone: React.FC<CvDropzoneProps> = ({ onUploadSuccess, plan }) => {
+  const storePlan = useSubscriptionStore((state) => state.subscription?.name);
+  const isFreePlan = (plan ?? storePlan) === 'FREE';
   const [items, setItems] = useState<UploadItem[]>([]);
   const [batch, setBatch] = useState<{ files: File[]; key: string } | null>(null);
   const [sending, setSending] = useState(false);
 
   const onDrop = useCallback((accepted: File[], rejections: FileRejection[]) => {
-    setItems((current) => [
-      ...current,
-      ...accepted.map((file) => ({
-        id: crypto.randomUUID(),
-        file,
-        state: 'pending' as const,
-        progress: 0,
-      })),
-      ...rejections.map(({ file, errors }) => ({
-        id: crypto.randomUUID(),
-        file,
-        state: 'rejected' as const,
-        progress: 0,
-        message: errors.some((error) => error.code === 'file-too-large')
-          ? 'Sai định dạng/Quá 10MB: Tệp vượt quá giới hạn 10 MB'
-          : errors.some((error) => error.code === 'too-many-files')
-            ? 'Vượt quá số lượng tệp được chọn cho một lần (tối đa 20 tệp)'
-            : `Sai định dạng: Chỉ chấp nhận tệp PDF hoặc DOCX (${extOf(file.name) || 'không rõ định dạng'})`,
-      })),
-    ]);
-  }, []);
+    setItems((current) => {
+      const base = isFreePlan && accepted.length > 0
+        ? current.filter((item) => item.state !== 'pending')
+        : current;
+      const acceptedFiles = isFreePlan ? accepted.slice(0, 1) : accepted;
+      return [
+        ...base,
+        ...acceptedFiles.map((file) => ({
+          id: crypto.randomUUID(),
+          file,
+          state: 'pending' as const,
+          progress: 0,
+        })),
+        ...rejections.map(({ file, errors }) => ({
+          id: crypto.randomUUID(),
+          file,
+          state: 'rejected' as const,
+          progress: 0,
+          message: errors.some((error) => error.code === 'file-too-large')
+            ? 'Sai định dạng/Quá 10MB: Tệp vượt quá giới hạn 10 MB'
+            : errors.some((error) => error.code === 'too-many-files')
+              ? isFreePlan
+                ? 'Gói FREE chỉ tải lên từng CV đơn lẻ. Vui lòng chọn 1 tệp hoặc nâng gói PLUS để tải hàng loạt.'
+                : 'Vượt quá số lượng tệp được chọn cho một lần (tối đa 20 tệp)'
+              : `Sai định dạng: Chỉ chấp nhận tệp PDF hoặc DOCX (${extOf(file.name) || 'không rõ định dạng'})`,
+        })),
+      ];
+    });
+  }, [isFreePlan]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    multiple: true,
-    maxFiles: 20,
+    multiple: !isFreePlan,
+    maxFiles: isFreePlan ? 1 : 20,
     maxSize: MAX_BYTES,
     accept: {
       'application/pdf': ['.pdf'],
@@ -282,10 +294,14 @@ export const CvDropzone: React.FC<CvDropzoneProps> = ({ onUploadSuccess }) => {
           <CloudUpload className="h-6 w-6" />
         </div>
         <p className="mt-3 text-sm font-semibold text-slate-800">
-          Kéo thả file PDF/DOCX vào đây, hoặc bấm để chọn (≤ 10MB/file)
+          {isFreePlan
+            ? 'Kéo thả 1 file PDF/DOCX vào đây, hoặc bấm để chọn (≤ 2 trang PDF / ~3.000 ký tự)'
+            : 'Kéo thả file PDF/DOCX vào đây, hoặc bấm để chọn (≤ 10MB/file)'}
         </p>
         <p className="mt-1 text-xs text-slate-500">
-          Hỗ trợ tải lên hàng loạt tối đa 20 tệp cùng lúc. Tự động trích xuất thông tin và kỹ năng ứng viên.
+          {isFreePlan
+            ? 'Gói FREE: Xử lý từng CV đơn lẻ. Nâng cấp Gói PLUS để tải hàng loạt tối đa 20 tệp & hồ sơ tới 6 trang.'
+            : 'Hỗ trợ tải lên hàng loạt tối đa 20 tệp cùng lúc (tối đa 6 trang PDF / ~12.000 ký tự mỗi CV).'}
         </p>
       </div>
 

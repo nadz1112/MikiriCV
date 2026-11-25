@@ -22,6 +22,8 @@ import { dashboardApi } from '../services/dashboardApi';
 import { ScoreDistributionChart } from '../components/dashboard/ScoreDistributionChart';
 import { CandidateInsightDrawer } from '../components/dashboard/CandidateInsightDrawer';
 import { DeleteConfirmModal } from '../components/dashboard/DeleteConfirmModal';
+import { ComparisonExport } from '../features/matching/components/ComparisonExport';
+import { useSubscriptionStore } from '../features/subscription/subscriptionStore';
 import toast from 'react-hot-toast';
 
 export const DashboardPage: React.FC = () => {
@@ -32,6 +34,7 @@ export const DashboardPage: React.FC = () => {
   const [selectedJobLeaderboard, setSelectedJobLeaderboard] = useState<MatchResult[]>([]);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [currentJobStats, setCurrentJobStats] = useState<JobStats | null>(null);
+  const subscription = useSubscriptionStore((state) => state.subscription);
 
   // UI & Loading State
   const [isLoading, setIsLoading] = useState(true);
@@ -575,7 +578,12 @@ export const DashboardPage: React.FC = () => {
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <ComparisonExport
+                        jobId={selectedJobId}
+                        candidateIds={selectedJobLeaderboard.map((m) => m.candidateId)}
+                        plus={subscription?.name === 'PLUS'}
+                      />
                       <Link
                         to="/matching"
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl text-xs font-semibold transition"
@@ -871,6 +879,7 @@ export const DashboardPage: React.FC = () => {
         candidate={selectedCandidateForDrawer}
         matchResult={selectedMatchForDrawer}
         jobTitle={currentJob?.title}
+        plan={subscription?.name}
         onDeleteRequest={(cand) => {
           setIsDrawerOpen(false);
           handleRequestDelete(cand);

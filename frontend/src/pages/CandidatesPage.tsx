@@ -9,10 +9,13 @@ import { useCandidates } from '../features/candidates/hooks/useCandidates';
 import { useJobStore } from '../store/useJobStore';
 import { useAuthStore } from '../features/auth/authStore';
 import { useAutoRefresh } from '../shared/hooks/useAutoRefresh';
+import { useSubscriptionStore } from '../features/subscription/subscriptionStore';
 
 export const CandidatesPage: React.FC = () => {
   const isHr = useAuthStore((state) => state.user?.role === 'ENTERPRISE');
   const isAdmin = useAuthStore((state) => state.user?.role === 'ADMIN');
+  const subscription = useSubscriptionStore((state) => state.subscription);
+  const isFreePlan = isHr && subscription?.name === 'FREE';
   const { filter, setPage, setJobId, setSkills, setMinExp } = useCandidateFeatureStore();
   const { candidates, total, page, limit, isLoading, refresh } = useCandidates(filter, isAdmin);
   const { jobs, fetchJobs } = useJobStore();
@@ -39,7 +42,9 @@ export const CandidatesPage: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Quản lý CV</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Tải lên hồ sơ PDF/DOCX hàng loạt, sàng lọc nhanh theo kỹ năng và chọn ứng viên đưa vào AI Matching.
+            {isFreePlan
+              ? 'Gói FREE: Tải lên từng CV đơn lẻ (tối đa 2 trang / ~3.000 ký tự) và chọn 1 hồ sơ để chấm điểm AI.'
+              : 'Tải lên hồ sơ PDF/DOCX hàng loạt, sàng lọc nhanh theo kỹ năng và chọn ứng viên đưa vào AI Matching.'}
           </p>
         </div>
 

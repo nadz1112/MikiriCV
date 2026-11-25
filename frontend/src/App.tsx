@@ -11,6 +11,7 @@ import { ChangePasswordPage } from './pages/ChangePasswordPage';
 import { UsersPage } from './pages/admin/UsersPage';
 import { AdminDashboardPage } from './pages/admin/DashboardPage';
 import { useAuthStore } from './features/auth/authStore';
+import { useSubscriptionStore } from './features/subscription/subscriptionStore';
 
 export function ProtectedRoute({ roles }: { roles?: Array<'ADMIN' | 'ENTERPRISE'> }) {
   const { user, status } = useAuthStore(); const location = useLocation();
@@ -28,6 +29,12 @@ function AppRoutes() {
   useEffect(() => {
     void fetchMe();
   }, [fetchMe]);
+
+  useEffect(() => {
+    if (user?.role === 'ENTERPRISE' && !user.mustChangePassword) {
+      void useSubscriptionStore.getState().fetchSubscription();
+    }
+  }, [user?.id, user?.role, user?.mustChangePassword]);
 
   useEffect(() => {
     const expired = () => {
