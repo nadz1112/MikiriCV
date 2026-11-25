@@ -71,3 +71,30 @@ it('rejects weights that do not sum to 100 and submits evaluationConfig when val
   }));
 });
 
+it('locks custom weight inputs and omits evaluationConfig when plan is FREE', async () => {
+  const user = userEvent.setup();
+  mocks.create.mockResolvedValue({
+    id: 'jd-free',
+    title: 'Backend FREE JD',
+    description: 'Xây dựng API Node.js cơ bản cho doanh nghiệp nhỏ.',
+    requiredSkills: ['Node.js'],
+    minExperience: 1,
+    createdAt: '2026-11-25T00:00:00.000Z',
+    updatedAt: '2026-11-25T00:00:00.000Z',
+  });
+
+  render(<JobFormModal isOpen editingJob={null} plan="FREE" onClose={vi.fn()} onSuccess={vi.fn()} />);
+
+  await user.type(screen.getByLabelText(/Tiêu đề công việc/), 'Backend FREE JD');
+  await user.type(screen.getByLabelText(/Mô tả chi tiết công việc/), 'Xây dựng API Node.js cơ bản cho doanh nghiệp nhỏ.');
+  await user.click(screen.getByRole('button', { name: '+ Node.js' }));
+
+  await user.click(screen.getByRole('button', { name: /Tùy chỉnh trọng số chấm điểm/ }));
+  const skillInput = screen.getByLabelText('Trọng số Khớp kỹ năng') as HTMLInputElement;
+  expect(skillInput.disabled).toBe(true);
+
+  await user.click(screen.getByRole('button', { name: 'Tạo Job Description' }));
+  await waitFor(() => expect(mocks.create).toHaveBeenCalledOnce());
+  expect(mocks.create.mock.calls[0][0]).not.toHaveProperty('evaluationConfig');
+});
+

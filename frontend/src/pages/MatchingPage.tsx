@@ -1,13 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { MatchingControlPanel } from '../features/matching/components/MatchingControlPanel';
 import { MatchingConfirmModal } from '../features/matching/components/MatchingConfirmModal';
 import { MatchingJobProgressPanel } from '../features/matching/components/MatchingJobProgressPanel';
 import { MatchingResultsTable } from '../features/matching/components/MatchingResultsTable';
 import { useMatching } from '../features/matching/hooks/useMatching';
+import { useMatchingFeatureStore } from '../features/matching/store/matchingStore';
 import { CandidateInsightDrawer } from '../components/dashboard/CandidateInsightDrawer';
 import { DeleteConfirmModal } from '../components/dashboard/DeleteConfirmModal';
-import { getSubscription, type Subscription } from '../services/subscriptionApi';
+import { useSubscriptionStore } from '../features/subscription/subscriptionStore';
 import { SubscriptionPlans } from '../components/common/SubscriptionPlans';
 import { ComparisonExport } from '../features/matching/components/ComparisonExport';
 
@@ -56,13 +57,43 @@ export const MatchingPage: React.FC = () => {
     setCandidateToDelete,
     handleConfirmDeleteCandidate,
   } = useMatching(navState?.jobId, navState?.selectedCandidateIds);
-  const [subscription, setSubscription] = useState<Subscription>();
-  const [subscriptionError, setSubscriptionError] = useState('');
+  const { subscription, error: subscriptionError, fetchSubscription } = useSubscriptionStore();
+  const prevRunning = useRef(false);
+
   useEffect(() => {
-    const controller = new AbortController();
-    void getSubscription(controller.signal).then((value) => { if (!controller.signal.aborted) { setSubscription(value); setSubscriptionError(''); } }).catch(() => { if (!controller.signal.aborted) setSubscriptionError('Không thể tải gói dịch vụ và hạn mức doanh nghiệp.'); });
-    return () => controller.abort();
-  }, [isRunning]);
+    void fetchSubscription();
+  }, [fetchSubscription]);
+
+  useEffect(() => {
+    if (prevRunning.current && !isRunning) {
+      void fetchSubscription(true);
+    }
+    prevRunning.current = isRunning;
+  }, [isRunning, fetchSubscription]);
+
+  useEffect(() => {
+    if (activeJob && ['COMPLETED', 'CANCELLED', 'FAILED'].includes(activeJob.status)) {
+      void fetchSubscription(true);
+    }
+  }, [activeJob, fetchSubscription]);
+
+  useEffect(() => {
+    if (subscription?.name === 'FREE' && selectedCandidateIds.length > 1) {
+      useMatchingFeatureStore.getState().setSelectedCandidateIds([selectedCandidateIds[0]]);
+    }
+  }, [subscription?.name, selectedCandidateIds]);
+
+  const handleToggleCandidate = (candidateId: string) => {
+    if (subscription?.name === 'FREE') {
+      if (selectedCandidateIds.includes(candidateId)) {
+        clearSelection();
+      } else {
+        useMatchingFeatureStore.getState().setSelectedCandidateIds([candidateId]);
+      }
+      return;
+    }
+    toggleCandidateId(candidateId);
+  };
 
   return (
     <div className="space-y-6 pb-12">
@@ -75,7 +106,7 @@ export const MatchingPage: React.FC = () => {
       </div>
 
       {/* Bảng điều khiển Chọn JD & Chọn tập ứng viên */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-5"><h2 className="text-lg font-bold">Gói dịch vụ và hạn mức doanh nghiệp</h2>{subscriptionError && <p role="alert" className="mt-2 text-sm text-red-700">{subscriptionError}</p>}<SubscriptionPlans subscription={subscription} /></section>
+      <section className="rounded-2xl border border-slate-200 bg-white p-5"><h2 className="text-lg font-bold">Gói dịch vụ và hạn mức doanh nghiệp</h2>{subscriptionError && <p role="alert" className="mt-2 text-sm text-red-700">{subscriptionError}</p>}<SubscriptionPlans subscription={subscription ?? undefined} /></section>
       <MatchingControlPanel
         jobs={jobs}
         selectedJob={selectedJob}
@@ -86,8 +117,10 @@ export const MatchingPage: React.FC = () => {
         candidateSearch={candidateSearch}
         onlyUnscored={onlyUnscored}
         isRunning={isRunning}
+        plan={subscription?.name}
+        remainingQuota={subscription?.remaining}
         onSelectJob={setSelectedJobId}
-        onToggleCandidate={toggleCandidateId}
+        onToggleCandidate={handleToggleCandidate}
         onSearchChange={setCandidateSearch}
         onToggleOnlyUnscored={setOnlyUnscored}
         onSelectAllFiltered={handleSelectAllFiltered}
@@ -134,6 +167,7 @@ export const MatchingPage: React.FC = () => {
         candidate={insightCandidate}
         matchResult={insightMatchResult}
         jobTitle={selectedJob?.title}
+        plan={subscription?.name}
         onDeleteRequest={(candidate) => setCandidateToDelete(candidate)}
       />
 

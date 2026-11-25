@@ -5,6 +5,7 @@ import { useCandidateStore } from '../../store/useCandidateStore';
 import { useCandidateFeatureStore } from '../candidates/store/candidateStore';
 import { useJobFeatureStore } from '../jobs/store/jobStore';
 import { useMatchingFeatureStore } from '../matching/store/matchingStore';
+import { useSubscriptionStore } from '../subscription/subscriptionStore';
 
 export interface AuthUser { id: string; email: string; fullName: string; companyName: string | null; role: 'ADMIN' | 'ENTERPRISE'; isActive: boolean; mustChangePassword: boolean; lastLoginAt: string | null }
 interface AuthState {
@@ -21,6 +22,7 @@ const resetWorkspace = () => {
   useCandidateFeatureStore.setState(useCandidateFeatureStore.getInitialState());
   useJobFeatureStore.setState(useJobFeatureStore.getInitialState());
   useMatchingFeatureStore.setState(useMatchingFeatureStore.getInitialState());
+  useSubscriptionStore.getState().reset();
 };
 let sessionRequest: Promise<void> | null = null;
 let sessionVersion = 0;

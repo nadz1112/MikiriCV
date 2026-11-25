@@ -1,5 +1,5 @@
 import { env } from '../../config/env.js';
-import { geminiModel } from '../../config/gemini.js';
+import * as geminiConfig from '../../config/gemini.js';
 import { isTransientAiError, withRetry } from '../../utils/retry.js';
 
 export interface AiEvaluationOutput {
@@ -11,7 +11,7 @@ export interface AiEvaluationOutput {
 export interface AIMatchingProvider {
   readonly modelName: string;
   readonly promptVersion: string;
-  generateEvaluation(prompt: string): Promise<AiEvaluationOutput>;
+  generateEvaluation(prompt: string, plan?: 'FREE' | 'PLUS'): Promise<AiEvaluationOutput>;
 }
 
 export class GeminiMatchingProvider implements AIMatchingProvider {
@@ -21,9 +21,20 @@ export class GeminiMatchingProvider implements AIMatchingProvider {
     return env.GEMINI_MODEL;
   }
 
-  async generateEvaluation(prompt: string): Promise<AiEvaluationOutput> {
+  async generateEvaluation(prompt: string, plan: 'FREE' | 'PLUS' = 'PLUS'): Promise<AiEvaluationOutput> {
+    let model = geminiConfig.geminiModel;
+    if (plan === 'FREE') {
+      try {
+        if (geminiConfig.geminiFreeModel) {
+          model = geminiConfig.geminiFreeModel;
+        }
+      } catch {
+        // Test mocks that only stub geminiModel fall back to geminiModel cleanly.
+      }
+    }
+
     const geminiResponse = await withRetry(
-      () => geminiModel.generateContent(prompt, { timeout: 60000 }),
+      () => model.generateContent(prompt, { timeout: 60000 }),
       {
         retries: env.NODE_ENV === 'test' ? 0 : env.AI_MAX_RETRIES,
         baseMs: env.NODE_ENV === 'test' ? 0 : 1000,

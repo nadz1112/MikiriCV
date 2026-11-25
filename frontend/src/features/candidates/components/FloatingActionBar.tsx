@@ -3,11 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { Sparkles, X, ArrowRight } from 'lucide-react';
 import { useCandidateFeatureStore } from '../store/candidateStore';
 import { useAuthStore } from '../../auth/authStore';
+import { useSubscriptionStore } from '../../subscription/subscriptionStore';
 
 export const FloatingActionBar: React.FC = () => {
   const navigate = useNavigate();
   const { selectedCandidateIds, clearSelection, filter } = useCandidateFeatureStore();
   const user = useAuthStore((state) => state.user);
+  const subscription = useSubscriptionStore((state) => state.subscription);
+  const isFreePlan = subscription?.name === 'FREE';
 
   if (selectedCandidateIds.length === 0) {
     return null;
@@ -52,7 +55,7 @@ export const FloatingActionBar: React.FC = () => {
             className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-blue-500/20 transition hover:from-blue-500 hover:to-indigo-500"
           >
             <Sparkles className="h-3.5 w-3.5 text-amber-300" />
-            <span>Chạy AI Matching</span>
+            <span>{isFreePlan ? 'Chấm điểm CV này (FREE)' : 'Chạy AI Matching'}</span>
             <ArrowRight className="h-3.5 w-3.5" />
           </button>
         )}

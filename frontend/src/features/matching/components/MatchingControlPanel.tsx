@@ -20,6 +20,8 @@ interface MatchingControlPanelProps {
   candidateSearch: string;
   onlyUnscored: boolean;
   isRunning: boolean;
+  plan?: 'FREE' | 'PLUS';
+  remainingQuota?: number;
   onSelectJob: (jobId: string) => void;
   onToggleCandidate: (candidateId: string) => void;
   onSearchChange: (search: string) => void;
@@ -39,6 +41,8 @@ export const MatchingControlPanel: React.FC<MatchingControlPanelProps> = ({
   candidateSearch,
   onlyUnscored,
   isRunning,
+  plan,
+  remainingQuota,
   onSelectJob,
   onToggleCandidate,
   onSearchChange,
@@ -47,6 +51,8 @@ export const MatchingControlPanel: React.FC<MatchingControlPanelProps> = ({
   onClearSelection,
   onOpenConfirm,
 }) => {
+  const isFreePlan = plan === 'FREE';
+  const quotaExhausted = remainingQuota !== undefined && remainingQuota <= 0;
   const visibleIds = selectableCandidates.map((c) => c.id);
   const allVisibleSelected =
     visibleIds.length > 0 && visibleIds.every((id) => selectedCandidateIds.includes(id));
@@ -120,23 +126,30 @@ export const MatchingControlPanel: React.FC<MatchingControlPanelProps> = ({
               <span className="text-sm font-bold text-slate-800">
                 Chọn ứng viên tham gia đánh giá
               </span>
+              {isFreePlan && (
+                <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800">
+                  Gói FREE · Chấm đơn lẻ 1 CV
+                </span>
+              )}
               <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
                 Đã chọn {selectedCandidateIds.length}
               </span>
             </div>
 
             <div className="flex items-center gap-2 text-xs">
-              <button
-                type="button"
-                onClick={onSelectAllFiltered}
-                disabled={selectableCandidates.length === 0}
-                className="font-semibold text-blue-600 hover:text-blue-800 hover:underline disabled:opacity-40"
-              >
-                {allVisibleSelected ? 'Bỏ chọn danh sách đang lọc' : `Chọn tất cả (${selectableCandidates.length})`}
-              </button>
+              {!isFreePlan && (
+                <button
+                  type="button"
+                  onClick={onSelectAllFiltered}
+                  disabled={selectableCandidates.length === 0}
+                  className="font-semibold text-blue-600 hover:text-blue-800 hover:underline disabled:opacity-40"
+                >
+                  {allVisibleSelected ? 'Bỏ chọn danh sách đang lọc' : `Chọn tất cả (${selectableCandidates.length})`}
+                </button>
+              )}
               {selectedCandidateIds.length > 0 && (
                 <>
-                  <span className="text-slate-300">•</span>
+                  {!isFreePlan && <span className="text-slate-300">•</span>}
                   <button
                     type="button"
                     onClick={onClearSelection}
@@ -256,6 +269,14 @@ export const MatchingControlPanel: React.FC<MatchingControlPanelProps> = ({
         </div>
       </div>
 
+      {quotaExhausted && (
+        <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-900">
+          {isFreePlan
+            ? 'Bạn đã dùng hết 10/10 lượt phân tích miễn phí trong tháng này. Vui lòng liên hệ quản trị viên để nâng lên Gói PLUS (300 lượt/tháng).'
+            : 'Doanh nghiệp đã dùng hết 300/300 lượt phân tích trong tháng này. Hạn mức sẽ làm mới vào đầu tháng sau.'}
+        </div>
+      )}
+
       {/* Footer kích hoạt chạy AI Matching */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
         <div className="flex items-center gap-2 text-xs text-slate-500">
@@ -269,14 +290,16 @@ export const MatchingControlPanel: React.FC<MatchingControlPanelProps> = ({
         <button
           type="button"
           onClick={onOpenConfirm}
-          disabled={isRunning || !selectedJobId || selectedCandidateIds.length === 0}
+          disabled={isRunning || quotaExhausted || !selectedJobId || selectedCandidateIds.length === 0}
           className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50"
         >
           <Sparkles className="h-4 w-4 text-amber-300" />
           <span>
             {isRunning
               ? 'Google Gemini đang phân tích...'
-              : `Chạy AI Matching (${selectedCandidateIds.length} ứng viên)`}
+              : isFreePlan
+                ? 'Chấm điểm CV này (Gói FREE)'
+                : `Chạy AI Matching (${selectedCandidateIds.length} ứng viên)`}
           </span>
         </button>
       </div>

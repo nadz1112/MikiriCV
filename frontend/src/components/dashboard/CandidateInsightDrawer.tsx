@@ -17,6 +17,7 @@ import {
   Phone,
   GraduationCap,
   Calendar,
+  Lock,
 } from 'lucide-react';
 import { Candidate, MatchResult } from '../../types';
 
@@ -48,6 +49,7 @@ interface CandidateInsightDrawerProps {
   jobTitle?: string;
   onDeleteRequest: (candidate: Candidate) => void;
   showHistory?: boolean;
+  plan?: 'FREE' | 'PLUS';
   isLoading?: boolean;
   error?: string;
   onRetry?: () => void;
@@ -61,10 +63,12 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
   jobTitle,
   onDeleteRequest,
   showHistory = false,
+  plan,
   isLoading = false,
   error = '',
   onRetry,
 }) => {
+  const isFreePlan = plan === 'FREE';
   const [showRawText, setShowRawText] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -261,7 +265,7 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
               </div>
             )}
 
-            {matchResult?.scoreBreakdown && matchResult.scoreBreakdown.length > 0 && (
+            {!isFreePlan && matchResult?.scoreBreakdown && matchResult.scoreBreakdown.length > 0 && (
               <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5">
                 <h3 className="text-sm font-bold text-slate-800">Phân tích theo 6 nhóm tiêu chí</h3>
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -305,7 +309,7 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
               </div>
             )}
 
-            {matchResult && (
+            {!isFreePlan && matchResult && (
               <div className="grid gap-4 sm:grid-cols-2">
                 {matchResult.strengths && matchResult.strengths.length > 0 && (
                   <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
@@ -326,7 +330,7 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
               </div>
             )}
 
-            {matchResult?.requirementsAnalysis && matchResult.requirementsAnalysis.length > 0 && (
+            {!isFreePlan && matchResult?.requirementsAnalysis && matchResult.requirementsAnalysis.length > 0 && (
               <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5">
                 <h3 className="text-sm font-bold text-slate-800">Phân tích yêu cầu theo JD</h3>
                 <div className="space-y-2.5">
@@ -359,7 +363,7 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
               </div>
             )}
 
-            {matchResult?.careerPotential && (
+            {!isFreePlan && matchResult?.careerPotential && (
               <div className="rounded-2xl border border-sky-200 bg-sky-50/50 p-4 space-y-1.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-bold text-sky-900">Tiềm năng phát triển (Career Potential)</h3>
@@ -372,7 +376,7 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
               </div>
             )}
 
-            {matchResult?.interviewQuestions && matchResult.interviewQuestions.length > 0 && (
+            {!isFreePlan && matchResult?.interviewQuestions && matchResult.interviewQuestions.length > 0 && (
               <div className="rounded-2xl border border-indigo-200 bg-indigo-50/50 p-5">
                 <h3 className="text-sm font-bold text-indigo-800">Câu hỏi phỏng vấn gợi ý</h3>
                 <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs text-slate-700">
@@ -384,22 +388,38 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
             {matchResult && (
               <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
                 <div className="flex flex-wrap gap-3">
-                  {matchResult.confidence && <span>Độ tin cậy: <strong>{CONFIDENCE_LABEL_MAP[matchResult.confidence]}</strong></span>}
-                  {matchResult.matchLevel && <span>Mức phù hợp: <strong>{matchResult.matchLevel}</strong></span>}
+                  {!isFreePlan && matchResult.confidence && <span>Độ tin cậy: <strong>{CONFIDENCE_LABEL_MAP[matchResult.confidence]}</strong></span>}
+                  {!isFreePlan && matchResult.matchLevel && <span>Mức phù hợp: <strong>{matchResult.matchLevel}</strong></span>}
                 </div>
                 <p className="text-[11px] text-slate-500">
                   Kết quả AI chỉ hỗ trợ sàng lọc; nhà tuyển dụng cần xem hồ sơ gốc và xác minh khi phỏng vấn.
                 </p>
               </div>
             )}
-            {matchResult?.limitations && matchResult.limitations.length > 0 && (
+            {!isFreePlan && matchResult?.limitations && matchResult.limitations.length > 0 && (
               <div className="rounded-xl border border-slate-200 p-4 text-xs text-slate-600">
                 <strong>Giới hạn dữ liệu:</strong> {matchResult.limitations.join('; ')}
               </div>
             )}
 
+            {isFreePlan && matchResult && (
+              <section className="rounded-2xl border border-blue-200 bg-blue-50/50 p-5 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-blue-700" />
+                  <h3 className="text-sm font-bold text-slate-900">Tóm tắt nhanh 3 điểm nổi bật của ứng viên</h3>
+                </div>
+                {matchResult.highlights && matchResult.highlights.length > 0 ? (
+                  <ol className="list-decimal space-y-1.5 pl-5 text-xs sm:text-sm text-slate-700">
+                    {matchResult.highlights.slice(0, 3).map((item, index) => <li key={index}>{item}</li>)}
+                  </ol>
+                ) : (
+                  <p className="text-xs text-slate-500 italic">Chưa có 3 điểm nổi bật tóm tắt cho kết quả này.</p>
+                )}
+              </section>
+            )}
+
             {/* 2 Cột Gestalt: Kỹ năng khớp (Xanh) vs Kỹ năng thiếu (Đỏ nhạt) */}
-            {matchResult && ([['3 điểm nổi bật', matchResult.highlights], ['Phân tích kỹ năng', matchResult.skillAnalysis], ['Điểm cần xác minh (Red flags)', matchResult.redFlags]] as const).map(([title, items]) => items && items.length > 0 ? <section key={title} className="rounded-xl border border-slate-200 bg-white p-4"><h3 className="font-semibold text-slate-800">{title}</h3><ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-600">{items.map((item, index) => <li key={index}>{item}</li>)}</ul></section> : null)}
+            {!isFreePlan && matchResult && ([['3 điểm nổi bật', matchResult.highlights], ['Phân tích kỹ năng', matchResult.skillAnalysis], ['Điểm cần xác minh (Red flags)', matchResult.redFlags]] as const).map(([title, items]) => items && items.length > 0 ? <section key={title} className="rounded-xl border border-slate-200 bg-white p-4"><h3 className="font-semibold text-slate-800">{title}</h3><ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-600">{items.map((item, index) => <li key={index}>{item}</li>)}</ul></section> : null)}
             {matchResult && (
               <div className="space-y-3">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -461,6 +481,31 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
                   </div>
                 </div>
               </div>
+            )}
+
+            {isFreePlan && matchResult && (
+              <section
+                aria-label="Tính năng nâng cao Gói PLUS"
+                className="rounded-2xl border border-dashed border-blue-300 bg-gradient-to-br from-slate-50 to-blue-50/60 p-5 space-y-3"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
+                    <Lock className="w-4 h-4 text-blue-600" />
+                    <span>Mở khóa báo cáo chuyên sâu với Gói PLUS</span>
+                  </div>
+                  <span className="rounded-full bg-blue-700 px-2.5 py-0.5 text-[11px] font-semibold text-white">
+                    Khuyên dùng
+                  </span>
+                </div>
+                <ul className="space-y-1.5 text-xs text-slate-600">
+                  <li className="flex items-center gap-2"><Lock className="w-3.5 h-3.5 shrink-0 text-slate-400" />Báo cáo phân tích chuyên sâu từng kỹ năng & phát hiện điểm khuyết (Red flags)</li>
+                  <li className="flex items-center gap-2"><Lock className="w-3.5 h-3.5 shrink-0 text-slate-400" />Tự động gợi ý bộ câu hỏi phỏng vấn thiết kế riêng theo lỗ hổng kiến thức</li>
+                  <li className="flex items-center gap-2"><Lock className="w-3.5 h-3.5 shrink-0 text-slate-400" />Tải lên & lọc hàng loạt (Bulk Check) + Xuất báo cáo so sánh Excel/PDF</li>
+                </ul>
+                <p className="text-[11px] text-slate-500">
+                  Gói PLUS: 299.000đ/tháng (249.000đ/tháng khi thanh toán theo năm) — Liên hệ quản trị viên để nâng cấp.
+                </p>
+              </section>
             )}
 
             {/* Toàn bộ kỹ năng bóc tách từ CV */}

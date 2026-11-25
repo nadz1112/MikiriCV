@@ -2,6 +2,18 @@ import { prisma } from '../config/database.js';
 import { CreateJobDto, UpdateJobDto, JobStats, JobScoreDistribution } from '../types/index.js';
 import type { AuthUser } from '../middlewares/auth.middleware.js';
 import type { Prisma } from '@prisma/client';
+import { AppError } from '../common/errors/app-error.js';
+import { CVTEST_DEFAULT_WEIGHTS } from '../modules/evaluation/score-calculator.js';
+import { getUserSubscription } from './subscription.service.js';
+
+function hasCustomEvaluationWeights(config: unknown): boolean {
+  if (!config || typeof config !== 'object') return false;
+  const weights = (config as { weights?: Record<string, unknown> }).weights;
+  if (!weights || typeof weights !== 'object') return false;
+  return (Object.keys(CVTEST_DEFAULT_WEIGHTS) as Array<keyof typeof CVTEST_DEFAULT_WEIGHTS>).some(
+    (key) => typeof weights[key] === 'number' && weights[key] !== CVTEST_DEFAULT_WEIGHTS[key],
+  );
+}
 
 export function buildJobScope(user: AuthUser) {
   return user.role === 'ADMIN' ? {} : { createdById: user.id };
@@ -134,6 +146,16 @@ export class JobService {
   }
 
   async createJob(data: CreateJobDto, user: AuthUser) {
+    if (user.role !== 'ADMIN' && hasCustomEvaluationWeights(data.evaluationConfig)) {
+      const subscription = await getUserSubscription(user.id);
+      if (subscription.name !== 'PLUS') {
+        throw new AppError(
+          403,
+          'PLUS_REQUIRED',
+          'Tùy chỉnh trọng số 6 nhóm tiêu chí dành cho gói PLUS. Gói FREE sử dụng bộ trọng số tiêu chuẩn.',
+        );
+      }
+    }
     return prisma.jobDescription.create({
       data: {
         title: data.title,
@@ -150,6 +172,16 @@ export class JobService {
 
   async updateJob(id: string, data: UpdateJobDto, user: AuthUser) {
     await this.getJobById(id, user);
+    if (user.role !== 'ADMIN' && hasCustomEvaluationWeights(data.evaluationConfig)) {
+      const subscription = await getUserSubscription(user.id);
+      if (subscription.name !== 'PLUS') {
+        throw new AppError(
+          403,
+          'PLUS_REQUIRED',
+          'Tùy chỉnh trọng số 6 nhóm tiêu chí dành cho gói PLUS. Gói FREE sử dụng bộ trọng số tiêu chuẩn.',
+        );
+      }
+    }
     return prisma.jobDescription.update({
       where: { id },
       data: {

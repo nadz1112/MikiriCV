@@ -65,7 +65,24 @@ interface MatchResultRaw {
   highlights?: string[]; skillAnalysis?: string[]; redFlags?: string[];
 }
 
-export function toMatchResultDto(match: MatchResultRaw) {
+export function toMatchResultDto(match: MatchResultRaw, plan?: 'FREE' | 'PLUS') {
+  if (plan === 'FREE') {
+    return {
+      id: match.id,
+      candidateId: match.candidateId,
+      jobDescriptionId: match.jobDescriptionId,
+      score: match.score,
+      summary: match.summary,
+      matchedSkills: match.matchedSkills,
+      missingSkills: match.missingSkills,
+      highlights: (match.highlights ?? []).slice(0, 3),
+      skillAnalysis: [],
+      redFlags: [],
+      interviewQuestions: [],
+      createdAt: match.createdAt.toISOString(),
+      ...(match.candidate ? { candidate: toCandidateSummaryDto(match.candidate) } : {}),
+    };
+  }
   return {
     id: match.id, candidateId: match.candidateId, jobDescriptionId: match.jobDescriptionId,
     score: match.score, summary: match.summary, matchedSkills: match.matchedSkills, missingSkills: match.missingSkills,

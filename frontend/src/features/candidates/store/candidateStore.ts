@@ -29,6 +29,7 @@ interface CandidateStore {
   setSort: (sort: 'createdAt' | 'yearsOfExperience' | 'fullName') => void;
   resetFilter: () => void;
   toggleSelect: (id: string) => void;
+  selectSingle: (id: string) => void;
   toggleSelectAll: (visibleIds: string[]) => void;
   removeCandidateId: (id: string) => void;
   clearSelection: () => void;
@@ -97,6 +98,12 @@ export const useCandidateFeatureStore = create<CandidateStore>((set) => ({
           : [...state.selectedCandidateIds, id],
       };
     }),
+
+  selectSingle: (id) =>
+    set((state) => ({
+      selectedCandidateIds:
+        state.selectedCandidateIds.length === 1 && state.selectedCandidateIds[0] === id ? [] : [id],
+    })),
 
   toggleSelectAll: (visibleIds) =>
     set((state) => {
