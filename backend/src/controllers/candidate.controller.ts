@@ -32,7 +32,11 @@ export class CandidateController {
       res.setHeader('Content-Disposition', `${disposition}; filename="${fallbackName}"; filename*=UTF-8''${encoded}`);
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('Cache-Control', 'private, no-store');
-      res.sendFile(file.filePath, (error) => { if (error && !res.headersSent) next(error); });
+      file.stream.on('error', (error) => {
+        if (!res.headersSent) next(error);
+        else res.destroy(error);
+      });
+      file.stream.pipe(res);
     } catch (error) { next(error); }
   }
 

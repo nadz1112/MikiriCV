@@ -1,13 +1,12 @@
 import { Router } from 'express';
 import bcrypt from 'bcrypt';
-import fs from 'fs/promises';
-import path from 'path';
 import { z } from 'zod';
 import { prisma } from '../config/database.js';
 import { env } from '../config/env.js';
 import { requireRole } from '../middlewares/auth.middleware.js';
 import { toAdminUserDto as safeUser } from '../common/mappers/user.mapper.js';
 import { companyMembership } from '../services/company.service.js';
+import { fileStorage } from '../modules/storage/file-storage.js';
 
 const router = Router();
 router.use(requireRole('ADMIN'));
@@ -84,7 +83,7 @@ router.delete('/:id', async (req, res, next) => {
     const user = await prisma.user.findUnique({ where: { id: req.params.id }, include: { candidates: { select: { fileUrl: true } } } });
     if (!user || user.role !== 'ENTERPRISE') throw failure('USER_NOT_FOUND', 404, 'Không tìm thấy tài khoản');
     await prisma.user.delete({ where: { id: user.id } });
-    await Promise.all(user.candidates.map(async ({ fileUrl }) => { try { await fs.unlink(path.resolve(process.cwd(), fileUrl.replace(/^\//, ''))); } catch { /* Database deletion remains authoritative. */ } }));
+    await Promise.all(user.candidates.map(async ({ fileUrl }) => { try { await fileStorage.remove(fileUrl); } catch { /* Database deletion remains authoritative. */ } }));
     res.json({ success: true, data: null });
   } catch (err) { next(err); }
 });

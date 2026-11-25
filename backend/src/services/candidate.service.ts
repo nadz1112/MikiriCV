@@ -13,7 +13,7 @@ import { FieldParser } from '../modules/candidates/field-parser.js';
 import { skillNormalizer } from '../modules/skills/skill-dictionary.js';
 import { ListCandidatesQuery } from '../modules/candidates/candidate.schema.js';
 import { jobService } from './job.service.js';
-import { localFileStorage } from '../modules/storage/file-storage.js';
+import { fileStorage } from '../modules/storage/file-storage.js';
 import { getUserSubscription, checkDocuments } from './subscription.service.js';
 
 const repo = new CandidateRepository();
@@ -93,6 +93,7 @@ export class CandidateService {
     const data: ReturnType<typeof toCandidateUploadDto>[] = [];
     const errors: UploadError[] = [];
     const processedPaths: string[] = [];
+    const savedUrls: string[] = [];
     try {
       for (const file of files) {
         const ext = path.extname(path.basename(file.originalname)).toLowerCase();
@@ -115,54 +116,25 @@ export class CandidateService {
         const contentHash = crypto.createHash('sha256').update(bytes).digest('hex');
         const safeName = path.basename(file.originalname.replace(/\\/g, '/')).replace(/[\x00-\x1f\x7f]/g, '').replace(/[\\/:*?"<>|]/g, '_').trim() || 'ho-so';
         const storedName = `${crypto.randomUUID()}-${safeName}`;
-        const storedPath = path.join(localFileStorage.uploadRoot, storedName);
-        await fs.rename(file.path, storedPath);
-        processedPaths[processedPaths.length - 1] = storedPath;
-        let rawText = '';
-        let pageCount: number | null = null;
-        let extractionStatus: 'SUCCESS' | 'WARNING' | 'FAILED' = 'SUCCESS';
-        let extractionMessage: string | null = null;
-        let fields = parser.parse('', safeName);
-        try {
-          const extractor = ExtractorFactory.create(expectedMime);
-          if (extractor.extractDocument) {
-            const document = await extractor.extractDocument(storedPath);
-            rawText = document.text.trim();
-            pageCount = document.pageCount;
-          } else {
-            rawText = (await extractor.extract(storedPath)).trim();
-          }
-          if (!rawText) throw new Error('EMPTY_TEXT');
-          fields = parser.parse(rawText, safeName);
-          const missing: string[] = [];
-          if (!fields.email) missing.push('email');
-          if (!fields.phone) missing.push('số điện thoại');
-          if (fields.skills.length === 0) missing.push('kỹ năng');
-          if (missing.length) {
-            extractionStatus = 'WARNING';
-            extractionMessage = `Đã đọc nội dung nhưng chưa tìm thấy ${missing.join(', ')}.`;
-          }
-        } catch {
-          rawText = '';
-          extractionStatus = 'FAILED';
-          extractionMessage = failedMessage;
-          fields = { ...parser.parse('', safeName), email: null, phone: null, skills: [], yearsOfExperience: 0 };
-        }
+        const { rawText, pageCount, extractionStatus, extractionMessage, fields } = await extractCandidateFields(file.path, expectedMime, safeName);
         try { checkDocuments(subscription, [{ rawText, pageCount }]); }
         catch (error) {
           errors.push({ fileName: file.originalname, code: 'PLAN_DOCUMENT_LIMIT', message: (error as Error).message });
-          await fs.unlink(storedPath).catch(() => undefined);
-          processedPaths.splice(processedPaths.indexOf(storedPath), 1);
+          await fs.unlink(file.path).catch(() => undefined);
+          processedPaths.splice(processedPaths.indexOf(file.path), 1);
           continue;
         }
+        const storedUrl = await fileStorage.save(file.path, storedName);
+        processedPaths.splice(processedPaths.indexOf(file.path), 1);
+        savedUrls.push(storedUrl);
         const candidate = await repo.create({
           fullName: fields.fullName, email: fields.email, phone: fields.phone, rawText, pageCount,
           searchText: normalizeForSearch(`${fields.fullName} ${rawText}`), skills: fields.skills,
           yearsOfExperience: fields.yearsOfExperience, education: fields.education,
-          fileName: safeName, fileUrl: storedPath, extractionStatus, extractionMessage, contentHash,
+          fileName: safeName, fileUrl: storedUrl, extractionStatus, extractionMessage, contentHash,
           owner: { connect: { id: user.id } }, uploadedBy: { connect: { id: user.id } },
         });
-        processedPaths.splice(processedPaths.indexOf(storedPath), 1);
+        savedUrls.splice(savedUrls.indexOf(storedUrl), 1);
         data.push(toCandidateUploadDto(candidate));
       }
 
@@ -174,6 +146,7 @@ export class CandidateService {
       return { status, body };
     } catch (error) {
       await Promise.all(processedPaths.map((filePath) => fs.unlink(filePath).catch(() => undefined)));
+      await Promise.all(savedUrls.map((storedUrl) => fileStorage.remove(storedUrl).catch(() => undefined)));
       await repo.finishIdempotency(idempotencyKey, 500, { success: false, message: 'Không thể hoàn tất yêu cầu tải lên', data: [], errors: [] });
       throw error;
     } finally {
@@ -240,7 +213,7 @@ export class CandidateService {
     // Database deletion (including MatchResult cascades) must succeed first.
     await repo.delete(id, ownerId);
     try {
-      await localFileStorage.remove(candidate.fileUrl);
+      await fileStorage.remove(candidate.fileUrl);
     } catch {
       console.warn('CANDIDATE_FILE_DELETE_FAILED');
     }
@@ -259,18 +232,10 @@ export class CandidateService {
       throw appError(415, 'UNSUPPORTED_FILE_TYPE', 'Chỉ chấp nhận tệp PDF hoặc DOCX hợp lệ');
     }
 
-    let filePath: string;
-    try {
-      filePath = localFileStorage.resolveSafePath(candidate.fileUrl);
-    } catch {
-      throw appError(409, 'FILE_NOT_FOUND', 'Không tìm thấy tệp CV gốc trên máy chủ. Vui lòng xóa hồ sơ và tải lên tệp mới.');
-    }
-
-    if (!(await localFileStorage.exists(filePath))) {
-      throw appError(409, 'FILE_NOT_FOUND', 'Không tìm thấy tệp CV gốc trên máy chủ. Vui lòng xóa hồ sơ và tải lên tệp mới.');
-    }
-
-    const { rawText, pageCount, extractionStatus, extractionMessage, fields } = await extractCandidateFields(filePath, expectedMime, candidate.fileName);
+    const { rawText, pageCount, extractionStatus, extractionMessage, fields } = await fileStorage.withLocalFile(
+      candidate.fileUrl,
+      (filePath) => extractCandidateFields(filePath, expectedMime, candidate.fileName),
+    );
     if (user.role !== 'ADMIN' && extractionStatus !== 'FAILED') {
       const subscription = await getUserSubscription(user.id);
       checkDocuments(subscription, [{ rawText, pageCount }]);
@@ -295,11 +260,8 @@ export class CandidateService {
   async getFile(id: string, user: AuthUser) {
     const candidate = await repo.findOwned(id, user.role === 'ADMIN' ? undefined : user.id);
     if (!candidate) throw appError(404, 'CANDIDATE_NOT_FOUND', 'Không tìm thấy ứng viên');
-    const filePath = localFileStorage.resolveSafePath(candidate.fileUrl);
-    if (!(await localFileStorage.exists(filePath))) {
-      throw appError(404, 'FILE_NOT_FOUND', 'Không tìm thấy tệp CV gốc');
-    }
-    return { filePath, fileName: candidate.fileName, contentType: typeByExt[path.extname(candidate.fileName).toLowerCase()] ?? 'application/octet-stream' };
+    const stream = await fileStorage.getReadStream(candidate.fileUrl);
+    return { stream, fileName: candidate.fileName, contentType: typeByExt[path.extname(candidate.fileName).toLowerCase()] ?? 'application/octet-stream' };
   }
 }
 
