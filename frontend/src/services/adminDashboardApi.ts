@@ -8,6 +8,7 @@ export interface HrActivity {
   matchCount: number; inputTokens: number; outputTokens: number; calls: number;
 }
 export interface EnterpriseActivity {
+  thinkingTokens?: number;
   actualCostUsd?: string | null;
   simulatedCostVnd?: number;
   subscription?: Subscription;
@@ -40,7 +41,7 @@ export interface AdminDashboard {
   };
   enterprises: EnterpriseActivity[];
 }
-export async function getAdminDashboard(range: DashboardRange, signal?: AbortSignal, companyId?: string): Promise<AdminDashboard> {
-  const response = await httpClient.get<{ success: boolean; data: AdminDashboard }>('/admin/dashboard', { params: { range, companyId }, signal });
+export async function getAdminDashboard(range: DashboardRange, signal?: AbortSignal, companyId?: string, period?: { from: string; to: string }): Promise<AdminDashboard> {
+  const response = await httpClient.get<{ success: boolean; data: AdminDashboard }>('/admin/dashboard', { params: { range, companyId, ...period }, signal });
   return response.data.data;
 }

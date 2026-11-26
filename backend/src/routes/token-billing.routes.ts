@@ -4,7 +4,7 @@ import { prisma } from '../config/database.js';
 import { requireRole } from '../middlewares/auth.middleware.js';
 import { AppError } from '../common/errors/app-error.js';
 import { getPlans } from '../services/subscription.service.js';
-import { adjustTokens, releaseTokens, settleTokens } from '../services/token-billing.service.js';
+import { releaseTokens, settleTokens } from '../services/token-billing.service.js';
 import { auditedChange, billingHistory, companyTokenSummary } from '../services/billing-management.service.js';
 import { getAiBillingInfo } from '../services/ai-pricing.service.js';
 import { env } from '../config/env.js';
@@ -18,7 +18,7 @@ router.get('/ai-billing', async (_req, res, next) => {
 router.get('/billing-audit', async (req, res, next) => {
   try {
     const page = z.coerce.number().int().min(1).max(100000).default(1).parse(req.query.page);
-    const [data, total] = await Promise.all([prisma.billingAudit.findMany({ orderBy: { createdAt: 'desc' }, skip: (page - 1) * 30, take: 30 }), prisma.billingAudit.count()]);
+    const [data, total] = await Promise.all([prisma.billingAudit.findMany({ orderBy: { createdAt: 'desc' }, skip: (page - 1) * 10, take: 10 }), prisma.billingAudit.count()]);
     res.json({ success: true, data, total, page });
   } catch (error) { next(error); }
 });
@@ -38,13 +38,10 @@ router.get('/companies/:id/tokens', async (req, res, next) => {
   try { res.json({ success: true, data: await companyTokenSummary(req.params.id) }); } catch (error) { next(error); }
 });
 router.get('/users/:id/token-history', async (req, res, next) => {
-  try { res.json({ success: true, data: await billingHistory(req.params.id, z.coerce.number().int().min(1).max(100000).default(1).parse(req.query.page)) }); } catch (error) { next(error); }
+  try { res.json({ success: true, data: await billingHistory(req.params.id, z.coerce.number().int().min(1).max(100000).default(1).parse(req.query.page), z.coerce.number().int().min(1).max(100000).default(1).parse(req.query.ledgerPage), z.coerce.number().int().min(1).max(100000).default(1).parse(req.query.reservationPage)) }); } catch (error) { next(error); }
 });
-router.post('/users/:id/tokens', async (req, res, next) => {
-  try {
-    const body = z.object({ ...receipt, amount: z.number().int().min(-1000000000).max(1000000000).refine((n) => n !== 0) }).parse(req.body);
-    res.json({ success: true, data: await adjustTokens(req.params.id, req.user!.id, body.amount, body.reason, body.operationKey) });
-  } catch (error) { next(error); }
+router.post('/users/:id/tokens', (_req, res) => {
+  res.status(410).json({ success: false, error: { code: 'PLAN_QUOTA_ONLY', message: 'Hạn mức tài khoản được quản lý theo gói doanh nghiệp.' } });
 });
 router.get('/prices', async (_req, res, next) => {
   try { res.json({ success: true, data: await prisma.aiPrice.findMany({ orderBy: { createdAt: 'desc' }, take: 50 }) }); } catch (error) { next(error); }

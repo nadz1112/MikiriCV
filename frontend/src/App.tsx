@@ -10,6 +10,7 @@ import { LoginPage } from './pages/LoginPage';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
 import { UsersPage } from './pages/admin/UsersPage';
 import { AdminDashboardPage } from './pages/admin/DashboardPage';
+import { CompaniesPage } from './pages/admin/CompaniesPage';
 import { useAuthStore } from './features/auth/authStore';
 import { useSubscriptionStore } from './features/subscription/subscriptionStore';
 import { useAutoRefresh } from './shared/hooks/useAutoRefresh';
@@ -76,6 +77,7 @@ function AppRoutes() {
           </Route>
           <Route element={<ProtectedRoute roles={['ADMIN']} />}>
             <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
+            <Route path="/admin/companies" element={<CompaniesPage />} />
             <Route path="/admin/users" element={<UsersPage />} />
           </Route>
           <Route element={<ProtectedRoute />}>

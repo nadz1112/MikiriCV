@@ -31,7 +31,7 @@ it('lets admin assign a company plan with a durable receipt and reason', async (
   fireEvent.change(screen.getByLabelText('Gói doanh nghiệp'), { target: { value: 'PLUS' } });
   fireEvent.change(screen.getByLabelText('Lý do đổi gói'), { target: { value: 'Nâng cấp doanh nghiệp' } });
   fireEvent.click(screen.getByRole('button', { name: 'Lưu gói doanh nghiệp' }));
-  await waitFor(() => expect(mocks.update).toHaveBeenCalledWith('co', 'PLUS', 'MONTHLY', null, 'Nâng cấp doanh nghiệp', expect.any(String)));
+  await waitFor(() => expect(mocks.update).toHaveBeenCalledWith('co', 'PLUS', 'MONTHLY', null, 'Nâng cấp doanh nghiệp', expect.any(String), undefined));
   expect(updated).toHaveBeenCalledTimes(1);
 });
 it('keeps failures visible and reuses the same receipt when retrying the same change', async () => {

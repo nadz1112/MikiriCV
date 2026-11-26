@@ -1,19 +1,22 @@
+import { Pagination } from './Pagination';
 import { useEffect, useRef, useState } from 'react';
 import { billingApi, updateSubscription, type ServicePlan, type Subscription } from '../../services/subscriptionApi';
 import { CompanyTokenPanel } from './TokenPanels';
 import { api } from '../../services/api';
 import { AiBillingPanel, PlanPriceCalculator } from './AiBillingPanel';
+import { PlanNumberInput } from './PlanNumberInput';
 
 
 export const tokenDate = (date?: string | null) => date ? new Date(date).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : 'Không giới hạn';
+const localDateInput = (value?: string | null) => value ? new Date(new Date(value).getTime() + 7 * 3600000).toISOString().slice(0, 10) : '';
 const field = 'mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm';
 const button = 'rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50';
 
-export function SubscriptionPlans({ subscription, admin = false, onUpdated }: { subscription?: Subscription; admin?: boolean; onUpdated?: () => void }) {
+export function SubscriptionPlans({ subscription, admin = false, onUpdated, view = 'all' }: { subscription?: Subscription; admin?: boolean; onUpdated?: () => void; view?: 'all' | 'plan' | 'accounts' }) {
   const [plans, setPlans] = useState<ServicePlan[]>([]);
   const [plan, setPlan] = useState<'FREE' | 'PLUS'>('FREE');
   const [billingCycle, setBillingCycle] = useState<'MONTHLY' | 'YEARLY'>('MONTHLY');
-  const [endsAt, setEndsAt] = useState('');
+  const [startsAt, setStartsAt] = useState('');
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -21,8 +24,8 @@ export function SubscriptionPlans({ subscription, admin = false, onUpdated }: { 
   const receipt = useRef({ signature: '', key: '' });
   useEffect(() => {
     setPlan(subscription?.name ?? 'FREE'); setBillingCycle(subscription?.billingCycle ?? 'MONTHLY');
-    setEndsAt(subscription?.endsAt?.slice(0, 10) ?? ''); setError('');
-  }, [subscription?.companyId, subscription?.name, subscription?.billingCycle, subscription?.endsAt]);
+    setStartsAt(localDateInput(subscription?.startsAt)); setError('');
+  }, [subscription?.companyId, subscription?.name, subscription?.billingCycle, subscription?.startsAt, subscription?.endsAt]);
   useEffect(() => {
     if (!admin) return;
     let cancelled = false;
@@ -31,31 +34,31 @@ export function SubscriptionPlans({ subscription, admin = false, onUpdated }: { 
   }, [admin, refresh]);
   const save = async () => {
     if (!subscription || saving) return;
-    const signature = JSON.stringify([subscription.companyId, plan, billingCycle, endsAt, reason]);
+    const signature = JSON.stringify([subscription.companyId, plan, billingCycle, startsAt, reason]);
     if (receipt.current.signature !== signature) receipt.current = { signature, key: crypto.randomUUID() };
     setSaving(true); setError('');
     try {
-      await updateSubscription(subscription.companyId, plan, billingCycle, endsAt ? new Date(`${endsAt}T23:59:59+07:00`).toISOString() : null, reason, receipt.current.key);
+      await updateSubscription(subscription.companyId, plan, billingCycle, null, reason, receipt.current.key, startsAt ? new Date(`${startsAt}T00:00:00+07:00`).toISOString() : undefined);
       setRefresh((v) => v + 1); onUpdated?.();
-    } catch { setError('Không thể đổi gói. Kiểm tra số tài khoản tối đa và ngày hết hạn.'); }
+    } catch { setError('Không thể đổi gói. Kiểm tra ngày bắt đầu và thử lại.'); }
     finally { setSaving(false); }
   };
   if (admin) return <section aria-label="Quản lý gói và token" className="mt-5 space-y-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
     <h3 className="font-bold">Gói doanh nghiệp và hạn mức token từng tài khoản</h3>
-    <div className="grid gap-4 xl:grid-cols-2">{plans.map((config) => <PlanEditor key={`${config.name}:${config.version}`} plan={config} onSaved={() => { setRefresh((v) => v + 1); onUpdated?.(); }} />)}</div>
-    <p className="text-sm text-slate-600">Mỗi HR nhận hạn mức riêng theo gói. Thay đổi hạn mức áp dụng ngay, giữ nguyên token đã dùng và tạm giữ; chu kỳ mới áp dụng từ kỳ kế tiếp. Lịch sử và đơn giá của các lần gọi trước không thay đổi.</p>
+    {view !== 'accounts' && <details className="rounded-lg border bg-white p-4"><summary className="cursor-pointer font-semibold">Cấu hình dịch vụ</summary><div className="mt-4 grid gap-4 xl:grid-cols-2">{plans.map((config) => <PlanEditor key={`${config.name}:${config.version}`} plan={config} onSaved={() => { setRefresh((v) => v + 1); onUpdated?.(); }} />)}</div><AiBillingPanel /></details>}
+
     {subscription ? <>
-      <div className="flex flex-wrap items-end gap-3">
+      {view !== 'accounts' && <p className="text-sm font-medium">Trạng thái: {subscription.startsAt && new Date(subscription.startsAt) > new Date() ? 'Chưa có hiệu lực' : subscription.endsAt && new Date(subscription.endsAt) <= new Date() ? 'Đã hết hạn' : 'Đang hiệu lực'}</p>}
+      {view !== 'accounts' && <div className="flex flex-wrap items-end gap-3">
         <label className="text-sm">Gói doanh nghiệp<select aria-label="Gói doanh nghiệp" className={field} value={plan} onChange={(e) => setPlan(e.target.value as 'FREE' | 'PLUS')}><option>FREE</option><option>PLUS</option></select></label>
         <label className="text-sm">Chu kỳ thanh toán<select className={field} value={billingCycle} onChange={(e) => setBillingCycle(e.target.value as typeof billingCycle)}><option value="MONTHLY">Theo tháng</option><option value="YEARLY">Theo năm</option></select></label>
-        <label className="text-sm">Ngày hết hạn (để trống: không giới hạn)<input aria-label="Ngày hết hạn gói" className={field} type="date" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} /></label>
+        <label className="text-sm">Ngày bắt đầu gói<input aria-label="Ngày bắt đầu gói" className={field} type="date" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} /></label>
         <label className="text-sm">Lý do thay đổi<input aria-label="Lý do đổi gói" className={field} value={reason} onChange={(e) => setReason(e.target.value)} /></label>
         <button className={button} disabled={saving || reason.trim().length < 3} onClick={() => void save()}>{saving ? 'Đang lưu…' : 'Lưu gói doanh nghiệp'}</button>
-      </div>
-      <CompanyTokenPanel key={subscription.companyId} companyId={subscription.companyId} admin refresh={refresh} />
+      </div>}
+      {view !== 'plan' && <CompanyTokenPanel key={subscription.companyId} companyId={subscription.companyId} admin refresh={refresh} />}
     </> : <p className="text-sm text-slate-600">Chọn doanh nghiệp ở bộ lọc để gán gói và quản lý token từng HR.</p>}
-    <AiBillingPanel />
-    <BillingAuditPanel refresh={refresh} />
+    {view !== 'accounts' && <BillingAuditPanel refresh={refresh} />}
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
   </section>;
   return null;
@@ -76,7 +79,7 @@ function PlanEditor({ plan, onSaved }: { plan: ServicePlan; onSaved: () => void 
     finally { setSaving(false); }
   };
   const fields = [['monthlyPriceVnd', 'Giá dịch vụ / doanh nghiệp / tháng (VND)', 0, 100000000], ['tokenLimit', 'Token mỗi tài khoản', 1000, 1000000000], ['cycleDays', 'Chu kỳ sử dụng (ngày)', 1, 366], ['maxCvPerCall', 'CV mỗi yêu cầu', 1, 200], ['maxOutputTokens', 'Token output tối đa mỗi CV', 1024, 32768]] as const;
-  return <form onSubmit={(e) => { e.preventDefault(); void save(); }} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"><h4 className="font-bold">Cấu hình {plan.name} · v{plan.version}</h4><p className="text-xs text-slate-500">Không giới hạn số tài khoản. Hạn mức token vẫn riêng cho từng HR.</p>{plan.name === 'PLUS' && <PlanPriceCalculator onApply={(price) => setDraft({ ...draft, monthlyPriceVnd: price })} />}<div className="grid gap-3 sm:grid-cols-2">{fields.map(([key, label, min, max]) => <label key={key} className="text-sm">{label}<input required disabled={key === 'monthlyPriceVnd' && plan.name === 'FREE'} aria-label={`${plan.name} ${label}`} type="number" className={field} min={min} max={max} value={draft[key] ?? 0} onChange={(e) => setDraft({ ...draft, [key]: Number(e.target.value) })} /></label>)}</div><label className="block text-sm">Lý do điều chỉnh<input required minLength={3} maxLength={500} className={field} value={reason} onChange={(e) => setReason(e.target.value)} /></label><button disabled={saving} className={button}>Lưu cấu hình {plan.name}</button>{status && <p role="alert" className="text-sm text-red-700">{status}</p>}</form>;
+  return <form onSubmit={(e) => { e.preventDefault(); void save(); }} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"><h4 className="font-bold">Cấu hình {plan.name} · v{plan.version}</h4>{plan.name === 'PLUS' && <PlanPriceCalculator onApply={(price) => setDraft({ ...draft, monthlyPriceVnd: price })} />}<div className="grid gap-3 sm:grid-cols-2">{fields.map(([key, label, min, max]) => <label key={key} className="text-sm">{label}<PlanNumberInput disabled={key === 'monthlyPriceVnd' && plan.name === 'FREE'} label={`${plan.name} ${label}`} min={min} max={max} value={draft[key] ?? 0} onChange={(value) => setDraft({ ...draft, [key]: value })} /></label>)}</div><label className="block text-sm">Lý do điều chỉnh<input required minLength={3} maxLength={500} className={field} value={reason} onChange={(e) => setReason(e.target.value)} /></label><button disabled={saving} className={button}>Lưu cấu hình {plan.name}</button>{status && <p role="alert" className="text-sm text-red-700">{status}</p>}</form>;
 }
 
 const auditActions: Record<string, string> = { PLAN_CONFIG: 'Cập nhật cấu hình gói', PRICE_VERSION: 'Cập nhật đơn giá AI', COMPANY_PLAN: 'Đổi gói doanh nghiệp' };
@@ -100,6 +103,6 @@ export function BillingAuditPanel({ refresh }: { refresh: number }) {
   return <details className="rounded-lg border border-slate-200 bg-white p-4" onToggle={(e) => setOpen(e.currentTarget.open)}><summary className="cursor-pointer font-semibold">Lịch sử thay đổi gói và đơn giá</summary>{error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
     {open && !error && total === 0 && <p className="mt-3 text-sm text-slate-500">Chưa có thay đổi.</p>}
     <ul className="mt-3 max-h-80 space-y-3 overflow-auto text-sm">{entries.map((entry) => <li key={entry.id} className="rounded-lg bg-slate-50 p-3"><div className="flex flex-wrap justify-between gap-2"><p className="font-semibold">{auditActions[entry.action] ?? 'Cập nhật cấu hình'}{['FREE', 'PLUS'].includes(entry.targetId) ? ` · ${entry.targetId}` : ''}</p><time className="text-xs text-slate-500">{tokenDate(entry.createdAt)}</time></div><p className="mt-1 text-xs text-slate-500">{entry.actorId === 'SYSTEM_MIGRATION' ? 'Hệ thống · Thiết lập giá demo' : 'Quản trị viên'}</p>{entry.actorId !== 'SYSTEM_MIGRATION' && <p className="mt-2 break-words text-slate-600">{entry.reason}</p>}<dl className="mt-2 grid gap-x-6 gap-y-1 sm:grid-cols-2">{auditValues(entry.after).map(([label, value]) => <div key={label} className="flex flex-wrap justify-between gap-x-3"><dt className="text-slate-500">{label}</dt><dd className="font-medium">{value}</dd></div>)}</dl></li>)}</ul>
-    {total > 30 && <nav aria-label="Phân trang lịch sử thay đổi" className="mt-3 flex items-center gap-3 text-sm"><button className={button} disabled={page === 1} onClick={() => setPage((v) => v - 1)}>Trước</button><span>Trang {page} / {Math.ceil(total / 30)}</span><button className={button} disabled={page * 30 >= total} onClick={() => setPage((v) => v + 1)}>Sau</button></nav>}
+    <Pagination page={page} total={total} onChange={setPage} label="Phân trang lịch sử thay đổi" />
   </details>;
 }

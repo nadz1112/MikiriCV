@@ -19,7 +19,7 @@ export const Navbar: React.FC = () => {
   if (!user) return null;
   const admin = user.role === 'ADMIN';
   const navItems = admin
-    ? [{ to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard }, { to: '/admin/users', label: 'Quản lý tài khoản', icon: Shield }]
+    ? [{ to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard }, { to: '/admin/companies', label: 'Quản lý doanh nghiệp', icon: Briefcase }, { to: '/admin/users', label: 'Quản lý tài khoản', icon: Shield }]
     : [{ to: '/', label: 'Bảng điều khiển', icon: LayoutDashboard }, { to: '/jobs', label: 'Quản lý JD', icon: Briefcase }, { to: '/candidates', label: 'Quản lý CV', icon: Users }, { to: '/matching', label: 'AI Matching Studio', icon: Sparkles }];
   const remaining = subscription?.remaining;
   const tokenColor = remaining !== undefined && remaining <= 0 ? 'border-red-200 bg-red-50 text-red-800'

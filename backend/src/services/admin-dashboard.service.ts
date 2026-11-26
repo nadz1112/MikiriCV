@@ -18,13 +18,13 @@ export function vietnamDay(now = new Date()): Date {
   return new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()));
 }
 
-export async function getAdminDashboard(range: DashboardRange, companyId?: string) {
+export async function getAdminDashboard(range: DashboardRange, companyId?: string, period?: { from: string; to: string }) {
   const companies = await prisma.company.findMany({ select: { id: true, name: true, plan: true, billingCycle: true, subscriptionStartedAt: true, subscriptionEndsAt: true } });
   if (companyId && !companies.some((company) => company.id === companyId)) {
     throw Object.assign(new Error('Không tìm thấy doanh nghiệp'), { status: 404, code: 'COMPANY_NOT_FOUND' });
   }
-  const today = vietnamDay();
-  const start = range === 'all' ? undefined : new Date(today.getTime() - (range === '7d' ? 6 : 29) * DAY_MS);
+  const today = period ? new Date(period.to) : vietnamDay();
+  const start = period ? new Date(period.from) : range === 'all' ? undefined : new Date(today.getTime() - (range === '7d' ? 6 : 29) * DAY_MS);
   const periodWhere = { ...(start ? { day: { gte: start, lte: today } } : {}) };
   const usageWhere = { ...periodWhere, ...(companyId ? { companyId } : {}) };
   const [users, totalJobs, totalCandidates, failedCandidates, scores, enterprises, jobsByOwner, cvsByOwner, matchesByOwner, usage, daily, usageByOwner, callsWithoutTokenData, earliestUsage] = await Promise.all([
@@ -62,7 +62,7 @@ export async function getAdminDashboard(range: DashboardRange, companyId?: strin
   const outputRate = env.AI_BILLING_MODE === 'FREE' ? 0 : env.AI_OUTPUT_USD_PER_MILLION_TOKENS;
   const estimate = (input: number, output: number) => inputRate === undefined || outputRate === undefined ? null : (input * inputRate + output * outputRate) / 1_000_000;
   const dailyMap = new Map(daily.map((row) => [row.day.toISOString().slice(0, 10), row]));
-  const dates = start ? Array.from({ length: range === '7d' ? 7 : 30 }, (_, index) => new Date(start.getTime() + index * DAY_MS).toISOString().slice(0, 10)) : [...dailyMap.keys()];
+  const dates = start ? Array.from({ length: Math.floor((today.getTime() - start.getTime()) / DAY_MS) + 1 }, (_, index) => new Date(start.getTime() + index * DAY_MS).toISOString().slice(0, 10)) : [...dailyMap.keys()];
   const distribution = [
     { label: '<50', count: 0 }, { label: '50–70', count: 0 }, { label: '>70–85', count: 0 }, { label: '>85', count: 0 },
   ];
@@ -98,7 +98,7 @@ export async function getAdminDashboard(range: DashboardRange, companyId?: strin
       jobCount: members.reduce((sum, hr) => sum + hr.jobCount, 0),
       candidateCount: members.reduce((sum, hr) => sum + hr.candidateCount, 0),
       matchCount: members.reduce((sum, hr) => sum + hr.matchCount, 0),
-      inputTokens: input, outputTokens: output,
+      inputTokens: input, outputTokens: output, thinkingTokens: companyUsage.reduce((sum, row) => sum + (row._sum.thinkingTokens ?? 0), 0),
       calls: companyUsage.reduce((sum, row) => sum + row._count._all, 0), estimatedCostUsd: estimate(input, output), simulatedCostVnd: simulate(input, output),
     };
   }));

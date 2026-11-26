@@ -11,8 +11,8 @@ export interface ServicePlan { name: 'FREE' | 'PLUS'; monthlyPriceVnd?: number; 
 export interface AiBillingInfo { model: string; billingMode: 'FREE' | 'PAID'; status: 'FREE' | 'CONFIGURED' | 'MISSING'; inputUsd: string | null; outputUsd: string | null; priceVersion: string | null; pricingUrl: string; rateLimitsUrl: string }
 export interface AccountQuota { walletId: string; tokenLimit: number; baseLimit: number; adjustment: number; used: number; remaining: number; reservedTokens: number; periodStart: string; periodEnd: string }
 export interface CompanyTokens { companyId: string; companyName: string; subscription: Subscription; accounts: Array<{ id: string; fullName: string; isActive: boolean; quota: AccountQuota }> }
-export interface UsageEntry { id: string; createdAt: string; model: string; inputTokens: number | null; outputTokens: number | null; thinkingTokens: number | null; totalTokens: number | null; succeeded: boolean; actualCostUsd: string | null; priceVersion: string | null }
-export interface TokenHistory { ledger: Array<{ id: string; createdAt: string; kind: string; amount: number; reason: string; actorId: string | null }>; usage: UsageEntry[]; reservations: Array<{ id: string; amount: number; status: string; model: string; createdAt: string }>; ledgerTotal: number; usageTotal: number; page: number; pageSize: number }
+export interface UsageEntry { period?: { periodStart: string; periodEnd: string } | null; id: string; createdAt: string; model: string; inputTokens: number | null; outputTokens: number | null; thinkingTokens: number | null; totalTokens: number | null; succeeded: boolean; actualCostUsd: string | null; priceVersion: string | null }
+export interface TokenHistory { ledger: Array<{ wallet?: { periodStart: string; periodEnd: string }; id: string; createdAt: string; kind: string; amount: number; reason: string; actorId: string | null }>; usage: UsageEntry[]; reservations: Array<{ id: string; amount: number; status: string; model: string; createdAt: string }>; reservationTotal: number; ledgerTotal: number; usageTotal: number; page: number; pageSize: number }
 export interface TokenBalance { tokenLimit: number; used: number; remaining: number; reservedTokens: number; periodStart: string; periodEnd: string }
 export type PlanComparison = Pick<ServicePlan, 'name' | 'monthlyPriceVnd' | 'tokenLimit' | 'cycleDays' | 'maxCvPerCall' | 'maxPages' | 'maxCharacters'>;
 export interface PersonalUsageHistory {
@@ -31,15 +31,15 @@ export async function getSubscription(signal?: AbortSignal): Promise<Subscriptio
   const response = await api.get('/subscription', { signal });
   return response.data.data;
 }
-export async function updateSubscription(companyId: string, plan: Subscription['name'], billingCycle: Subscription['billingCycle'], endsAt: string | null, reason: string, operationKey: string) {
-  return api.patch(`/admin/companies/${encodeURIComponent(companyId)}/subscription`, { plan, billingCycle, endsAt, reason, operationKey });
+export async function updateSubscription(companyId: string, plan: Subscription['name'], billingCycle: Subscription['billingCycle'], _endsAt: string | null, reason: string, operationKey: string, startsAt?: string) {
+  return api.patch(`/admin/companies/${encodeURIComponent(companyId)}/subscription`, { plan, billingCycle, reason, operationKey, startsAt });
 }
 export const billingApi = {
   info: async (): Promise<AiBillingInfo> => (await api.get('/admin/ai-billing')).data.data,
   plans: async (): Promise<ServicePlan[]> => (await api.get('/admin/plans')).data.data,
   savePlan: async (plan: ServicePlan, reason: string, operationKey: string) => api.put(`/admin/plans/${plan.name}`, { ...plan, reason, operationKey }),
   company: async (companyId: string): Promise<CompanyTokens> => (await api.get(`/admin/companies/${encodeURIComponent(companyId)}/tokens`)).data.data,
-  history: async (userId: string, page = 1, signal?: AbortSignal): Promise<TokenHistory> => (await api.get(`/admin/users/${encodeURIComponent(userId)}/token-history`, { params: { page }, signal })).data.data,
+  history: async (userId: string, page = 1, signal?: AbortSignal, ledgerPage = 1, reservationPage = 1): Promise<TokenHistory> => (await api.get(`/admin/users/${encodeURIComponent(userId)}/token-history`, { params: { page, ledgerPage, reservationPage }, signal })).data.data,
   adjust: async (userId: string, amount: number, reason: string, operationKey: string) => api.post(`/admin/users/${encodeURIComponent(userId)}/tokens`, { amount, reason, operationKey }),
   prices: async (): Promise<Array<{ id: string; model: string; inputUsd: string; outputUsd: string; thinkingUsd: string; createdAt: string }>> => (await api.get('/admin/prices')).data.data,
   savePrice: async (model: string, inputUsd: number, outputUsd: number, reason: string, operationKey: string) => api.post('/admin/prices', { model, inputUsd, outputUsd, reason, operationKey }),

@@ -1,3 +1,4 @@
+import { subscriptionEnd } from '../src/services/subscription-period.js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'crypto';
 import { spawnSync } from 'child_process';
@@ -162,6 +163,31 @@ describe.skipIf(process.env.RUN_BILLING_INTEGRATION !== '1')('token billing with
     expect(await billing.getAccountQuota(a)).toMatchObject({ used: 340, reservedTokens: 0 });
     expect(await billing.getAccountQuota(b)).toMatchObject({ used: 0, reservedTokens: 0 });
   }, 20000);
+  it('paginates each admin history independently with ten entries', async () => {
+    for (let i = 0; i < 12; i++) {
+      const held = await billing.reserveTokens(a, 10, 'test', randomUUID());
+      await billing.settleTokens(held.id, { inputTokens: 1, outputTokens: 1, thinkingTokens: 0 }, true);
+    }
+    for (let i = 0; i < 12; i++) await billing.reserveTokens(a, 10, 'test', randomUUID());
+    const wallet = await db.tokenWallet.findFirstOrThrow({ where: { userId: a } });
+    await db.tokenLedger.createMany({ data: Array.from({ length: 12 }, () => ({ walletId: wallet.id, kind: 'PLAN_CHANGE', amount: 0, operationKey: randomUUID(), reason: 'Pagination fixture' })) });
+    const get = async (query: string) => (await (await request(admin, `/admin/users/${a}/token-history${query}`, 'GET', undefined, 'ADMIN')).json()).data;
+    const first = await get('');
+    expect(first.usage).toHaveLength(10);
+    expect(first.ledger).toHaveLength(10);
+    expect(first.reservations).toHaveLength(10);
+    expect(first.reservationTotal).toBe(12);
+    expect(first.ledgerTotal).toBe(13);
+    const second = await get('?page=2');
+    expect(second.usage).toHaveLength(2);
+    expect(second.ledger).toEqual(first.ledger);
+    expect(second.reservations).toEqual(first.reservations);
+    const others = await get('?ledgerPage=2&reservationPage=2');
+    expect(others.usage).toEqual(first.usage);
+    expect(others.ledger).toHaveLength(3);
+    expect(others.reservations).toHaveLength(2);
+    expect((await request(admin, `/admin/users/${a}/token-history?ledgerPage=0`, 'GET', undefined, 'ADMIN')).status).toBe(400);
+  });
   it('returns only the callers balance and history and retains admin access to other accounts', async () => {
     const holdA = await billing.reserveTokens(a, 2000, 'test', randomUUID());
     const holdB = await billing.reserveTokens(b, 2000, 'test', randomUUID());
@@ -234,6 +260,15 @@ describe.skipIf(process.env.RUN_BILLING_INTEGRATION !== '1')('token billing with
     expect((await db.aiUsage.findUniqueOrThrow({ where: { reservationId: hold.id } })).actualCostUsd?.toString()).toBe('0');
   });
   it('exposes the configured monthly company fee without multiplying it by HR count', async () => {
+    expect((await request(admin, `/admin/users/${a}/tokens`, 'POST', { amount: 1000, reason: 'Individual override', operationKey: randomUUID() }, 'ADMIN')).status).toBe(410);
+    const original = await billing.getAccountQuota(a);
+    const startsAt = new Date(Date.now() - 86400000).toISOString();
+    const endsAt = new Date(Date.now() + 30 * 86400000).toISOString();
+    expect((await request(admin, `/admin/companies/${company}/subscription`, 'PATCH', { plan: 'PLUS', billingCycle: 'MONTHLY', startsAt, endsAt, operationKey: randomUUID(), reason: 'Set subscription dates' }, 'ADMIN')).status).toBe(200);
+    expect(await billing.getAccountQuota(a)).toMatchObject({ periodStart: original.periodStart, periodEnd: original.periodEnd, used: original.used });
+    expect((await db.company.findUniqueOrThrow({ where: { id: company } })).subscriptionStartedAt.toISOString()).toBe(startsAt);
+    expect((await db.company.findUniqueOrThrow({ where: { id: company } })).subscriptionEndsAt?.toISOString()).toBe(subscriptionEnd('PLUS', 'MONTHLY', new Date(startsAt))?.toISOString());
+    expect((await request(admin, `/admin/companies/${company}/subscription`, 'PATCH', { plan: 'PLUS', billingCycle: 'MONTHLY', startsAt: '2000-01-01T00:00:00.000Z', endsAt, operationKey: randomUUID(), reason: 'Invalid dates' }, 'ADMIN')).status).toBe(400);
     const body = { monthlyPriceVnd: 143000, tokenLimit: 3000000, cycleDays: 30, maxCvPerCall: 200, maxOutputTokens: 8192, operationKey: randomUUID(), reason: 'Monthly company price' };
     expect((await request(admin, '/admin/plans/PLUS', 'PUT', body, 'ADMIN')).status).toBe(200);
     expect((await request(admin, `/admin/companies/${company}/subscription`, 'PATCH', { plan: 'PLUS', billingCycle: 'MONTHLY', endsAt: null, operationKey: randomUUID(), reason: 'Upgrade company' }, 'ADMIN')).status).toBe(200);
