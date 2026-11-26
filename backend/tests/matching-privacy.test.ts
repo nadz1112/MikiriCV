@@ -1,3 +1,5 @@
+import { tokenMocks, setupTokenMocks } from './helpers/token-billing.mock.js';
+vi.mock('../src/services/token-billing.service.js', () => tokenMocks);
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -5,16 +7,17 @@ const mocks = vi.hoisted(() => ({
     jobDescription: { findFirst: vi.fn() },
     candidate: { findMany: vi.fn() },
     matchResult: { upsert: vi.fn() },
-    aiUsage: { create: vi.fn() },
+    aiUsage: { create: vi.fn(), update: vi.fn() },
   },
   generateContent: vi.fn(),
 }));
 vi.mock('../src/config/database.js', () => ({ prisma: mocks.prisma }));
-vi.mock('../src/config/gemini.js', () => ({ geminiModel: { generateContent: mocks.generateContent } }));
+vi.mock('../src/config/gemini.js', () => ({ geminiModel: { generateContent: mocks.generateContent, countTokens: async () => ({ totalTokens: 100 }) } }));
 vi.mock('../src/services/subscription.service.js', async (importOriginal) => ({
   ...await importOriginal<object>(),
   reserveAnalyses: vi.fn(async (_id: string, count: number) => ({ name: 'FREE', companyId: 'company-a', reserved: count, monthDate: new Date(), maxPages: 2, maxCharacters: 3000 })),
   refundAnalyses: vi.fn(),
+  getUserSubscription: tokenMocks.subscription,
 }));
 import { matchingService } from '../src/services/matching.service.js';
 import { reserveAnalyses, refundAnalyses } from '../src/services/subscription.service.js';
@@ -23,6 +26,7 @@ const dto = { jobDescriptionId: 'jd', candidateIds: ['cv'] };
 const valid = { score: 80, summary: 'Đánh giá dựa trên kỹ năng và kinh nghiệm đã trích xuất.', matchedSkills: ['React'], missingSkills: [], highlights: ['Kỹ năng React', 'Kinh nghiệm 3 năm', 'Cần xác minh chiều sâu kỹ năng'] };
 beforeEach(() => {
   vi.resetAllMocks();
+  setupTokenMocks('FREE');
   mocks.prisma.jobDescription.findFirst.mockResolvedValue({ id: 'jd', title: 'Developer', requiredSkills: ['React'], minExperience: 2, description: 'Build applications' });
   mocks.prisma.candidate.findMany.mockResolvedValue([{
     id: 'cv', fullName: 'Private Person', email: 'secret@example.com', phone: '0901234567',
@@ -36,6 +40,7 @@ beforeEach(() => {
 
 describe('matching privacy and integrity', () => {
   it('requires the expanded PLUS report and refunds an invalid response', async () => {
+    tokenMocks.subscription.mockResolvedValue({ name: 'PLUS', companyId: 'company-a', maxOutputTokens: 8192 });
     vi.mocked(reserveAnalyses).mockResolvedValueOnce({ name: 'PLUS', companyId: 'company-a', reserved: 1, monthDate: new Date(), maxPages: 6, maxCharacters: 12000 } as Awaited<ReturnType<typeof reserveAnalyses>>);
     await expect(matchingService.runMatching(dto, 'owner')).rejects.toMatchObject({ code: 'AI_INVALID_RESPONSE' });
     expect(mocks.prisma.matchResult.upsert).not.toHaveBeenCalled();
@@ -45,6 +50,7 @@ describe('matching privacy and integrity', () => {
     const report = { ...valid, skillAnalysis: ['React: có kỹ năng phù hợp'], redFlags: [], interviewQuestions: ['Giải thích hooks?', 'Tối ưu render thế nào?', 'Kiểm thử component thế nào?'] };
     const candidate = { id: 'cv', skills: ['React'], yearsOfExperience: 3, rawText: 'React', pageCount: 1, extractionStatus: 'SUCCESS' };
     mocks.prisma.candidate.findMany.mockResolvedValue([candidate, { ...candidate, id: 'cv2' }]);
+    tokenMocks.subscription.mockResolvedValue({ name: 'PLUS', companyId: 'company-a', maxOutputTokens: 8192 });
     vi.mocked(reserveAnalyses).mockResolvedValueOnce({ name: 'PLUS', companyId: 'company-a', reserved: 2, monthDate: new Date(), maxPages: 6, maxCharacters: 12000 } as Awaited<ReturnType<typeof reserveAnalyses>>);
     mocks.generateContent.mockResolvedValueOnce({ response: { text: () => JSON.stringify(report) } }).mockRejectedValueOnce({ status: 429 });
     await expect(matchingService.runMatching({ ...dto, candidateIds: ['cv', 'cv2'] }, 'owner')).rejects.toMatchObject({ code: 'AI_RATE_LIMIT' });
@@ -59,11 +65,12 @@ describe('matching privacy and integrity', () => {
       mocks.generateContent.mockRejectedValue({ status: 429 });
       await expect(matchingService.runMatching(dto, 'owner')).rejects.toMatchObject({ code: 'AI_RATE_LIMIT' });
     }
-    expect(mocks.prisma.aiUsage.create).toHaveBeenCalledWith({ data: expect.objectContaining({ companyId: 'company-a', enterpriseId: 'owner', succeeded }) });
+    if (succeeded) expect(tokenMocks.settleTokens).toHaveBeenCalled();
+    else expect(tokenMocks.releaseTokens).toHaveBeenCalled();
   });
   it('sends only canonical skills and experience, and scopes every requested ID', async () => {
     await matchingService.runMatching(dto, 'owner');
-    const prompt = mocks.generateContent.mock.calls[0][0];
+    const prompt = mocks.generateContent.mock.calls[0][0].contents[0].parts[0].text;
     for (const secret of ['Private Person', 'secret@example.com', '0901234567', 'Secret Street', '.pdf']) {
       expect(prompt).not.toContain(secret);
     }
@@ -82,7 +89,7 @@ describe('matching privacy and integrity', () => {
       minExperience: 2,
     });
     await matchingService.runMatching(dto, 'owner');
-    const prompt = mocks.generateContent.mock.calls[0][0];
+    const prompt = mocks.generateContent.mock.calls[0][0].contents[0].parts[0].text;
     expect(prompt).not.toContain('hr@example.com');
     expect(prompt).not.toContain('0901234567');
     expect(prompt).toContain('[email đã ẩn]');

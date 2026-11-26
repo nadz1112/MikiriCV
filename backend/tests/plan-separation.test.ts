@@ -1,9 +1,12 @@
+import { tokenMocks, setupTokenMocks } from './helpers/token-billing.mock.js';
+vi.mock('../src/services/token-billing.service.js', () => tokenMocks);
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Prisma } from '@prisma/client';
 
 const mocks = vi.hoisted(() => ({
   prisma: {
     user: { findUnique: vi.fn() },
+    servicePlan: { findUniqueOrThrow: vi.fn(async ({ where }) => ({ name: where.name, tokenLimit: 100000, cycleDays: 30, maxCvPerCall: where.name === 'FREE' ? 1 : 200, maxOutputTokens: 8192 })) },
     jobDescription: {
       findFirst: vi.fn(),
       create: vi.fn(),
@@ -11,7 +14,7 @@ const mocks = vi.hoisted(() => ({
     },
     candidate: { update: vi.fn() },
     matchResult: { upsert: vi.fn() },
-    aiUsage: { create: vi.fn() },
+    aiUsage: { create: vi.fn(), update: vi.fn() },
   },
 }));
 
@@ -59,6 +62,8 @@ const candidate = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  setupTokenMocks();
+  mocks.prisma.user.findUnique.mockResolvedValue({ company: { id: 'company-1', plan: 'FREE', billingCycle: 'MONTHLY' } });
   mocks.prisma.jobDescription.update.mockResolvedValue({});
   mocks.prisma.candidate.update.mockResolvedValue({});
   mocks.prisma.aiUsage.create.mockResolvedValue({});
@@ -74,6 +79,7 @@ describe('FREE vs PLUS plan separation', () => {
     const provider: AIMatchingProvider = {
       modelName: 'gemini-3.6-flash',
       promptVersion: 'cvtest-1.0',
+      countInputTokens: vi.fn().mockResolvedValue(100),
       generateEvaluation: vi.fn().mockResolvedValue({
         rawText: JSON.stringify({
           score: 82,
@@ -95,7 +101,7 @@ describe('FREE vs PLUS plan separation', () => {
 
     expect(provider.generateEvaluation).toHaveBeenCalledWith(
       expect.stringContaining('ĐÁNH GIÁ CƠ BẢN (Gói FREE)'),
-      'FREE',
+      'FREE', 8192,
     );
     expect(mocks.prisma.matchResult.upsert).toHaveBeenCalledWith(expect.objectContaining({
       update: expect.objectContaining({
@@ -122,6 +128,7 @@ describe('FREE vs PLUS plan separation', () => {
     const provider: AIMatchingProvider = {
       modelName: 'gemini-3.6-flash',
       promptVersion: 'cvtest-1.0',
+      countInputTokens: vi.fn().mockResolvedValue(100),
       generateEvaluation: vi.fn().mockResolvedValue({
         rawText: JSON.stringify({
           score: 10,
@@ -152,11 +159,12 @@ describe('FREE vs PLUS plan separation', () => {
       }),
     };
 
+    mocks.prisma.user.findUnique.mockResolvedValue({ company: { id: 'company-1', plan: 'PLUS', billingCycle: 'MONTHLY' } });
     const result = await evaluateCandidateWithAi(job, candidate, provider, 'hr-1', 'PLUS', 'company-1');
 
     expect(provider.generateEvaluation).toHaveBeenCalledWith(
       expect.stringContaining('1 skill_matching (40)'),
-      'PLUS',
+      'PLUS', 8192,
     );
     expect(result.score).toBe(86);
     expect(result.scoreBreakdown).toHaveLength(6);

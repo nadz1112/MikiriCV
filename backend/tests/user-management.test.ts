@@ -1,10 +1,11 @@
+vi.mock('../src/services/company.service.js', () => ({ checkedCompanyMembership: async () => ({ connect: { id: 'company-id' } }) }));
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import bcrypt from 'bcrypt';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 const mocks = vi.hoisted(() => ({ user: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), findMany: vi.fn(), count: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() }, unlink: vi.fn() }));
-vi.mock('../src/config/database.js', () => ({ prisma: { user: mocks.user } }));
+vi.mock('../src/config/database.js', () => ({ prisma: { user: mocks.user, $transaction: async (callback) => callback({ user: mocks.user }) } }));
 vi.mock('fs/promises', () => ({ default: { unlink: mocks.unlink } }));
 interface User {
   id: string; email: string; fullName: string; companyName: string | null; role: 'ADMIN' | 'ENTERPRISE';
@@ -77,7 +78,7 @@ describe('enterprise account administration over HTTP with a mocked database', (
     expect(body.data).toMatchObject({ email: 'new@example.test', role: 'ENTERPRISE', mustChangePassword: true });
     const data = mocks.user.create.mock.calls[0][0].data;
     expect(await bcrypt.compare('Temporary123', data.passwordHash)).toBe(true);
-    expect(data.company).toEqual({ connectOrCreate: { where: { key: 'công ty' }, create: { name: 'Công ty', key: 'công ty' } } });
+    expect(data.company).toEqual({ connect: { id: 'company-id' } });
   });
   it('rejects duplicate email with a Vietnamese 409', async () => {
     const response = await request('POST', '/users', { email: 'hr@example.test', fullName: 'HR', companyName: 'Công ty', password: 'Temporary123' });

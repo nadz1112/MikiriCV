@@ -1,3 +1,5 @@
+import { tokenMocks, setupTokenMocks } from './helpers/token-billing.mock.js';
+vi.mock('../src/services/token-billing.service.js', () => tokenMocks);
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -7,7 +9,7 @@ const mocks = vi.hoisted(() => ({
     matchingJob: { create: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     matchingJobItem: { findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     matchResult: { upsert: vi.fn() },
-    aiUsage: { create: vi.fn() },
+    aiUsage: { create: vi.fn(), update: vi.fn() },
   },
   generateContent: vi.fn(),
   reserveAnalyses: vi.fn(),
@@ -16,10 +18,11 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../src/config/database.js', () => ({ prisma: mocks.prisma }));
-vi.mock('../src/config/gemini.js', () => ({ geminiModel: { generateContent: mocks.generateContent } }));
+vi.mock('../src/config/gemini.js', () => ({ geminiModel: { generateContent: mocks.generateContent, countTokens: async () => ({ totalTokens: 100 }) } }));
 vi.mock('../src/services/subscription.service.js', () => ({
   reserveAnalyses: mocks.reserveAnalyses,
   refundAnalyses: mocks.refundAnalyses,
+  getUserSubscription: tokenMocks.subscription,
   checkDocuments: mocks.checkDocuments,
 }));
 
@@ -38,6 +41,8 @@ describe('async matching jobs and runner', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+  setupTokenMocks('PLUS');
+  tokenMocks.subscription.mockResolvedValue({ name: 'PLUS', companyId: 'company-1', maxOutputTokens: 8192 });
     mocks.reserveAnalyses.mockResolvedValue({
       companyId: 'company-1',
       name: 'PLUS',
@@ -179,6 +184,7 @@ describe('async matching jobs and runner', () => {
     const aiProvider = {
       modelName: 'gemini-3.6-flash',
       promptVersion: 'cvtest-1.0',
+      countInputTokens: vi.fn().mockResolvedValue(100),
       generateEvaluation: vi.fn()
         .mockResolvedValueOnce({
           rawText: JSON.stringify({
@@ -258,9 +264,8 @@ describe('async matching jobs and runner', () => {
       where: { id: 'item-2' },
       data: expect.objectContaining({ status: 'FAILED', errorCode: 'AI_RATE_LIMIT' }),
     }));
-    expect(mocks.prisma.aiUsage.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ companyId: 'company-1', enterpriseId: 'hr-1' }),
-    }));
+    expect(tokenMocks.settleTokens).toHaveBeenCalled();
+    expect(tokenMocks.reserveTokens).toHaveBeenCalledWith('hr-1', expect.any(Number), expect.any(String), 'item:item-1', expect.any(Object));
     expect(mocks.prisma.matchingJob.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'job-1' },
       data: expect.objectContaining({ status: 'CANCELLED' }),

@@ -46,7 +46,11 @@ export const MatchingJobProgressPanel: React.FC<MatchingJobProgressPanelProps> =
   const percent = job.total > 0 ? Math.min(100, Math.round((job.processed / job.total) * 100)) : 0;
   const items = job.items ?? [];
   const failedItems = items.filter((item) => item.status === 'FAILED');
-  const statusInfo = JOB_STATUS_LABELS[job.status];
+  const completedWithErrors = job.status === 'COMPLETED' && job.failed > 0;
+  const allFailed = completedWithErrors && job.failed === job.total;
+  const statusInfo = completedWithErrors
+    ? { label: allFailed ? 'Đánh giá thất bại' : 'Đã xử lý · Có lỗi', className: allFailed ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700' }
+    : JOB_STATUS_LABELS[job.status];
 
   return (
     <section
@@ -124,7 +128,7 @@ export const MatchingJobProgressPanel: React.FC<MatchingJobProgressPanelProps> =
         <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
           <div
             className={`h-full transition-all duration-300 ${
-              job.status === 'FAILED' ? 'bg-rose-500' : job.status === 'CANCELLED' ? 'bg-amber-500' : 'bg-blue-600'
+              job.status === 'FAILED' || allFailed ? 'bg-rose-500' : job.status === 'CANCELLED' || completedWithErrors ? 'bg-amber-500' : 'bg-blue-600'
             }`}
             style={{ width: `${percent}%` }}
           />

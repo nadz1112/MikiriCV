@@ -10,7 +10,7 @@ export const FloatingActionBar: React.FC = () => {
   const { selectedCandidateIds, clearSelection, filter } = useCandidateFeatureStore();
   const user = useAuthStore((state) => state.user);
   const subscription = useSubscriptionStore((state) => state.subscription);
-  const isFreePlan = subscription?.name === 'FREE';
+  const isFreePlan = subscription?.maxCvPerCall === 1;
 
   if (selectedCandidateIds.length === 0) {
     return null;

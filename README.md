@@ -178,3 +178,46 @@ Khi chạy AI Matching, chỉ danh sách kỹ năng đã chuẩn hóa theo từ 
 “Xử lý nội bộ” ở đây là xử lý tại máy chạy backend. Nếu backend chạy trên máy của bạn thì dữ liệu được xử lý tại máy đó; nếu triển khai lên máy chủ thì file và dữ liệu cá nhân được lưu tại máy chủ, không phải chỉ trong trình duyệt. CV gốc và văn bản trích xuất vẫn được giữ trong kho file/PostgreSQL của hệ thống, và tải file phải qua endpoint được xác thực `/api/candidates/:id/file`.
 
 Cảnh báo PDF.js “Ignoring invalid character … in hex string” là cảnh báo về cấu trúc nội bộ của PDF. Bộ đọc đã được đặt mức log lỗi để tránh lặp cảnh báo này; đây không phải sửa lại file PDF. File không đọc được hoặc không có văn bản vẫn được đánh dấu trích xuất thất bại để người dùng kiểm tra.
+
+## Gói doanh nghiệp và token cá nhân
+
+Migration `20261125000000_account_token_billing` thay cơ chế lượt CV dùng chung bằng token thực tế của từng HR. Dữ liệu CV/JD, kết quả matching và lịch sử AI cũ được giữ nguyên. Chu kỳ token đầu tiên bắt đầu tại thời điểm migration đối với doanh nghiệp hiện có; lượt CV cũ không được quy đổi thành token ước đoán.
+
+| Cấu hình ban đầu | FREE | PLUS |
+| --- | ---: | ---: |
+| Token mỗi tài khoản mỗi chu kỳ | 100.000 | 3.000.000 |
+| Chu kỳ token | 30 ngày | 30 ngày |
+| Số tài khoản | Không giới hạn | Không giới hạn |
+| CV mỗi yêu cầu matching | 1 | 200 |
+| Token output tối đa mỗi CV, gồm thinking | 4.096 | 8.192 |
+
+Các giá trị trên là cấu hình khởi tạo, admin có thể sửa tại Dashboard quản trị. Gói và thời hạn đăng ký thuộc doanh nghiệp; mỗi HR có ví, token đã dùng, tạm giữ, còn lại và lịch sử riêng. Token cấp thêm/thu hồi áp dụng cho chu kỳ hiện tại, không tự chuyển sang chu kỳ sau. Đổi gói giữ nguyên token đã dùng và đang tạm giữ. Đổi thời lượng chu kỳ có hiệu lực từ lần làm mới tiếp theo. Migration `20261126000000_unlimited_company_accounts` bỏ giới hạn tài khoản và thêm giá tháng cấp doanh nghiệp; giữ nguyên tài khoản, ví và lịch sử. FREE bằng 0; migration `20261126010000_demo_company_monthly_price` đặt PLUS mặc định 100.000đ/doanh nghiệp/tháng, chỉ thay giá cũ 299.000đ và lưu audit, giữ giá đã tùy chỉnh. Giả định demo: vận hành 70.000đ/tháng, Gemini miễn phí, biên lợi nhuận 30%; chưa phải chi phí đã đo. Công cụ tính giá PLUS dùng chi phí toàn doanh nghiệp và biên lợi nhuận do admin nhập, chỉ điền bản nháp trước khi lưu có lý do, không tự thay giá đang áp dụng.
+
+Trước mỗi lần sinh nội dung, provider đếm token đầu vào của prompt/schema; backend khóa bản ghi và tạm giữ input cộng output tối đa trong transaction. Thiếu token trả `TOKEN_QUOTA_EXCEEDED`. Backend quyết toán input, output và thinking thực tế, đồng thời giải phóng tạm giữ trong cùng transaction. Lỗi JSON hoặc lỗi lưu báo cáo vẫn ghi nhận token provider đã sử dụng, đồng thời yêu cầu matching vẫn báo thất bại.
+
+Nếu timeout, mất kết nối hoặc thiếu metadata token, phiếu chuyển sang `UNKNOWN` và tiếp tục giữ token. Admin xem mục **Điều chỉnh / Lịch sử → Đối soát** để nhập token thực tế hoặc hoàn tạm giữ khi provider xác nhận không xử lý. Phiếu `HELD`/`STARTED` bị gián đoạn chỉ được đối soát sau 10 phút. Các thao tác có lý do và người thực hiện trong sổ cái. Backend không tự gọi lại một lần sinh nội dung có kết quả chưa rõ; retry an toàn chỉ áp dụng cho bước đếm token.
+
+Mục **Chi phí sử dụng Gemini** lấy đúng model và chế độ từ backend. `AI_BILLING_MODE=FREE` tự ghi chi phí 0 cho lần gọi mới, không cần nhập đơn giá; token vẫn tính vào hạn mức HR. Chế độ PAID dùng đơn giá đầu vào và đầu ra (gồm suy luận) theo đúng model, ưu tiên phiên bản admin rồi cấu hình môi trường. Mỗi lần gọi giữ bản chụp giá lúc tạm giữ; thay giá không tính lại lịch sử. Chưa có đơn giá trả phí thì chi phí là `null`, không suy đoán bằng 0. Dashboard cộng chi phí đã ghi nhận và báo số lần chưa xác định, không hiển thị tiền mô phỏng như chi phí thực tế. Giá trị này không phải hóa đơn/thuế của Google. RPM/TPM/RPD là giới hạn dự án Gemini, độc lập với hạn mức token HR theo chu kỳ và giá bán FREE/PLUS.
+
+Trang HR `/account` gồm Hồ sơ (chỉ xem), Bảo mật và Gói & token. Đường dẫn đổi mật khẩu cũ của HR chuyển đến `/account?tab=security`; ADMIN vẫn dùng trang đổi mật khẩu cũ. Chip token mở `/account?tab=plan`. Bảng so sánh FREE/PLUS chỉ xuất hiện trong hộp thoại khi chọn Nâng cấp hoặc Xem gói từ thông báo lỗi hạn mức.
+
+API HR: `GET /api/subscription` (gói công ty và số dư cá nhân), `/api/subscription/balance` (response nhẹ cho chip token), `/api/subscription/plans` (quyền lợi hai gói theo cấu hình thật), `/api/subscription/history?page=1` (lịch sử của chính người gọi, 20 dòng/trang). `/api/subscription/company` là đường dẫn tương thích, chỉ trả thông tin gói và token của người gọi, không trả danh sách tài khoản. API admin giữ nguyên. Lịch sử HR không trả sổ cái nội bộ, đơn giá hay số dư của người khác; JD không còn truy ra được từ dữ liệu cũ được hiển thị là chưa có thông tin. Mỗi dòng tương ứng một lần xử lý CV. Ước tính số CV dựa trên mức token trung bình của chính tài khoản, dùng mức tham khảo 2.000 token/CV khi chưa có mẫu phù hợp; không dùng ước tính này để chặn yêu cầu.
+
+Client gửi `Idempotency-Key` cho `/api/matching/run` và `/api/matching/jobs`; phải giữ nguyên khóa và nội dung khi gửi lại cùng một yêu cầu. Biên nhận matching được lưu riêng, không bị dọn cùng khóa upload hết hạn. Client giữ khóa khi mất phản hồi mạng; gửi lại sẽ nhận biên nhận cũ. Chủ động chấm lại sau khi đã nhận kết quả là yêu cầu mới và tính token mới. Mã item của matching chạy nền ngăn gọi provider/trừ token lại sau khi runner khởi động lại.
+
+Áp dụng migration khi triển khai (không dùng reset database):
+
+```powershell
+cd backend
+npx prisma migrate deploy
+npm run prisma:generate
+npm run build
+```
+
+Kiểm thử tích hợp dùng PostgreSQL từ `BILLING_TEST_DATABASE_URL` hoặc `backend/.env`, tạo schema `billing_test_<uuid>` riêng và xóa đúng schema đó sau kiểm thử. Provider AI được mock, không gọi Gemini thật. Cần tài khoản DB có quyền tạo/xóa schema:
+
+```powershell
+cd backend
+$env:RUN_BILLING_INTEGRATION='1'
+npm test
+```

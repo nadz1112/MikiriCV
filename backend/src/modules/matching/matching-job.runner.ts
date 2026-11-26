@@ -152,7 +152,7 @@ export class MatchingJobRunner extends EventEmitter {
 
             try {
               const plan = job.planName === 'FREE' || job.planName === 'PLUS' ? job.planName : undefined;
-              await evaluateCandidateWithAi(job.jobDescription, item.candidate, this.aiProvider, job.ownerId, plan, job.companyId ?? null);
+              await evaluateCandidateWithAi(job.jobDescription, item.candidate, this.aiProvider, job.ownerId, plan, job.companyId ?? null, `item:${item.id}`);
               await prisma.matchingJobItem.update({
                 where: { id: item.id },
                 data: {

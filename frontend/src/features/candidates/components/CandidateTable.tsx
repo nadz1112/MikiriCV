@@ -31,7 +31,7 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
 }) => {
   const isAdmin = useAuthStore((state) => state.user?.role === 'ADMIN');
   const subscription = useSubscriptionStore((state) => state.subscription);
-  const isFreePlan = !isAdmin && subscription?.name === 'FREE';
+  const isFreePlan = !isAdmin && subscription?.maxCvPerCall === 1;
   const {
     selectedCandidateIds,
     toggleSelect,

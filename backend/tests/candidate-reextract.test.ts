@@ -1,3 +1,5 @@
+import { tokenMocks, setupTokenMocks } from './helpers/token-billing.mock.js';
+vi.mock('../src/services/token-billing.service.js', () => tokenMocks);
 import { mkdtemp, writeFile, rm } from 'fs/promises';
 import os from 'os';
 import path from 'path';
@@ -14,6 +16,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../src/config/database.js', () => ({
   prisma: {
     user: { findUnique: mocks.userFindUnique },
+    servicePlan: { findUniqueOrThrow: async () => ({ name: 'FREE', tokenLimit: 100000, maxCvPerCall: 1 }) },
     candidate: {
       findUnique: mocks.candidateFindUnique,
       update: mocks.candidateUpdate,
@@ -70,6 +73,7 @@ describe('POST /api/candidates/:id/reextract', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+  setupTokenMocks();
   });
 
   function headers(role: 'ADMIN' | 'ENTERPRISE') {

@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 
 const db = vi.hoisted(() => ({
   company: { findMany: vi.fn() },
+  servicePlan: { findUniqueOrThrow: async () => ({ name: 'FREE', tokenLimit: 100000, cycleDays: 30, maxCvPerCall: 1 }) },
   user: { findUnique: vi.fn(), findMany: vi.fn(), groupBy: vi.fn() },
   jobDescription: { count: vi.fn(), groupBy: vi.fn() },
   candidate: { count: vi.fn(), groupBy: vi.fn(), findMany: vi.fn() },
@@ -81,6 +82,15 @@ describe('GET /api/admin/dashboard', () => {
     expect(body.data.enterprises[0]).toMatchObject({ jobCount: 3, candidateCount: 8, matchCount: 6, inputTokens: 1000 });
     expect(JSON.stringify(body)).not.toMatch(/rawText|searchText|fileUrl|passwordHash/);
     expect(db.aiUsage.aggregate).toHaveBeenCalledWith(expect.objectContaining({ where: range === 'all' ? {} : { day: { gte: expect.any(Date), lte: expect.any(Date) } } }));
+  });
+  it('sums captured costs and reports incomplete pricing without repricing history', async () => {
+    db.aiUsage.aggregate.mockResolvedValue({ _sum: { inputTokens: 1000, outputTokens: 500, actualCostUsd: '0.00048' }, _count: { _all: 3, inputTokens: 3, outputTokens: 3, actualCostUsd: 2 } });
+    db.aiUsage.groupBy.mockImplementation((args: { by: string[] }) => Promise.resolve(args.by[0] === 'enterpriseId'
+      ? [{ enterpriseId: 'hr', companyId: 'company-a', _sum: { inputTokens: 1000, outputTokens: 500, actualCostUsd: '0.00048' }, _count: { _all: 3, actualCostUsd: 2 } }] : []));
+    const response = await fetch(base, { headers: headers() });
+    const { data } = await response.json();
+    expect(data.ai).toMatchObject({ actualCostUsd: '0.00048', callsWithoutPrice: 1 });
+    expect(data.enterprises[0]).toMatchObject({ actualCostUsd: '0.00048', callsWithoutPrice: 1 });
   });
   it('tolerates empty and legacy data without tokens', async () => {
     db.aiUsage.findFirst.mockResolvedValue(null);

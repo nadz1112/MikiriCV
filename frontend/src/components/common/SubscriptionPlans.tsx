@@ -1,46 +1,105 @@
-import { useEffect, useState } from 'react';
-import { updateSubscription, type Subscription } from '../../services/subscriptionApi';
+import { useEffect, useRef, useState } from 'react';
+import { billingApi, updateSubscription, type ServicePlan, type Subscription } from '../../services/subscriptionApi';
+import { CompanyTokenPanel } from './TokenPanels';
+import { api } from '../../services/api';
+import { AiBillingPanel, PlanPriceCalculator } from './AiBillingPanel';
+
+
+export const tokenDate = (date?: string | null) => date ? new Date(date).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : 'Không giới hạn';
+const field = 'mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm';
+const button = 'rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50';
 
 export function SubscriptionPlans({ subscription, admin = false, onUpdated }: { subscription?: Subscription; admin?: boolean; onUpdated?: () => void }) {
+  const [plans, setPlans] = useState<ServicePlan[]>([]);
   const [plan, setPlan] = useState<'FREE' | 'PLUS'>('FREE');
   const [billingCycle, setBillingCycle] = useState<'MONTHLY' | 'YEARLY'>('MONTHLY');
+  const [endsAt, setEndsAt] = useState('');
+  const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [refresh, setRefresh] = useState(0);
+  const receipt = useRef({ signature: '', key: '' });
   useEffect(() => {
-    setPlan(subscription?.name ?? 'FREE');
-    setBillingCycle(subscription?.billingCycle ?? 'MONTHLY');
-    setError('');
-  }, [subscription?.companyId, subscription?.name, subscription?.billingCycle]);
+    setPlan(subscription?.name ?? 'FREE'); setBillingCycle(subscription?.billingCycle ?? 'MONTHLY');
+    setEndsAt(subscription?.endsAt?.slice(0, 10) ?? ''); setError('');
+  }, [subscription?.companyId, subscription?.name, subscription?.billingCycle, subscription?.endsAt]);
+  useEffect(() => {
+    if (!admin) return;
+    let cancelled = false;
+    billingApi.plans().then((data) => { if (!cancelled) setPlans(data); }).catch(() => { if (!cancelled) setError('Không thể tải cấu hình gói.'); });
+    return () => { cancelled = true; };
+  }, [admin, refresh]);
   const save = async () => {
     if (!subscription || saving) return;
+    const signature = JSON.stringify([subscription.companyId, plan, billingCycle, endsAt, reason]);
+    if (receipt.current.signature !== signature) receipt.current = { signature, key: crypto.randomUUID() };
     setSaving(true); setError('');
-    try { await updateSubscription(subscription.companyId, plan, plan === 'FREE' ? 'MONTHLY' : billingCycle); onUpdated?.(); }
-    catch { setError(admin ? 'Không thể cập nhật hạn mức doanh nghiệp. Vui lòng thử lại.' : 'Không thể cập nhật gói dịch vụ. Vui lòng thử lại.'); }
+    try {
+      await updateSubscription(subscription.companyId, plan, billingCycle, endsAt ? new Date(`${endsAt}T23:59:59+07:00`).toISOString() : null, reason, receipt.current.key);
+      setRefresh((v) => v + 1); onUpdated?.();
+    } catch { setError('Không thể đổi gói. Kiểm tra số tài khoản tối đa và ngày hết hạn.'); }
     finally { setSaving(false); }
   };
-  if (admin) return <section aria-label="Quản lý hạn mức doanh nghiệp" className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
-    <h3 className="font-bold text-slate-800">Quản lý hạn mức doanh nghiệp</h3>
+  if (admin) return <section aria-label="Quản lý gói và token" className="mt-5 space-y-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+    <h3 className="font-bold">Gói doanh nghiệp và hạn mức token từng tài khoản</h3>
+    <div className="grid gap-4 xl:grid-cols-2">{plans.map((config) => <PlanEditor key={`${config.name}:${config.version}`} plan={config} onSaved={() => { setRefresh((v) => v + 1); onUpdated?.(); }} />)}</div>
+    <p className="text-sm text-slate-600">Mỗi HR nhận hạn mức riêng theo gói. Thay đổi hạn mức áp dụng ngay, giữ nguyên token đã dùng và tạm giữ; chu kỳ mới áp dụng từ kỳ kế tiếp. Lịch sử và đơn giá của các lần gọi trước không thay đổi.</p>
     {subscription ? <>
-      <div className="mt-3 grid gap-3 sm:grid-cols-3">{[
-        ['Hạn mức tháng', `${subscription.monthlyLimit} lượt CV`],
-        ['Đã sử dụng', `${subscription.used} lượt CV`],
-        ['Còn lại', `${subscription.remaining} lượt CV`],
-      ].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-3"><p className="text-sm text-slate-500">{label}</p><p className="mt-1 text-lg font-semibold">{value}</p></div>)}</div>
-      <progress aria-label="Lượt CV đã sử dụng trong tháng" max={subscription.monthlyLimit} value={Math.min(subscription.used, subscription.monthlyLimit)} className="mt-3 h-3 w-full accent-blue-700" />
-      <p className="mt-2 text-sm text-slate-600">Tháng {subscription.month.slice(0, 7)} · Hạn mức dùng chung cho tất cả HR trong doanh nghiệp. Token đầu vào, đầu ra và chi phí AI thực tế được thống kê riêng ở trên.</p>
-      <div className="mt-4 flex flex-wrap items-end gap-3"><label className="text-sm font-medium">Hạn mức phân tích mỗi tháng<select aria-label="Hạn mức phân tích mỗi tháng" disabled={saving} value={plan} onChange={(event) => setPlan(event.target.value as 'FREE' | 'PLUS')} className="mt-1 block rounded-lg border border-slate-300 bg-white px-3 py-2"><option value="FREE">10 lượt CV (FREE)</option><option value="PLUS">300 lượt CV (PLUS)</option></select></label>{plan === 'PLUS' && <label className="text-sm font-medium">Chu kỳ thanh toán<select aria-label="Chu kỳ thanh toán" disabled={saving} value={billingCycle} onChange={(event) => setBillingCycle(event.target.value as 'MONTHLY' | 'YEARLY')} className="mt-1 block rounded-lg border border-slate-300 bg-white px-3 py-2"><option value="MONTHLY">Theo tháng</option><option value="YEARLY">Theo năm</option></select></label>}<button disabled={saving} onClick={() => void save()} className="rounded-lg bg-blue-700 px-4 py-2 font-semibold text-white disabled:opacity-50">{saving ? 'Đang lưu…' : 'Lưu hạn mức'}</button></div>
-      <p className="mt-2 text-sm text-slate-500">Thay đổi áp dụng cho toàn doanh nghiệp và giữ nguyên số lượt đã dùng. Hạn mức làm mới đầu tháng theo giờ Việt Nam; lần chấm lỗi được hoàn lượt.</p>
-    </> : <p className="mt-2 text-sm text-slate-600">Chọn doanh nghiệp ở bộ lọc phía trên để xem số lượt đã dùng, còn lại và điều chỉnh hạn mức.</p>}
-    {error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
-  </section>;
-  return <div className="mt-5 space-y-4">
-    {subscription && <div className="rounded-xl border border-blue-200 bg-blue-50 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold">Gói {subscription.name} · Hạn mức tháng {subscription.month.slice(0, 7)}</h3><span className="font-semibold">{subscription.used}/{subscription.monthlyLimit} lượt CV · Còn {subscription.remaining} lượt</span></div><progress aria-label="Lượt CV đã sử dụng trong tháng" max={subscription.monthlyLimit} value={Math.min(subscription.used, subscription.monthlyLimit)} className="mt-3 h-3 w-full accent-blue-700"/><p className="mt-2 text-sm text-slate-600">Dùng chung cho mọi HR trong doanh nghiệp. Mỗi CV chấm thành công tính 1 lượt, kể cả chấm lại; lần lỗi được hoàn lượt. Hạn mức làm mới đầu tháng theo giờ Việt Nam.</p><p className="mt-2 text-sm font-semibold">Phí gói: {subscription.name === 'FREE' ? '0đ / mãi mãi' : subscription.billingCycle === 'YEARLY' ? '249.000đ/tháng · 2.988.000đ/năm' : '299.000đ/tháng'}</p></div>}
-    <div className="grid gap-4 lg:grid-cols-2">
-      <article className="rounded-2xl border border-slate-200 bg-white p-5"><h3 className="text-lg font-bold">FREE — Trải nghiệm cơ bản</h3><p className="mt-2 text-2xl font-bold">0đ <span className="text-sm font-normal text-slate-500">/ mãi mãi</span></p><p className="mt-2 text-sm text-slate-600">Dành cho cá nhân hoặc doanh nghiệp nhỏ muốn trải nghiệm tốc độ lọc CV bằng AI.</p><ul className="mt-4 list-disc space-y-2 pl-5 text-sm"><li>10 lượt phân tích & chấm điểm CV mỗi tháng.</li><li>CV tiêu chuẩn: tối đa 2 trang PDF / khoảng 3.000 ký tự.</li><li>Chấm điểm mức độ phù hợp theo JD.</li><li>Tóm tắt nhanh 3 điểm nổi bật của ứng viên.</li><li>Xử lý từng CV đơn lẻ.</li></ul></article>
-      <article className="rounded-2xl border-2 border-blue-600 bg-blue-50/30 p-5"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-lg font-bold">PLUS — Doanh nghiệp & Tuyển dụng chuyên nghiệp</h3><span className="rounded-full bg-blue-700 px-3 py-1 text-sm font-semibold text-white">Khuyên dùng</span></div><p className="mt-2 text-2xl font-bold">299.000đ <span className="text-sm font-normal text-slate-500">/ tháng</span></p><p className="mt-1 text-sm font-semibold text-blue-700">249.000đ/tháng khi thanh toán theo năm · 2.988.000đ/năm</p><p className="mt-2 text-sm text-slate-600">Tối ưu hóa quy trình sàng lọc hàng trăm hồ sơ mỗi đợt tuyển dụng với độ chính xác cao.</p><ul className="mt-4 list-disc space-y-2 pl-5 text-sm"><li>300 lượt phân tích & chấm điểm CV mỗi tháng (~990đ/CV).</li><li>CV dài & Portfolio: tối đa 6 trang PDF / khoảng 12.000 ký tự.</li><li>Phân tích từng kỹ năng và điểm cần xác minh (Red flags).</li><li>Gợi ý câu hỏi phỏng vấn theo lỗ hổng kiến thức của từng ứng viên.</li><li>Tải lên và chấm nhiều CV cho cùng một JD.</li><li>Xuất báo cáo so sánh Excel và in / lưu PDF.</li></ul></article>
-    </div>
-    <p className="text-sm text-slate-500">PDF được kiểm tra số trang và ký tự; DOCX được kiểm tra số ký tự vì số trang phụ thuộc cách dàn trang. Phân tích dựa trên kỹ năng và kinh nghiệm đã trích xuất; các điểm cần xác minh không phải kết luận về ứng viên.</p>
-    <p className="text-sm text-slate-500">Liên hệ quản trị viên để đăng ký hoặc thay đổi gói cho doanh nghiệp.</p>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="text-sm">Gói doanh nghiệp<select aria-label="Gói doanh nghiệp" className={field} value={plan} onChange={(e) => setPlan(e.target.value as 'FREE' | 'PLUS')}><option>FREE</option><option>PLUS</option></select></label>
+        <label className="text-sm">Chu kỳ thanh toán<select className={field} value={billingCycle} onChange={(e) => setBillingCycle(e.target.value as typeof billingCycle)}><option value="MONTHLY">Theo tháng</option><option value="YEARLY">Theo năm</option></select></label>
+        <label className="text-sm">Ngày hết hạn (để trống: không giới hạn)<input aria-label="Ngày hết hạn gói" className={field} type="date" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} /></label>
+        <label className="text-sm">Lý do thay đổi<input aria-label="Lý do đổi gói" className={field} value={reason} onChange={(e) => setReason(e.target.value)} /></label>
+        <button className={button} disabled={saving || reason.trim().length < 3} onClick={() => void save()}>{saving ? 'Đang lưu…' : 'Lưu gói doanh nghiệp'}</button>
+      </div>
+      <CompanyTokenPanel key={subscription.companyId} companyId={subscription.companyId} admin refresh={refresh} />
+    </> : <p className="text-sm text-slate-600">Chọn doanh nghiệp ở bộ lọc để gán gói và quản lý token từng HR.</p>}
+    <AiBillingPanel />
+    <BillingAuditPanel refresh={refresh} />
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
-  </div>;
+  </section>;
+  return null;
+}
+
+function PlanEditor({ plan, onSaved }: { plan: ServicePlan; onSaved: () => void }) {
+  const [draft, setDraft] = useState(plan);
+  const [reason, setReason] = useState('');
+  const [status, setStatus] = useState('');
+  const [saving, setSaving] = useState(false);
+  const receipt = useRef({ signature: '', key: '' });
+  const save = async () => {
+    setSaving(true); setStatus('');
+    const signature = JSON.stringify([draft, reason]);
+    if (receipt.current.signature !== signature) receipt.current = { signature, key: crypto.randomUUID() };
+    try { await billingApi.savePlan(draft, reason, receipt.current.key); onSaved(); }
+    catch { setStatus('Không thể lưu cấu hình gói.'); }
+    finally { setSaving(false); }
+  };
+  const fields = [['monthlyPriceVnd', 'Giá dịch vụ / doanh nghiệp / tháng (VND)', 0, 100000000], ['tokenLimit', 'Token mỗi tài khoản', 1000, 1000000000], ['cycleDays', 'Chu kỳ sử dụng (ngày)', 1, 366], ['maxCvPerCall', 'CV mỗi yêu cầu', 1, 200], ['maxOutputTokens', 'Token output tối đa mỗi CV', 1024, 32768]] as const;
+  return <form onSubmit={(e) => { e.preventDefault(); void save(); }} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"><h4 className="font-bold">Cấu hình {plan.name} · v{plan.version}</h4><p className="text-xs text-slate-500">Không giới hạn số tài khoản. Hạn mức token vẫn riêng cho từng HR.</p>{plan.name === 'PLUS' && <PlanPriceCalculator onApply={(price) => setDraft({ ...draft, monthlyPriceVnd: price })} />}<div className="grid gap-3 sm:grid-cols-2">{fields.map(([key, label, min, max]) => <label key={key} className="text-sm">{label}<input required disabled={key === 'monthlyPriceVnd' && plan.name === 'FREE'} aria-label={`${plan.name} ${label}`} type="number" className={field} min={min} max={max} value={draft[key] ?? 0} onChange={(e) => setDraft({ ...draft, [key]: Number(e.target.value) })} /></label>)}</div><label className="block text-sm">Lý do điều chỉnh<input required minLength={3} maxLength={500} className={field} value={reason} onChange={(e) => setReason(e.target.value)} /></label><button disabled={saving} className={button}>Lưu cấu hình {plan.name}</button>{status && <p role="alert" className="text-sm text-red-700">{status}</p>}</form>;
+}
+
+const auditActions: Record<string, string> = { PLAN_CONFIG: 'Cập nhật cấu hình gói', PRICE_VERSION: 'Cập nhật đơn giá AI', COMPANY_PLAN: 'Đổi gói doanh nghiệp' };
+function auditValues(value: unknown) {
+  if (!value || typeof value !== 'object') return [];
+  const labels: Record<string, string> = { monthlyPriceVnd: 'Giá / doanh nghiệp / tháng', tokenLimit: 'Token mỗi HR', cycleDays: 'Chu kỳ (ngày)', maxCvPerCall: 'CV mỗi lần chấm', maxOutputTokens: 'Token trả lời tối đa', inputUsd: 'Đơn giá đầu vào (USD/triệu token)', outputUsd: 'Đơn giá đầu ra (USD/triệu token)' };
+  return Object.entries(value).flatMap(([key, amount]) => labels[key] && typeof amount === 'number' ? [[labels[key], `${amount.toLocaleString('vi-VN')}${key === 'monthlyPriceVnd' ? 'đ' : ''}`]] : []);
+}
+export function BillingAuditPanel({ refresh }: { refresh: number }) {
+  const [entries, setEntries] = useState<Array<{ id: string; createdAt: string; actorId: string; action: string; targetId: string; reason: string; after: unknown }>>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [error, setError] = useState('');
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    void api.get('/admin/billing-audit', { params: { page }, signal: controller.signal }).then((res) => { if (!controller.signal.aborted) { setEntries(res.data.data); setTotal(res.data.total); setError(''); } }).catch(() => { if (!controller.signal.aborted) setError('Không thể tải sổ thay đổi gói và đơn giá.'); });
+    return () => controller.abort();
+  }, [page, refresh, open]);
+  return <details className="rounded-lg border border-slate-200 bg-white p-4" onToggle={(e) => setOpen(e.currentTarget.open)}><summary className="cursor-pointer font-semibold">Lịch sử thay đổi gói và đơn giá</summary>{error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
+    {open && !error && total === 0 && <p className="mt-3 text-sm text-slate-500">Chưa có thay đổi.</p>}
+    <ul className="mt-3 max-h-80 space-y-3 overflow-auto text-sm">{entries.map((entry) => <li key={entry.id} className="rounded-lg bg-slate-50 p-3"><div className="flex flex-wrap justify-between gap-2"><p className="font-semibold">{auditActions[entry.action] ?? 'Cập nhật cấu hình'}{['FREE', 'PLUS'].includes(entry.targetId) ? ` · ${entry.targetId}` : ''}</p><time className="text-xs text-slate-500">{tokenDate(entry.createdAt)}</time></div><p className="mt-1 text-xs text-slate-500">{entry.actorId === 'SYSTEM_MIGRATION' ? 'Hệ thống · Thiết lập giá demo' : 'Quản trị viên'}</p>{entry.actorId !== 'SYSTEM_MIGRATION' && <p className="mt-2 break-words text-slate-600">{entry.reason}</p>}<dl className="mt-2 grid gap-x-6 gap-y-1 sm:grid-cols-2">{auditValues(entry.after).map(([label, value]) => <div key={label} className="flex flex-wrap justify-between gap-x-3"><dt className="text-slate-500">{label}</dt><dd className="font-medium">{value}</dd></div>)}</dl></li>)}</ul>
+    {total > 30 && <nav aria-label="Phân trang lịch sử thay đổi" className="mt-3 flex items-center gap-3 text-sm"><button className={button} disabled={page === 1} onClick={() => setPage((v) => v - 1)}>Trước</button><span>Trang {page} / {Math.ceil(total / 30)}</span><button className={button} disabled={page * 30 >= total} onClick={() => setPage((v) => v + 1)}>Sau</button></nav>}
+  </details>;
 }

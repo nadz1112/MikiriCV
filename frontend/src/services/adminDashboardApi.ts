@@ -8,6 +8,7 @@ export interface HrActivity {
   matchCount: number; inputTokens: number; outputTokens: number; calls: number;
 }
 export interface EnterpriseActivity {
+  actualCostUsd?: string | null;
   simulatedCostVnd?: number;
   subscription?: Subscription;
   id: string | null;
@@ -30,11 +31,12 @@ export interface AdminDashboard {
   overview: { totalUsers: number; activeUsers: number; lockedUsers: number; totalJobs: number; totalCandidates: number; failedCandidates: number; totalMatches: number };
   distribution: Array<{ label: string; count: number }>;
   ai: {
+    thinkingTokens?: number; actualCostUsd?: string | null; callsWithoutPrice?: number;
     simulatedCostVnd: number; demoInputRate: number; demoOutputRate: number;
     billingMode: 'FREE' | 'PAID';
     inputTokens: number; outputTokens: number; estimatedCostUsd: number | null;
     inputRate: number | null; outputRate: number | null; calls: number; callsWithoutTokenData: number;
-    daily: Array<{ date: string; inputTokens: number; outputTokens: number; estimatedCostUsd: number | null; simulatedCostVnd: number; calls: number }>;
+    daily: Array<{ date: string; actualCostUsd?: string | null; inputTokens: number; outputTokens: number; estimatedCostUsd: number | null; simulatedCostVnd: number; calls: number }>;
   };
   enterprises: EnterpriseActivity[];
 }

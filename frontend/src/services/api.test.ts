@@ -13,6 +13,21 @@ function success(config: InternalAxiosRequestConfig, data = {}) {
 }
 afterEach(() => { vi.clearAllMocks(); vi.restoreAllMocks(); vi.resetModules(); });
 
+it('reuses a matching receipt after network loss and creates a new receipt after confirmation', async () => {
+  const { api } = await import('./api');
+  const keys: unknown[] = [];
+  api.defaults.adapter = async (config) => {
+    keys.push(config.headers.get('Idempotency-Key'));
+    if (keys.length === 1) throw new AxiosError('Network lost after submission', 'ERR_NETWORK', config);
+    return success(config);
+  };
+  const body = { jobDescriptionId: 'jd', candidateIds: ['cv'] };
+  await expect(api.post('/matching/run', body)).rejects.toBeTruthy();
+  await api.post('/matching/run', body);
+  await api.post('/matching/run', body);
+  expect(keys[0]).toBeTruthy(); expect(keys[1]).toBe(keys[0]); expect(keys[2]).not.toBe(keys[0]);
+});
+
 it('stops refreshing and emits one expiry event after the refresh cookie is rejected', async () => {
   const { api } = await import('./api');
   const events = vi.spyOn(window, 'dispatchEvent');

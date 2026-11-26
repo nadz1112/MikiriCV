@@ -8,6 +8,9 @@ export function toAiError(error: unknown): AppError {
   if (upstream?.status === 429) {
     return new AppError(429, 'AI_RATE_LIMIT', 'Gemini đã đạt giới hạn lượt gọi hoặc quota. Vui lòng kiểm tra quota và thử lại sau.');
   }
+  if (upstream?.status === 503) {
+    return new AppError(503, 'AI_SERVICE_UNAVAILABLE', 'Dịch vụ AI đang quá tải hoặc tạm thời không khả dụng. Chưa có kết quả đánh giá; vui lòng thử lại sau ít phút.');
+  }
   if (upstream?.status === 403 && /free tier|billing|paid tier|PROJECT_UNAVAILABLE/i.test(message)) {
     return new AppError(502, 'AI_BILLING_REQUIRED', 'Dự án Gemini hiện không được dùng free tier. Vui lòng bật billing cho đúng dự án của API key tại Google AI Studio rồi thử lại.');
   }

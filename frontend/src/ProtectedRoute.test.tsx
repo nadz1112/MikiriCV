@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { ProtectedRoute } from './App';
 import { Navbar } from './components/common/Navbar';
 
@@ -14,6 +14,12 @@ vi.mock('./features/auth/authStore', () => ({ useAuthStore: () => state }));
 afterEach(() => { cleanup(); state.user = null; state.status = 'unauthenticated'; });
 
 describe('ProtectedRoute', () => {
+  it('keeps forced password changes inside the HR security tab and prevents opening the profile first', () => {
+    state.user = { role: 'ENTERPRISE', mustChangePassword: true }; state.status = 'authenticated';
+    function Location() { return <div>{useLocation().search}</div>; }
+    render(<MemoryRouter initialEntries={['/account?tab=profile']}><Routes><Route element={<ProtectedRoute roles={['ENTERPRISE']} />}><Route path="/account" element={<Location />} /></Route></Routes></MemoryRouter>);
+    expect(screen.getByText('?tab=security')).toBeTruthy();
+  });
   it('sends unauthenticated users to login', () => {
     render(<MemoryRouter initialEntries={['/admin/users']}><Routes><Route element={<ProtectedRoute roles={['ADMIN']}/>}><Route path="/admin/users" element={<div>Admin</div>}/></Route><Route path="/login" element={<div>Đăng nhập</div>}/></Routes></MemoryRouter>);
     expect(screen.getByText('Đăng nhập')).toBeTruthy();

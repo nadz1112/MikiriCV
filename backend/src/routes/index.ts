@@ -9,6 +9,7 @@ import userRoutes from './user.routes.js';
 import dashboardRoutes from './dashboard.routes.js';
 import adminRoutes from './admin.routes.js';
 import subscriptionRoutes from './subscription.routes.js';
+import tokenBillingRoutes from './token-billing.routes.js';
 
 const apiRouter = Router();
 
@@ -25,6 +26,7 @@ apiRouter.use('/skills', skillRoutes);
 apiRouter.use(authenticate);
 apiRouter.use('/users', userRoutes);
 apiRouter.use('/admin', adminRoutes);
+apiRouter.use('/admin', tokenBillingRoutes);
 apiRouter.use('/subscription', subscriptionRoutes);
 
 apiRouter.use('/jobs', jobRoutes);
