@@ -9,7 +9,6 @@ import { useMatchingFeatureStore } from '../features/matching/store/matchingStor
 import { CandidateInsightDrawer } from '../components/dashboard/CandidateInsightDrawer';
 import { DeleteConfirmModal } from '../components/dashboard/DeleteConfirmModal';
 import { useSubscriptionStore } from '../features/subscription/subscriptionStore';
-import { SubscriptionPlans } from '../components/common/SubscriptionPlans';
 import { ComparisonExport } from '../features/matching/components/ComparisonExport';
 
 interface MatchingLocationState {
@@ -57,7 +56,7 @@ export const MatchingPage: React.FC = () => {
     setCandidateToDelete,
     handleConfirmDeleteCandidate,
   } = useMatching(navState?.jobId, navState?.selectedCandidateIds);
-  const { subscription, error: subscriptionError, fetchSubscription } = useSubscriptionStore();
+  const { subscription, fetchSubscription, refreshBalance } = useSubscriptionStore();
   const prevRunning = useRef(false);
 
   useEffect(() => {
@@ -66,25 +65,25 @@ export const MatchingPage: React.FC = () => {
 
   useEffect(() => {
     if (prevRunning.current && !isRunning) {
-      void fetchSubscription(true);
+      void refreshBalance();
     }
     prevRunning.current = isRunning;
-  }, [isRunning, fetchSubscription]);
+  }, [isRunning, refreshBalance]);
 
   useEffect(() => {
     if (activeJob && ['COMPLETED', 'CANCELLED', 'FAILED'].includes(activeJob.status)) {
-      void fetchSubscription(true);
+      void refreshBalance();
     }
-  }, [activeJob, fetchSubscription]);
+  }, [activeJob, refreshBalance]);
 
   useEffect(() => {
-    if (subscription?.name === 'FREE' && selectedCandidateIds.length > 1) {
-      useMatchingFeatureStore.getState().setSelectedCandidateIds([selectedCandidateIds[0]]);
+    if (subscription && selectedCandidateIds.length > subscription.maxCvPerCall) {
+      useMatchingFeatureStore.getState().setSelectedCandidateIds(selectedCandidateIds.slice(0, subscription.maxCvPerCall));
     }
-  }, [subscription?.name, selectedCandidateIds]);
+  }, [subscription?.maxCvPerCall, selectedCandidateIds]);
 
   const handleToggleCandidate = (candidateId: string) => {
-    if (subscription?.name === 'FREE') {
+    if (subscription?.maxCvPerCall === 1) {
       if (selectedCandidateIds.includes(candidateId)) {
         clearSelection();
       } else {
@@ -106,7 +105,6 @@ export const MatchingPage: React.FC = () => {
       </div>
 
       {/* Bảng điều khiển Chọn JD & Chọn tập ứng viên */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-5"><h2 className="text-lg font-bold">Gói dịch vụ và hạn mức doanh nghiệp</h2>{subscriptionError && <p role="alert" className="mt-2 text-sm text-red-700">{subscriptionError}</p>}<SubscriptionPlans subscription={subscription ?? undefined} /></section>
       <MatchingControlPanel
         jobs={jobs}
         selectedJob={selectedJob}
@@ -119,6 +117,7 @@ export const MatchingPage: React.FC = () => {
         isRunning={isRunning}
         plan={subscription?.name}
         remainingQuota={subscription?.remaining}
+        maxCvPerCall={subscription?.maxCvPerCall}
         onSelectJob={setSelectedJobId}
         onToggleCandidate={handleToggleCandidate}
         onSearchChange={setCandidateSearch}

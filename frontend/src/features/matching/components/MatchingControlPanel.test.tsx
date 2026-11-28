@@ -69,7 +69,7 @@ describe('MatchingControlPanel plan modes', () => {
 
     expect(screen.getByText('Gói FREE · Chấm đơn lẻ 1 CV')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Chọn tất cả/ })).toBeNull();
-    expect(screen.getByRole('alert').textContent).toContain('10/10 lượt phân tích miễn phí');
+    expect(screen.getByRole('alert').textContent).toContain('Tài khoản đã hết token khả dụng');
     const cta = screen.getByRole('button', { name: 'Chấm điểm CV này (Gói FREE)' }) as HTMLButtonElement;
     expect(cta.disabled).toBe(true);
     fireEvent.click(cta);

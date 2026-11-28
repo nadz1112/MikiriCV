@@ -5,7 +5,7 @@ import { ApiResponse } from '../types/index.js';
 export class MatchingController {
   async runMatching(req: Request, res: Response<ApiResponse>, next: NextFunction): Promise<void> {
     try {
-      const results = await matchingService.runMatching(req.body, req.user?.role === 'ADMIN' ? undefined : req.user?.id);
+      const results = await matchingService.runMatching(req.body, req.user!.id, res.locals.matchingOperationKey);
       res.json({
         success: true,
         message: `Hoàn tất đối soát và chấm điểm AI cho ${results.length} ứng viên`,

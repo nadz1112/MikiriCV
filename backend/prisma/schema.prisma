@@ -41,6 +41,8 @@ model Company {
   billingCycle String @default("MONTHLY")
   quotaMonth DateTime? @db.Date
   monthlyUsed Int     @default(0)
+  subscriptionStartedAt DateTime @default(now())
+  subscriptionEndsAt DateTime?
   users     User[]
   aiUsage   AiUsage[]
 
@@ -242,6 +244,12 @@ model AiUsage {
   model        String
   inputTokens  Int?
   outputTokens Int?
+  thinkingTokens Int?
+  totalTokens Int?
+  reservationId String? @unique
+  actualCostUsd Decimal? @db.Decimal(20, 10)
+  priceVersion String?
+  priceSnapshot Json?
   succeeded    Boolean
   createdAt    DateTime @default(now())
   day          DateTime @db.Date
@@ -250,4 +258,98 @@ model AiUsage {
   @@index([enterpriseId, day])
   @@index([companyId, day])
   @@map("ai_usage")
+}
+
+model ServicePlan {
+  name String @id
+  monthlyPriceVnd Int @default(0)
+  tokenLimit Int
+  cycleDays Int @default(30)
+  maxCvPerCall Int
+  maxOutputTokens Int @default(8192)
+  version Int @default(1)
+  updatedAt DateTime @updatedAt
+  @@map("service_plans")
+}
+
+// Historical wallets and ledger entries survive account deletion and company transfers.
+model TokenWallet {
+  id String @id @default(uuid())
+  userId String
+  companyId String
+  periodStart DateTime
+  periodEnd DateTime
+  baseLimit Int
+  adjustment Int @default(0)
+  used Int @default(0)
+  reserved Int @default(0)
+  planVersion String
+  ledger TokenLedger[]
+  reservations TokenReservation[]
+  @@unique([userId, companyId, periodStart])
+  @@index([companyId, userId])
+  @@map("token_wallets")
+}
+
+model TokenLedger {
+  id String @id @default(uuid())
+  walletId String
+  wallet TokenWallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  kind String
+  amount Int
+  actorId String?
+  operationKey String @unique
+  reason String
+  createdAt DateTime @default(now())
+  @@index([walletId, createdAt])
+  @@map("token_ledger")
+}
+
+model TokenReservation {
+  id String @id @default(uuid())
+  operationKey String @unique
+  walletId String
+  wallet TokenWallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  amount Int
+  status String @default("HELD")
+  model String
+  priceVersion String?
+  priceSnapshot Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([status, createdAt])
+  @@map("token_reservations")
+}
+
+model AiPrice {
+  id String @id @default(uuid())
+  model String
+  inputUsd Decimal @db.Decimal(18, 8)
+  outputUsd Decimal @db.Decimal(18, 8)
+  thinkingUsd Decimal @db.Decimal(18, 8)
+  createdAt DateTime @default(now())
+  @@index([model, createdAt])
+  @@map("ai_prices")
+}
+
+model BillingAudit {
+  id String @id @default(uuid())
+  actorId String
+  action String
+  targetId String
+  before Json?
+  after Json
+  reason String
+  operationKey String @unique
+  createdAt DateTime @default(now())
+  @@map("billing_audit")
+}
+
+model MatchingRequest {
+  key String @id
+  hash String
+  statusCode Int?
+  response Json?
+  createdAt DateTime @default(now())
+  @@map("matching_requests")
 }

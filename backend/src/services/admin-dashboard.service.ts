@@ -1,6 +1,14 @@
 import { prisma } from '../config/database.js';
 import { env } from '../config/env.js';
 import { subscriptionDto } from './subscription.service.js';
+import { Prisma } from '@prisma/client';
+
+function recordedCosts(rows: Array<{ _sum: { actualCostUsd?: Prisma.Decimal | null }; _count: { _all: number; actualCostUsd?: number } }>) {
+  const calls = rows.reduce((sum, row) => sum + row._count._all, 0);
+  const known = rows.reduce((sum, row) => sum + (row._count.actualCostUsd ?? 0), 0);
+  const cost = rows.reduce((sum, row) => sum.add(row._sum.actualCostUsd ?? 0), new Prisma.Decimal(0));
+  return { actualCostUsd: known || calls === 0 ? cost.toString() : null, callsWithoutPrice: calls - known };
+}
 
 export type DashboardRange = '7d' | '30d' | 'all';
 const DAY_MS = 86_400_000;
@@ -10,13 +18,13 @@ export function vietnamDay(now = new Date()): Date {
   return new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()));
 }
 
-export async function getAdminDashboard(range: DashboardRange, companyId?: string) {
-  const companies = await prisma.company.findMany({ select: { id: true, name: true, plan: true, billingCycle: true, quotaMonth: true, monthlyUsed: true } });
+export async function getAdminDashboard(range: DashboardRange, companyId?: string, period?: { from: string; to: string }) {
+  const companies = await prisma.company.findMany({ select: { id: true, name: true, plan: true, billingCycle: true, subscriptionStartedAt: true, subscriptionEndsAt: true } });
   if (companyId && !companies.some((company) => company.id === companyId)) {
     throw Object.assign(new Error('Không tìm thấy doanh nghiệp'), { status: 404, code: 'COMPANY_NOT_FOUND' });
   }
-  const today = vietnamDay();
-  const start = range === 'all' ? undefined : new Date(today.getTime() - (range === '7d' ? 6 : 29) * DAY_MS);
+  const today = period ? new Date(period.to) : vietnamDay();
+  const start = period ? new Date(period.from) : range === 'all' ? undefined : new Date(today.getTime() - (range === '7d' ? 6 : 29) * DAY_MS);
   const periodWhere = { ...(start ? { day: { gte: start, lte: today } } : {}) };
   const usageWhere = { ...periodWhere, ...(companyId ? { companyId } : {}) };
   const [users, totalJobs, totalCandidates, failedCandidates, scores, enterprises, jobsByOwner, cvsByOwner, matchesByOwner, usage, daily, usageByOwner, callsWithoutTokenData, earliestUsage] = await Promise.all([
@@ -29,9 +37,9 @@ export async function getAdminDashboard(range: DashboardRange, companyId?: strin
     prisma.jobDescription.groupBy({ by: ['ownerId'], _count: { _all: true } }),
     prisma.candidate.groupBy({ by: ['ownerId'], _count: { _all: true } }),
     prisma.matchResult.groupBy({ by: ['candidateId'], _count: { _all: true } }),
-    prisma.aiUsage.aggregate({ where: usageWhere, _sum: { inputTokens: true, outputTokens: true }, _count: { _all: true, inputTokens: true, outputTokens: true } }),
-    prisma.aiUsage.groupBy({ by: ['day'], where: usageWhere, _sum: { inputTokens: true, outputTokens: true }, _count: { _all: true }, orderBy: { day: 'asc' } }),
-    prisma.aiUsage.groupBy({ by: ['enterpriseId', 'companyId'], where: periodWhere, _sum: { inputTokens: true, outputTokens: true }, _count: { _all: true } }),
+    prisma.aiUsage.aggregate({ where: usageWhere, _sum: { inputTokens: true, outputTokens: true, thinkingTokens: true, actualCostUsd: true }, _count: { _all: true, inputTokens: true, outputTokens: true, actualCostUsd: true } }),
+    prisma.aiUsage.groupBy({ by: ['day'], where: usageWhere, _sum: { inputTokens: true, outputTokens: true, thinkingTokens: true, actualCostUsd: true }, _count: { _all: true, actualCostUsd: true }, orderBy: { day: 'asc' } }),
+    prisma.aiUsage.groupBy({ by: ['enterpriseId', 'companyId'], where: periodWhere, _sum: { inputTokens: true, outputTokens: true, thinkingTokens: true, actualCostUsd: true }, _count: { _all: true, actualCostUsd: true } }),
     prisma.aiUsage.count({ where: { ...usageWhere, OR: [{ inputTokens: null }, { outputTokens: null }] } }),
     prisma.aiUsage.findFirst({ ...(companyId ? { where: { companyId } } : {}), orderBy: { createdAt: 'asc' }, select: { createdAt: true } }),
   ]);
@@ -54,7 +62,7 @@ export async function getAdminDashboard(range: DashboardRange, companyId?: strin
   const outputRate = env.AI_BILLING_MODE === 'FREE' ? 0 : env.AI_OUTPUT_USD_PER_MILLION_TOKENS;
   const estimate = (input: number, output: number) => inputRate === undefined || outputRate === undefined ? null : (input * inputRate + output * outputRate) / 1_000_000;
   const dailyMap = new Map(daily.map((row) => [row.day.toISOString().slice(0, 10), row]));
-  const dates = start ? Array.from({ length: range === '7d' ? 7 : 30 }, (_, index) => new Date(start.getTime() + index * DAY_MS).toISOString().slice(0, 10)) : [...dailyMap.keys()];
+  const dates = start ? Array.from({ length: Math.floor((today.getTime() - start.getTime()) / DAY_MS) + 1 }, (_, index) => new Date(start.getTime() + index * DAY_MS).toISOString().slice(0, 10)) : [...dailyMap.keys()];
   const distribution = [
     { label: '<50', count: 0 }, { label: '50–70', count: 0 }, { label: '>70–85', count: 0 }, { label: '>85', count: 0 },
   ];
@@ -71,11 +79,12 @@ export async function getAdminDashboard(range: DashboardRange, companyId?: strin
     const output = ownerUsage.reduce((sum, row) => sum + (row._sum.outputTokens ?? 0), 0);
     return {
       ...enterprise, jobCount: jobs.get(enterprise.id) ?? 0, candidateCount: cvs.get(enterprise.id) ?? 0,
+      ...recordedCosts(ownerUsage),
       matchCount: matches.get(enterprise.id) ?? 0, inputTokens: input, outputTokens: output,
       calls: ownerUsage.reduce((sum, row) => sum + row._count._all, 0), estimatedCostUsd: estimate(input, output), simulatedCostVnd: simulate(input, output),
     };
   });
-  const companyActivity = companies.map((company) => {
+  const companyActivity = await Promise.all(companies.map(async (company) => {
     const members = activity.filter((hr) => hr.companyId === company.id);
     const companyUsage = usageByOwner.filter((row) => row.companyId === company.id);
     const input = companyUsage.reduce((sum, row) => sum + (row._sum.inputTokens ?? 0), 0);
@@ -83,15 +92,16 @@ export async function getAdminDashboard(range: DashboardRange, companyId?: strin
     const lastLogin = members.map((hr) => hr.lastLoginAt).filter((date): date is Date => date !== null).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
     return {
       id: company.id, companyName: company.name, fullName: company.name, lastLoginAt: lastLogin,
-      subscription: subscriptionDto(company),
+      subscription: await subscriptionDto(company),
+      ...recordedCosts(companyUsage),
       hrCount: members.length, members,
       jobCount: members.reduce((sum, hr) => sum + hr.jobCount, 0),
       candidateCount: members.reduce((sum, hr) => sum + hr.candidateCount, 0),
       matchCount: members.reduce((sum, hr) => sum + hr.matchCount, 0),
-      inputTokens: input, outputTokens: output,
+      inputTokens: input, outputTokens: output, thinkingTokens: companyUsage.reduce((sum, row) => sum + (row._sum.thinkingTokens ?? 0), 0),
       calls: companyUsage.reduce((sum, row) => sum + row._count._all, 0), estimatedCostUsd: estimate(input, output), simulatedCostVnd: simulate(input, output),
     };
-  });
+  }));
   // Legacy calls whose account was deleted before companies existed cannot be attributed.
   const deletedUsage = usageByOwner.filter((row) => !row.companyId);
   const deletedInput = deletedUsage.reduce((sum, row) => sum + (row._sum.inputTokens ?? 0), 0);
@@ -103,6 +113,8 @@ export async function getAdminDashboard(range: DashboardRange, companyId?: strin
     overview: { totalUsers: active + locked, activeUsers: active, lockedUsers: locked, totalJobs, totalCandidates, failedCandidates, totalMatches: scores.reduce((sum, row) => sum + row._count._all, 0) },
     distribution,
     ai: {
+      thinkingTokens: usage._sum.thinkingTokens ?? 0,
+      ...recordedCosts([usage]),
       billingMode: env.AI_BILLING_MODE,
       simulatedCostVnd: simulate(inputTokens, outputTokens), demoInputRate, demoOutputRate,
       inputTokens, outputTokens, estimatedCostUsd: estimate(inputTokens, outputTokens), inputRate: inputRate ?? null, outputRate: outputRate ?? null,
@@ -111,11 +123,12 @@ export async function getAdminDashboard(range: DashboardRange, companyId?: strin
         const row = dailyMap.get(date);
         const input = row?._sum.inputTokens ?? 0;
         const output = row?._sum.outputTokens ?? 0;
-        return { date, inputTokens: input, outputTokens: output, calls: row?._count._all ?? 0, estimatedCostUsd: estimate(input, output), simulatedCostVnd: simulate(input, output) };
+        return { date, ...recordedCosts(row ? [row] : []), inputTokens: input, outputTokens: output, calls: row?._count._all ?? 0, estimatedCostUsd: estimate(input, output), simulatedCostVnd: simulate(input, output) };
       }),
     },
     enterprises: [...companyActivity, ...(deletedUsage.length ? [{
       id: null, fullName: 'Tài khoản đã xóa', companyName: 'Tài khoản đã xóa', lastLoginAt: null,
+      ...recordedCosts(deletedUsage),
       jobCount: 0, candidateCount: 0, matchCount: 0, inputTokens: deletedInput, outputTokens: deletedOutput,
       hrCount: 0, members: [],
       calls: deletedUsage.reduce((sum, row) => sum + row._count._all, 0), estimatedCostUsd: estimate(deletedInput, deletedOutput),

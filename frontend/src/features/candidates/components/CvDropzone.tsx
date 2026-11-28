@@ -40,7 +40,8 @@ interface CvDropzoneProps {
 
 export const CvDropzone: React.FC<CvDropzoneProps> = ({ onUploadSuccess, plan }) => {
   const storePlan = useSubscriptionStore((state) => state.subscription?.name);
-  const isFreePlan = (plan ?? storePlan) === 'FREE';
+  const storeBulk = useSubscriptionStore((state) => state.subscription?.bulk);
+  const isFreePlan = storeBulk != null ? !storeBulk : (plan ?? storePlan) === 'FREE';
   const [items, setItems] = useState<UploadItem[]>([]);
   const [batch, setBatch] = useState<{ files: File[]; key: string } | null>(null);
   const [sending, setSending] = useState(false);

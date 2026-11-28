@@ -10,6 +10,7 @@ import { matchingJobRunner } from '../modules/matching/matching-job.runner.js';
 import { PdfTextExtractor } from '../modules/candidates/text-extractor.js';
 import { fileStorage } from '../modules/storage/file-storage.js';
 import { reserveAnalyses, refundAnalyses, checkDocuments, getUserSubscription } from './subscription.service.js';
+import { randomUUID } from 'crypto';
 
 async function ensurePdfPageCounts(
   candidates: Array<{ pageCount: number | null; fileName?: string | null; fileUrl: string }>,
@@ -86,7 +87,7 @@ export class MatchingService {
     private readonly runner: { enqueue(jobId: string): void } = matchingJobRunner,
   ) {}
 
-  async runMatching(dto: RunMatchingDto, ownerId?: string) {
+  async runMatching(dto: RunMatchingDto, ownerId?: string, operationKey: string = randomUUID()) {
     const { jobDescriptionId } = dto;
     const candidateIds = [...new Set(dto.candidateIds)];
 
@@ -142,6 +143,7 @@ export class MatchingService {
           ownerId,
           ticket.name,
           ticket.companyId,
+          `${operationKey}:${candidate.id}`,
         );
         results.push(matchDto);
         completed++;
@@ -213,6 +215,8 @@ export class MatchingService {
     });
 
     const allSkipped = skippedCount === candidateIds.length;
+    const subscription = await getUserSubscription(ownerId);
+    if (candidateIds.length > subscription.maxCvPerCall) throw new AppError(403, 'PLAN_BATCH_LIMIT', `Gói hiện tại cho phép tối đa ${subscription.maxCvPerCall} CV mỗi yêu cầu.`);
     let created;
     if (allSkipped) {
       created = await prisma.matchingJob.create({

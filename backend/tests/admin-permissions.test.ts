@@ -1,3 +1,4 @@
+vi.mock('../src/middlewares/matching-idempotency.js', () => ({ matchingIdempotency: (_req, _res, next) => next() }));
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -49,7 +50,7 @@ describe('admin and HR write permissions', () => {
     const body = { jobDescriptionId: 'jd', candidateIds: ['cv'] };
     const response = await fetch(`${base}/matching/run`, { method: 'POST', headers: headers('ENTERPRISE'), body: JSON.stringify(body) });
     expect(response.status).toBe(200);
-    expect(mocks.runMatching).toHaveBeenCalledWith(body, 'user');
+    expect(mocks.runMatching).toHaveBeenCalledWith(body, 'user', undefined);
   });
   it('allows HR through the upload role guard to file validation', async () => {
     const response = await fetch(`${base}/candidates/upload`, { method: 'POST', headers: { ...headers('ENTERPRISE'), 'Idempotency-Key': '11111111-1111-4111-8111-111111111111' }, body: '{}' });

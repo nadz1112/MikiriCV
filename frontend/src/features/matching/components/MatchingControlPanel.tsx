@@ -22,6 +22,7 @@ interface MatchingControlPanelProps {
   isRunning: boolean;
   plan?: 'FREE' | 'PLUS';
   remainingQuota?: number;
+  maxCvPerCall?: number;
   onSelectJob: (jobId: string) => void;
   onToggleCandidate: (candidateId: string) => void;
   onSearchChange: (search: string) => void;
@@ -43,6 +44,7 @@ export const MatchingControlPanel: React.FC<MatchingControlPanelProps> = ({
   isRunning,
   plan,
   remainingQuota,
+  maxCvPerCall,
   onSelectJob,
   onToggleCandidate,
   onSearchChange,
@@ -51,7 +53,8 @@ export const MatchingControlPanel: React.FC<MatchingControlPanelProps> = ({
   onClearSelection,
   onOpenConfirm,
 }) => {
-  const isFreePlan = plan === 'FREE';
+  const isFreePlan = maxCvPerCall !== undefined ? maxCvPerCall === 1 : plan === 'FREE';
+  const batchExceeded = maxCvPerCall !== undefined && selectedCandidateIds.length > maxCvPerCall;
   const quotaExhausted = remainingQuota !== undefined && remainingQuota <= 0;
   const visibleIds = selectableCandidates.map((c) => c.id);
   const allVisibleSelected =
@@ -128,7 +131,7 @@ export const MatchingControlPanel: React.FC<MatchingControlPanelProps> = ({
               </span>
               {isFreePlan && (
                 <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800">
-                  Gói FREE · Chấm đơn lẻ 1 CV
+                  Gói {plan ?? 'hiện tại'} · Chấm đơn lẻ 1 CV
                 </span>
               )}
               <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
@@ -271,11 +274,10 @@ export const MatchingControlPanel: React.FC<MatchingControlPanelProps> = ({
 
       {quotaExhausted && (
         <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-900">
-          {isFreePlan
-            ? 'Bạn đã dùng hết 10/10 lượt phân tích miễn phí trong tháng này. Vui lòng liên hệ quản trị viên để nâng lên Gói PLUS (300 lượt/tháng).'
-            : 'Doanh nghiệp đã dùng hết 300/300 lượt phân tích trong tháng này. Hạn mức sẽ làm mới vào đầu tháng sau.'}
+          Tài khoản đã hết token khả dụng. Vui lòng liên hệ admin để cấp thêm hoặc đổi gói. Tài khoản khác trong doanh nghiệp không bị ảnh hưởng.
         </div>
       )}
+      {batchExceeded && <p role="alert" className="text-sm text-amber-800">Gói hiện tại cho phép tối đa {maxCvPerCall} CV mỗi yêu cầu. Vui lòng giảm số hồ sơ đã chọn.</p>}
 
       {/* Footer kích hoạt chạy AI Matching */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
@@ -287,10 +289,10 @@ export const MatchingControlPanel: React.FC<MatchingControlPanelProps> = ({
           </span>
         </div>
 
-        <button
+        <div className="flex flex-wrap items-center gap-3"><span className="text-sm font-medium text-slate-600">Còn {remainingQuota === undefined ? '…' : remainingQuota.toLocaleString('vi-VN')} token</span><button
           type="button"
           onClick={onOpenConfirm}
-          disabled={isRunning || quotaExhausted || !selectedJobId || selectedCandidateIds.length === 0}
+          disabled={isRunning || quotaExhausted || batchExceeded || !selectedJobId || selectedCandidateIds.length === 0}
           className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50"
         >
           <Sparkles className="h-4 w-4 text-amber-300" />
@@ -298,10 +300,10 @@ export const MatchingControlPanel: React.FC<MatchingControlPanelProps> = ({
             {isRunning
               ? 'Google Gemini đang phân tích...'
               : isFreePlan
-                ? 'Chấm điểm CV này (Gói FREE)'
+                ? `Chấm điểm CV này (Gói ${plan ?? 'hiện tại'})`
                 : `Chạy AI Matching (${selectedCandidateIds.length} ứng viên)`}
           </span>
-        </button>
+        </button></div>
       </div>
     </section>
   );

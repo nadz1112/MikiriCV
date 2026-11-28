@@ -5,7 +5,7 @@ import { prisma } from '../config/database.js';
 import { env } from '../config/env.js';
 import { requireRole } from '../middlewares/auth.middleware.js';
 import { toAdminUserDto as safeUser } from '../common/mappers/user.mapper.js';
-import { companyMembership } from '../services/company.service.js';
+import { checkedCompanyMembership } from '../services/company.service.js';
 import { fileStorage } from '../modules/storage/file-storage.js';
 
 const router = Router();
@@ -37,7 +37,8 @@ router.post('/', async (req, res, next) => {
     const email = body.email.trim().toLowerCase();
     if (await prisma.user.findUnique({ where: { email } })) throw failure('EMAIL_ALREADY_EXISTS', 409, 'Email đã tồn tại');
     const { password, ...profile } = body;
-    const user = await prisma.user.create({ data: { ...profile, company: companyMembership(profile.companyName), email, passwordHash: await bcrypt.hash(password, env.BCRYPT_ROUNDS), role: 'ENTERPRISE', mustChangePassword: true } });
+    const passwordHash = await bcrypt.hash(password, env.BCRYPT_ROUNDS);
+    const user = await prisma.$transaction(async (tx) => tx.user.create({ data: { ...profile, company: await checkedCompanyMembership(tx, profile.companyName), email, passwordHash, role: 'ENTERPRISE', mustChangePassword: true } }));
     res.status(201).json({ success: true, data: safeUser(user) });
   } catch (err) { next(err); }
 });
@@ -54,7 +55,7 @@ router.put('/:id', async (req, res, next) => {
     const body = z.object({ fullName: z.string().trim().min(1), companyName: z.string().trim().min(1) }).parse(req.body);
     const target = await prisma.user.findUnique({ where: { id: req.params.id }, select: { role: true } });
     if (!target || target.role !== 'ENTERPRISE') throw failure('USER_NOT_FOUND', 404, 'Không tìm thấy tài khoản');
-    const user = await prisma.user.update({ where: { id: req.params.id }, data: { ...body, company: companyMembership(body.companyName) } });
+    const user = await prisma.$transaction(async (tx) => tx.user.update({ where: { id: req.params.id }, data: { ...body, company: await checkedCompanyMembership(tx, body.companyName, req.params.id) } }));
     res.json({ success: true, data: safeUser(user) });
   } catch (err) { next(err); }
 });

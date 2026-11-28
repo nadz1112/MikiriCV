@@ -6,6 +6,8 @@ import { useMatchingFeatureStore } from '../store/matchingStore';
 import { matchingFeatureApi } from '../api/matchingApi';
 import { Candidate, MatchResult, MatchingJob } from '../../../types';
 import { candidateApi } from '../../../services/candidateApi';
+import { useAccountDialogsStore, showMatchingQuotaError } from '../../subscription/accountDialogsStore';
+import { useSubscriptionStore } from '../../subscription/subscriptionStore';
 
 const TERMINAL_JOB_STATUSES = new Set(['COMPLETED', 'CANCELLED', 'FAILED']);
 
@@ -79,6 +81,8 @@ export function useMatching(initialJobId?: string, initialCandidateIds?: string[
     announcedTerminalJobId.current = job.id;
 
     const items = job.items ?? [];
+    for (const item of items) useAccountDialogsStore.getState().showQuota(item.errorCode);
+    void useSubscriptionStore.getState().refreshBalance();
     const doneCount = items.length ? items.filter((item) => item.status === 'DONE').length : Math.max(0, job.processed - job.failed);
     const failedCount = items.length ? items.filter((item) => item.status === 'FAILED').length : job.failed;
     const skippedCount = items.length ? items.filter((item) => item.status === 'SKIPPED').length : 0;
@@ -230,8 +234,10 @@ export function useMatching(initialJobId?: string, initialCandidateIds?: string[
       await loadLeaderboard(selectedJobId);
       void fetchJobs();
     } catch (error) {
+      showMatchingQuotaError(error);
       if (error instanceof Error && !('response' in error)) toast.error(error.message);
     } finally {
+      void useSubscriptionStore.getState().refreshBalance();
       setIsRunning(false);
       closeConfirmModal();
     }
@@ -269,8 +275,10 @@ export function useMatching(initialJobId?: string, initialCandidateIds?: string[
     try {
       await startAsyncJob(activeJob.jobDescriptionId, failedIds);
     } catch (error) {
+      showMatchingQuotaError(error);
       if (error instanceof Error && !('response' in error)) toast.error(error.message);
     } finally {
+      void useSubscriptionStore.getState().refreshBalance();
       setIsRunning(false);
     }
   };

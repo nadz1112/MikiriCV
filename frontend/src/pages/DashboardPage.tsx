@@ -303,7 +303,7 @@ export const DashboardPage: React.FC = () => {
         <div className="relative z-10 max-w-4xl lg:max-w-5xl space-y-4">
           <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur-md border border-white/20">
             <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-            <span>Màn hình Bảng điều khiển & Xếp hạng tuyển dụng • FR5 Dashboard</span>
+            <span>Bảng điều khiển & Xếp hạng tuyển dụng</span>
           </div>
 
           <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white">
@@ -458,7 +458,7 @@ export const DashboardPage: React.FC = () => {
               }`}
             >
               <Trophy className="w-4 h-4" />
-              <span>Bảng xếp hạng theo Vị trí (FR5.2)</span>
+              <span>Bảng xếp hạng theo Vị trí</span>
             </button>
             <button
               onClick={() => setActiveTab('allCandidates')}
@@ -469,7 +469,7 @@ export const DashboardPage: React.FC = () => {
               }`}
             >
               <Users className="w-4 h-4" />
-              <span>Danh mục Toàn bộ Ứng viên (FR5.1)</span>
+              <span>Danh mục Toàn bộ Ứng viên</span>
             </button>
           </div>
 
@@ -761,7 +761,7 @@ export const DashboardPage: React.FC = () => {
               <div>
                 <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
                   <Users className="w-4 h-4 text-purple-600" />
-                  <span>Danh Mục Toàn Bộ Ứng Viên Trong Hệ Thống (FR5.1)</span>
+                  <span>Danh mục toàn bộ ứng viên trong hệ thống</span>
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
                   Tổng cộng {candidates.length} hồ sơ đã tải lên máy chủ và bóc tách dữ liệu

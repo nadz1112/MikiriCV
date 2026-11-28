@@ -7,6 +7,7 @@ import { matchingController } from '../controllers/matching.controller.js';
 import { validateRequest } from '../middlewares/validate.middleware.js';
 import { requireRole } from '../middlewares/auth.middleware.js';
 import { exportComparison } from '../services/report-export.service.js';
+import { matchingIdempotency } from '../middlewares/matching-idempotency.js';
 
 const router = Router();
 const matchingLimiter = rateLimit({
@@ -52,11 +53,11 @@ const getJobQuerySchema = z.object({
   include: z.enum(['items']).optional(),
 });
 
-router.post('/run', requireRole('ENTERPRISE'), matchingLimiter, validateRequest({ body: runMatchingSchema }), (req, res, next) =>
+router.post('/run', requireRole('ENTERPRISE'), matchingLimiter, validateRequest({ body: runMatchingSchema }), matchingIdempotency, (req, res, next) =>
   matchingController.runMatching(req, res, next)
 );
 
-router.post('/jobs', requireRole('ENTERPRISE'), matchingLimiter, validateRequest({ body: createMatchingJobSchema }), (req, res, next) =>
+router.post('/jobs', requireRole('ENTERPRISE'), matchingLimiter, validateRequest({ body: createMatchingJobSchema }), matchingIdempotency, (req, res, next) =>
   matchingController.createMatchingJob(req, res, next)
 );
 

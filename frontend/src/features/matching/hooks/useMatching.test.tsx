@@ -1,8 +1,12 @@
 // @vitest-environment jsdom
-import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
+import { act, cleanup, render, renderHook, screen, fireEvent, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useMatching } from './useMatching';
 import { useMatchingFeatureStore } from '../store/matchingStore';
+import { useSubscriptionStore } from '../../subscription/subscriptionStore';
+import { useAccountDialogsStore } from '../../subscription/accountDialogsStore';
+import { AccountDialogs } from '../../subscription/components/AccountDialogs';
+import * as subscriptionApi from '../../../services/subscriptionApi';
 
 const mocks = vi.hoisted(() => ({
   run: vi.fn(),
@@ -14,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   fetchJobs: vi.fn(),
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
+  refreshBalance: vi.fn(),
 }));
 vi.mock('../../../store/useCandidateStore', () => ({ useCandidateStore: Object.assign(() => ({ candidates: [], fetchCandidates: mocks.fetchCandidates }), { setState: vi.fn() }) }));
 vi.mock('../../../store/useJobStore', () => ({ useJobStore: () => ({ jobs: [], fetchJobs: mocks.fetchJobs }) }));
@@ -31,10 +36,13 @@ vi.mock('react-hot-toast', () => ({ default: { success: mocks.toastSuccess, erro
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.refreshBalance.mockResolvedValue(undefined);
+  useSubscriptionStore.setState({ refreshBalance: mocks.refreshBalance });
+  useAccountDialogsStore.getState().close();
   useMatchingFeatureStore.setState({ selectedJobId: 'jd', selectedCandidateIds: ['cv'], isConfirmModalOpen: true });
   mocks.getAll.mockResolvedValue([{ id: 'cv', extractionStatus: 'SUCCESS' }]);
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); useAccountDialogsStore.getState().close(); });
 
 it('closes the progress dialog after a successful AI run', async () => {
   mocks.run.mockResolvedValue({ success: true, data: [] });
@@ -43,6 +51,23 @@ it('closes the progress dialog after a successful AI run', async () => {
   await waitFor(() => expect(result.current.isConfirmModalOpen).toBe(false));
   expect(result.current.isRunning).toBe(false);
   expect(mocks.run).toHaveBeenCalledWith('jd', ['cv']);
+  expect(mocks.refreshBalance).toHaveBeenCalled();
+});
+
+it.each(['TOKEN_QUOTA_EXCEEDED', 'PLAN_BATCH_LIMIT', 'PLAN_DOCUMENT_LIMIT', 'SUBSCRIPTION_EXPIRED'])('opens the Vietnamese quota dialog and live plan comparison for %s', async (code) => {
+  mocks.run.mockRejectedValue({ response: { data: { error: { code } } } });
+  vi.spyOn(subscriptionApi, 'getPlanComparison').mockResolvedValue([
+    { name: 'FREE', tokenLimit: 123, cycleDays: 7, maxCvPerCall: 1, maxPages: 2, maxCharacters: 3000 },
+    { name: 'PLUS', tokenLimit: 456, cycleDays: 31, maxCvPerCall: 200, maxPages: 6, maxCharacters: 12000 },
+  ]);
+  render(<AccountDialogs />);
+  const { result } = renderHook(() => useMatching());
+  await act(async () => { await result.current.handleRunMatching(); });
+  expect(screen.getByRole('dialog', { name: 'Thông báo về gói dịch vụ' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Xem gói' }));
+  expect(await screen.findByRole('dialog', { name: 'So sánh gói' })).toBeTruthy();
+  expect(await screen.findByText('456')).toBeTruthy();
+  expect(result.current.isConfirmModalOpen).toBe(false);
 });
 
 it('closes the progress dialog and reports failure after an AI error', async () => {
