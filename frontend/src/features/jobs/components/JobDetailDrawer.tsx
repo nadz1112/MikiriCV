@@ -17,7 +17,9 @@ import { JobDescription, JobStats } from '../../../types';
 import { jobFeatureApi } from '../api/jobApi';
 import { ScoreDistributionChart } from '../../../components/dashboard/ScoreDistributionChart';
 import { useCandidateFeatureStore } from '../../candidates/store/candidateStore';
-import { useAuthStore } from '../../auth/authStore';
+import { useSafeAuth } from '../../auth/useSafeAuth';
+import { offlineDb } from '../../../shared/offline/offlineDb';
+import { useNetworkStore } from '../../../shared/offline/networkStore';
 
 interface JobDetailDrawerProps {
   job: JobDescription | null;
@@ -35,7 +37,8 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({
   onDelete,
 }) => {
   const navigate = useNavigate();
-  const user = useAuthStore((state) => state.user);
+  const { user } = useSafeAuth();
+  const isOnline = useNetworkStore((state) => state.isOnline);
   const { setJobId, setSkills, setMinExp } = useCandidateFeatureStore();
 
   const [detail, setDetail] = useState<JobDescription | null>(job);
@@ -57,10 +60,16 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({
       .then(([freshJob, jobStats]) => {
         if (!active) return;
         if (freshJob) setDetail({ ...job, ...freshJob });
-        if (jobStats) setStats(jobStats);
+        if (jobStats) {
+          setStats(jobStats);
+          if (user?.id) void offlineDb.saveJobStats(user.id, job.id, jobStats);
+        }
       })
-      .catch(() => {
-        // Fallback hiển thị dữ liệu đã có từ danh sách
+      .catch(async () => {
+        if (!active || !user?.id) return;
+        const cached = await offlineDb.getJobs(user.id);
+        const cachedStats = cached?.statsByJobId?.[job.id];
+        if (cachedStats && active) setStats(cachedStats);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -258,27 +267,29 @@ export const JobDetailDrawer: React.FC<JobDetailDrawerProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-4 sm:px-6 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
           {canManage ? (
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                disabled={detail.id.startsWith('offline-draft-')}
                 onClick={() => {
                   onClose();
                   onEdit(detail);
                 }}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+                className="inline-flex min-h-[40px] items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-40"
               >
                 <Pencil className="h-3.5 w-3.5" />
                 <span>Chỉnh sửa</span>
               </button>
               <button
                 type="button"
+                disabled={!isOnline || detail.id.startsWith('offline-draft-')}
                 onClick={() => {
                   onClose();
                   onDelete(detail);
                 }}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                className="inline-flex min-h-[40px] items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-40"
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 <span>Xóa JD</span>

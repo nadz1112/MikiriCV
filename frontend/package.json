@@ -5,11 +5,22 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:lan": "vite --host",
     "build": "tsc && vite build",
     "test": "vitest run",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "mobile:build": "vite build",
+    "cap:sync": "npx cap sync",
+    "cap:android": "npx cap open android",
+    "cap:ios": "npx cap open ios",
+    "android:apk": "powershell -ExecutionPolicy Bypass -File ../scripts/build-android-apk.ps1"
   },
   "dependencies": {
+    "@capacitor/android": "^7.6.11",
+    "@capacitor/core": "^7.6.11",
+    "@capacitor/filesystem": "^7.1.9",
+    "@capacitor/network": "^7.0.4",
+    "@capacitor/share": "^7.0.4",
     "@hookform/resolvers": "^5.9.1",
     "axios": "^1.7.9",
     "clsx": "^2.1.1",
@@ -27,6 +38,7 @@
     "zustand": "^5.0.2"
   },
   "devDependencies": {
+    "@capacitor/cli": "^7.6.11",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",
     "@types/react": "^18.3.12",

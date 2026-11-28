@@ -32,6 +32,7 @@ const envSchema = z.object({
   CLOUDINARY_API_SECRET: z.string().trim().optional(),
   CLOUDINARY_FOLDER: z.string().trim().min(1).default('mikiricv/cvs'),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  MOBILE_CORS_ORIGINS: z.string().default('capacitor://localhost,https://localhost,http://localhost'),
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET ph\u1ea3i c\u00f3 \u00edt nh\u1ea5t 32 k\u00fd t\u1ef1'),
   JWT_ACCESS_EXPIRES_IN: z.string().regex(/^\d+(s|m|h|d)$/).default('15m'),
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET ph\u1ea3i c\u00f3 \u00edt nh\u1ea5t 32 k\u00fd t\u1ef1'),

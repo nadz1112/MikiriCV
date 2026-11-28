@@ -5,6 +5,7 @@ import { CompanyTokenPanel } from './TokenPanels';
 import { api } from '../../services/api';
 import { AiBillingPanel, PlanPriceCalculator } from './AiBillingPanel';
 import { PlanNumberInput } from './PlanNumberInput';
+import { useNetworkStore } from '../../shared/offline/networkStore';
 
 
 export const tokenDate = (date?: string | null) => date ? new Date(date).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : 'Không giới hạn';
@@ -13,6 +14,7 @@ const field = 'mt-1 block w-full rounded-lg border border-slate-300 bg-white px-
 const button = 'rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50';
 
 export function SubscriptionPlans({ subscription, admin = false, onUpdated, view = 'all' }: { subscription?: Subscription; admin?: boolean; onUpdated?: () => void; view?: 'all' | 'plan' | 'accounts' }) {
+  const isOnline = useNetworkStore((state) => state.isOnline);
   const [plans, setPlans] = useState<ServicePlan[]>([]);
   const [plan, setPlan] = useState<'FREE' | 'PLUS'>('FREE');
   const [billingCycle, setBillingCycle] = useState<'MONTHLY' | 'YEARLY'>('MONTHLY');
@@ -45,7 +47,8 @@ export function SubscriptionPlans({ subscription, admin = false, onUpdated, view
   };
   if (admin) return <section aria-label="Quản lý gói và token" className="mt-5 space-y-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
     <h3 className="font-bold">Gói doanh nghiệp và hạn mức token từng tài khoản</h3>
-    {view !== 'accounts' && <details className="rounded-lg border bg-white p-4"><summary className="cursor-pointer font-semibold">Cấu hình dịch vụ</summary><div className="mt-4 grid gap-4 xl:grid-cols-2">{plans.map((config) => <PlanEditor key={`${config.name}:${config.version}`} plan={config} onSaved={() => { setRefresh((v) => v + 1); onUpdated?.(); }} />)}</div><AiBillingPanel /></details>}
+    {!isOnline && <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">Cần kết nối mạng để thực hiện thao tác quản trị.</p>}
+    {view !== 'accounts' && <details className="rounded-lg border bg-white p-4"><summary className="cursor-pointer font-semibold">Cấu hình dịch vụ</summary><div className="mt-4 grid gap-4 xl:grid-cols-2">{plans.map((config) => <PlanEditor key={`${config.name}:${config.version}`} plan={config} isOnline={isOnline} onSaved={() => { setRefresh((v) => v + 1); onUpdated?.(); }} />)}</div><AiBillingPanel /></details>}
 
     {subscription ? <>
       {view !== 'accounts' && <p className="text-sm font-medium">Trạng thái: {subscription.startsAt && new Date(subscription.startsAt) > new Date() ? 'Chưa có hiệu lực' : subscription.endsAt && new Date(subscription.endsAt) <= new Date() ? 'Đã hết hạn' : 'Đang hiệu lực'}</p>}
@@ -54,7 +57,7 @@ export function SubscriptionPlans({ subscription, admin = false, onUpdated, view
         <label className="text-sm">Chu kỳ thanh toán<select className={field} value={billingCycle} onChange={(e) => setBillingCycle(e.target.value as typeof billingCycle)}><option value="MONTHLY">Theo tháng</option><option value="YEARLY">Theo năm</option></select></label>
         <label className="text-sm">Ngày bắt đầu gói<input aria-label="Ngày bắt đầu gói" className={field} type="date" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} /></label>
         <label className="text-sm">Lý do thay đổi<input aria-label="Lý do đổi gói" className={field} value={reason} onChange={(e) => setReason(e.target.value)} /></label>
-        <button className={button} disabled={saving || reason.trim().length < 3} onClick={() => void save()}>{saving ? 'Đang lưu…' : 'Lưu gói doanh nghiệp'}</button>
+        <button className={button} disabled={!isOnline || saving || reason.trim().length < 3} onClick={() => void save()}>{saving ? 'Đang lưu…' : 'Lưu gói doanh nghiệp'}</button>
       </div>}
       {view !== 'plan' && <CompanyTokenPanel key={subscription.companyId} companyId={subscription.companyId} admin refresh={refresh} />}
     </> : <p className="text-sm text-slate-600">Chọn doanh nghiệp ở bộ lọc để gán gói và quản lý token từng HR.</p>}
@@ -64,7 +67,7 @@ export function SubscriptionPlans({ subscription, admin = false, onUpdated, view
   return null;
 }
 
-function PlanEditor({ plan, onSaved }: { plan: ServicePlan; onSaved: () => void }) {
+function PlanEditor({ plan, isOnline = true, onSaved }: { plan: ServicePlan; isOnline?: boolean; onSaved: () => void }) {
   const [draft, setDraft] = useState(plan);
   const [reason, setReason] = useState('');
   const [status, setStatus] = useState('');
@@ -79,7 +82,7 @@ function PlanEditor({ plan, onSaved }: { plan: ServicePlan; onSaved: () => void 
     finally { setSaving(false); }
   };
   const fields = [['monthlyPriceVnd', 'Giá dịch vụ / doanh nghiệp / tháng (VND)', 0, 100000000], ['tokenLimit', 'Token mỗi tài khoản', 1000, 1000000000], ['cycleDays', 'Chu kỳ sử dụng (ngày)', 1, 366], ['maxCvPerCall', 'CV mỗi yêu cầu', 1, 200], ['maxOutputTokens', 'Token output tối đa mỗi CV', 1024, 32768]] as const;
-  return <form onSubmit={(e) => { e.preventDefault(); void save(); }} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"><h4 className="font-bold">Cấu hình {plan.name} · v{plan.version}</h4>{plan.name === 'PLUS' && <PlanPriceCalculator onApply={(price) => setDraft({ ...draft, monthlyPriceVnd: price })} />}<div className="grid gap-3 sm:grid-cols-2">{fields.map(([key, label, min, max]) => <label key={key} className="text-sm">{label}<PlanNumberInput disabled={key === 'monthlyPriceVnd' && plan.name === 'FREE'} label={`${plan.name} ${label}`} min={min} max={max} value={draft[key] ?? 0} onChange={(value) => setDraft({ ...draft, [key]: value })} /></label>)}</div><label className="block text-sm">Lý do điều chỉnh<input required minLength={3} maxLength={500} className={field} value={reason} onChange={(e) => setReason(e.target.value)} /></label><button disabled={saving} className={button}>Lưu cấu hình {plan.name}</button>{status && <p role="alert" className="text-sm text-red-700">{status}</p>}</form>;
+  return <form onSubmit={(e) => { e.preventDefault(); void save(); }} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"><h4 className="font-bold">Cấu hình {plan.name} · v{plan.version}</h4>{plan.name === 'PLUS' && <PlanPriceCalculator onApply={(price) => setDraft({ ...draft, monthlyPriceVnd: price })} />}<div className="grid gap-3 sm:grid-cols-2">{fields.map(([key, label, min, max]) => <label key={key} className="text-sm">{label}<PlanNumberInput disabled={key === 'monthlyPriceVnd' && plan.name === 'FREE'} label={`${plan.name} ${label}`} min={min} max={max} value={draft[key] ?? 0} onChange={(value) => setDraft({ ...draft, [key]: value })} /></label>)}</div><label className="block text-sm">Lý do điều chỉnh<input required minLength={3} maxLength={500} className={field} value={reason} onChange={(e) => setReason(e.target.value)} /></label><button disabled={!isOnline || saving} className={button}>Lưu cấu hình {plan.name}</button>{status && <p role="alert" className="text-sm text-red-700">{status}</p>}</form>;
 }
 
 const auditActions: Record<string, string> = { PLAN_CONFIG: 'Cập nhật cấu hình gói', PRICE_VERSION: 'Cập nhật đơn giá AI', COMPANY_PLAN: 'Đổi gói doanh nghiệp' };

@@ -1,17 +1,31 @@
-# CVMikiri — Hệ Thống Kiểm Tra, Sàng Lọc & Chấm Điểm CV Bằng AI
+# CVMikiri — Hệ Thống Kiểm Tra, Sàng Lọc & Chấm Điểm CV Bằng AI (Đa Nền Tảng & Ngoại Tuyến)
 
-Hệ thống sàng lọc hồ sơ tuyển dụng thông minh 2 tầng:
-1. **Tầng 1 (Rule-based Filtering)**: Lọc tức thời (<100ms) dựa trên kỹ năng, số năm kinh nghiệm và từ khóa tự do, chi phí $0.
-2. **Tầng 2 (Gemini Generative AI Matching)**: Đánh giá kỹ năng và số năm kinh nghiệm đã trích xuất theo Job Description (JD) bằng Google Gemini AI, chấm điểm 0–100 và chỉ rõ kỹ năng còn thiếu. Thông tin cá nhân và văn bản CV được giữ tại backend.
+**CVMikiri** là ứng dụng full-stack **Web + PWA + Mobile (Android APK / Capacitor)** hỗ trợ bộ phận tuyển dụng và quản trị viên kiểm tra, sàng lọc và đánh giá mức độ phù hợp của CV theo Job Description (JD) bằng quy trình 2 tầng:
+
+1. **Tầng 1 (Rule-based Screening — $0, <100ms):** Tự động đọc PDF/DOCX (`pdf-parse`, `mammoth`), bóc tách thông tin liên hệ, học vấn, số năm kinh nghiệm, chuẩn hóa kỹ năng qua `SkillNormalizer` và lọc tức thời tiếng Việt có/không dấu (`normalizeForSearch()`).
+2. **Tầng 2 (AI Matching chuẩn CVTest với Google Gemini `gemini-3.6-flash`):** Chấm điểm 0–100 dựa trên 6 nhóm tiêu chí có trọng số tùy chỉnh (gói `PLUS`), đối chiếu từng yêu cầu bắt buộc/ưu tiên của JD kèm **trích dẫn bằng chứng (`evidence`)**, phát hiện điểm cần xác minh (`Red flags`), đánh giá tiềm năng phát triển, gợi ý câu hỏi phỏng vấn và xuất báo cáo Excel/PDF.
+
+---
+
+## ✨ Tính năng nổi bật
+
+- **Đa doanh nghiệp & Phân quyền chặt chẽ (`ADMIN` / `ENTERPRISE`):**
+  - `ADMIN`: Giám sát hệ thống tại `/admin/dashboard`, quản trị doanh nghiệp/gói dịch vụ/token/đối soát phiếu `UNKNOWN` tại `/admin/companies`, và quản lý tài khoản HR tại `/admin/users`. Mọi dữ liệu JD/CV đều cô lập theo tài khoản/doanh nghiệp.
+  - `ENTERPRISE` (HR): Quản lý JD (`/jobs`), Kho CV & lọc Tầng 1 (`/candidates`), AI Matching Studio (`/matching`), Bảng điều khiển (`/`) và Hồ sơ/Ví token cá nhân (`/account`).
+- **Chuẩn đánh giá CVTest dựa trên bằng chứng & Trọng số tùy chỉnh:** Tùy biến trọng số 6 nhóm tiêu chí (tổng = 100%) trên từng JD (gói `PLUS`), hiển thị bằng chứng trích dẫn từ CV/JD và giữ nguyên trạng thái `FAILED` khi AI lỗi (không giả điểm).
+- **Hệ thống Gói doanh nghiệp (`FREE` / `PLUS`) & Ví Token cá nhân:**
+  - Tạm giữ (`RESERVE`) – quyết toán token thực tế (`SETTLE`) – giải phóng (`RELEASE`) trong transaction ACID; hỗ trợ `Idempotency-Key` chống trừ token hai lần và công cụ đối soát phiếu `UNKNOWN` cho Admin.
+- **Đa nền tảng (Web, PWA, Android APK) & Ngoại tuyến (`Offline-First`):**
+  - Giao diện Mobile-First (`BottomNav`, Mobile Cards thay thế bảng rộng, Bottom Sheet/Drawer, chia sẻ file gốc qua Native Share).
+  - Hoạt động khi mất mạng nhờ **Service Worker + IndexedDB**: giữ phiên đăng nhập ngoại tuyến, duyệt & lọc tiếng Việt offline, **ghim CV để xem PDF/DOCX ngoại tuyến**, và hàng đợi **Outbox Sync** (tạo nháp JD, xếp hàng upload CV khi mất mạng, tự đồng bộ kèm `Idempotency-Key` & phát hiện xung đột `409` khi có mạng trở lại). Tự động xóa toàn bộ cache ngoại tuyến khi đăng xuất.
 
 ---
 
 ## 🏗️ Kiến Trúc Công Nghệ
 
-- **Frontend**: Vite + React 18 + TypeScript + Tailwind CSS + Zustand + Lucide Icons + React-Dropzone.
-- **Backend**: Node.js + Express + TypeScript + Prisma ORM + Google Gemini SDK + Multer + Zod.
-- **Database**: PostgreSQL (chuẩn ACID, quan hệ Cascade Delete, Unique Composite Index).
-- **AI Engine**: Google Gemini API (`gemini-3.5-flash` hoặc `gemini-3.5-pro`).
+- **Frontend & Mobile:** React 18, Vite, TypeScript (`strict: true`), Tailwind CSS, Zustand, React Router, React-Dropzone, Recharts, PWA (`manifest.webmanifest` + `sw.js`), IndexedDB, **Capacitor 7** (`@capacitor/android`, `@capacitor/network`, `@capacitor/filesystem`, `@capacitor/share`).
+- **Backend:** Node.js, Express, TypeScript (`strict: true`), Prisma ORM, Google Gemini (`@google/generative-ai`, mặc định `gemini-3.6-flash`), Multer, `pdf-parse`, `mammoth`, Zod, `bcrypt`, JWT (`httpOnly` cookie cho Web/PWA và Bearer token cho Native Mobile).
+- **Database & Storage:** PostgreSQL 16+ (ACID, Cascade Delete), lưu trữ CV cục bộ (`local`) hoặc Cloudinary (`cloudinary`), chỉ phục vụ tệp qua endpoint được xác thực `GET /api/candidates/:id/file`.
 
 ---
 
@@ -19,205 +33,183 @@ Hệ thống sàng lọc hồ sơ tuyển dụng thông minh 2 tầng:
 
 ```text
 MikiriCV/
-├── docs/                                  # Toàn bộ tài liệu đặc tả
-│   ├── PRD_Chuong_3_CVMikiri.md          # Tài liệu PRD Chương 3 chi tiết
-│   └── Chuyen_4-CVKimiri.md               # Yêu cầu kỹ thuật gốc
-├── backend/                               # RESTful API Service (Express + Prisma + Gemini)
+├── docs/
+│   ├── HuongDan_Demo_Va_KiemThu_CVMikiri.md  # Hướng dẫn nạp DB mẫu & kịch bản demo chi tiết cho Tester
+│   ├── Chuong5/                               # Đặc tả kiến trúc, DB, API & ADR-08, ADR-09
+│   └── Chuong3_* / PRD/                       # Tài liệu yêu cầu PRD
+├── scripts/
+│   └── build-android-apk.ps1                  # Script build nhanh file Android Debug APK
+├── backend/                                   # RESTful API Service (Express + Prisma + Gemini)
 │   ├── prisma/
-│   │   └── schema.prisma                  # PostgreSQL schema
+│   │   ├── schema.prisma                      # PostgreSQL schema
+│   │   ├── seed.ts                            # Seed ADMIN & tài khoản dev tối thiểu
+│   │   └── demo-seed.sql                      # Dump PostgreSQL bộ dữ liệu demo đầy đủ
 │   ├── src/
-│   │   ├── config/                        # Cấu hình biến môi trường, Prisma & Gemini SDK
-│   │   ├── controllers/                   # Xử lý HTTP Request/Response
-│   │   ├── services/                      # Nghiệp vụ: Bóc tách file, Lọc rule-based, Gọi AI
-│   │   ├── routes/                        # API Endpoints (/api/jobs, /api/candidates, /api/matching)
-│   │   ├── middlewares/                   # Multer upload, Zod validator, Error handler
-│   │   ├── types/                         # Interfaces & DTOs
-│   │   ├── utils/                         # Heuristics bóc tách Text PDF/DOCX & Parser JSON AI
-│   │   ├── app.ts                         # Express setup & CORS
-│   │   └── server.ts                      # Entry point cổng 4000
-│   ├── uploads/                           # Thư mục lưu tệp CV tải lên
+│   │   ├── config/                            # Biến môi trường, Prisma DB
+│   │   ├── controllers/                       # Xử lý HTTP Request/Response + Zod
+│   │   ├── services/                          # Nghiệp vụ JD, Candidate, Matching, Subscription, Admin
+│   │   ├── modules/                           # AI Provider, CV Extraction, Skills, Storage, Idempotency
+│   │   ├── middlewares/                       # Auth (Web Cookie / Mobile Bearer), CSRF, Upload, Error handler
+│   │   ├── routes/                            # API Endpoints (/api/*)
+│   │   └── scripts/                           # seed-full-demo.ts, export-demo-sql.ts, maintenance
 │   └── .env.example
-├── frontend/                              # Giao diện người dùng (Vite + React SPA)
+├── frontend/                                  # React 18 + Vite + PWA + Capacitor
+│   ├── public/                                # manifest.webmanifest, sw.js, icons/
 │   ├── src/
-│   │   ├── components/                    # UI Components (Navbar, Cards, Modals, Dropzone)
-│   │   ├── pages/                         # Dashboard, Jobs, Candidates, Matching
-│   │   ├── services/                      # Axios API clients
-│   │   ├── store/                         # Quản lý state bằng Zustand
-│   │   ├── types/                         # Models & Data Types
-│   │   ├── App.tsx                        # Router & Layout
-│   │   └── main.tsx                       # Entry point cổng 5173
-│   └── vite.config.ts                     # Cấu hình Proxy gọi sang Backend
-├── package.json                           # Root scripts điều khiển Monorepo
-└── README.md
+│   │   ├── shared/
+│   │   │   ├── platform/                      # Runtime detection, API server config, Native file viewer/exporter
+│   │   │   ├── offline/                       # IndexedDB cache, Outbox syncQueue, networkStore, normalizeVi
+│   │   │   └── pwa/                           # Đăng ký Service Worker
+│   │   ├── features/                          # auth, candidates, jobs, matching, subscription
+│   │   ├── components/                        # common (Navbar, BottomNav, NetworkStatusBanner), dashboard
+│   │   └── pages/                             # Dashboard, Jobs, Candidates, Matching, Account, Admin pages
+│   ├── android/                               # Native Android Capacitor project
+│   ├── release/                               # Thư mục xuất file CVMikiri-debug.apk
+│   └── capacitor.config.ts
+├── docker-compose.yml                         # PostgreSQL (+ profile full cho Docker)
+└── package.json                               # Root scripts điều khiển Monorepo
 ```
 
 ---
 
 ## 🚀 Hướng Dẫn Cài Đặt & Khởi Chạy
 
-### Xác thực và seed quản trị viên
-
-Đăng nhập bằng cookie HTTP-only, vì vậy frontend và API cần cùng site hoặc CORS origin phải được cấu hình chính xác. Sao chép `backend/.env.example` thành `backend/.env`, rồi đặt hai secret JWT ngẫu nhiên khác nhau (ít nhất 32 ký tự), `COOKIE_SECURE=true` khi chạy HTTPS, cùng `SEED_ADMIN_EMAIL` và `SEED_ADMIN_PASSWORD` riêng của môi trường. Không dùng các giá trị ví dụ ở production.
-
-Migration mới tạo tài khoản hệ thống `legacy-owner@system.invalid` đã bị vô hiệu hóa và gán JD/CV hiện có cho tài khoản này. Những dữ liệu cũ chỉ được tài khoản ADMIN đang hoạt động xem; chúng không tự động được trao cho doanh nghiệp mới.
-
-```bash
-npm --prefix backend run prisma:generate
-npm --prefix backend run prisma:migrate
-npm --prefix backend run prisma:seed
-```
-
-Đăng nhập ADMIN bằng email/mật khẩu đã đặt trong `SEED_ADMIN_EMAIL` và `SEED_ADMIN_PASSWORD`. Tạo ENTERPRISE trong mục **Quản lý tài khoản**; tài khoản này phải đổi mật khẩu tạm ở lần đăng nhập đầu. Các bản ghi JD/CV mới do ENTERPRISE tạo được gắn owner ở backend. ADMIN xem dữ liệu tổng thể, bao gồm danh sách CV và người tải lên.
-
-Để tạo 2 tài khoản ENTERPRISE và JD/CV mẫu khi phát triển, đặt `SEED_DEMO_PASSWORD` rồi chạy seed trong `NODE_ENV=development` hoặc `test`. Tài khoản demo `hr.alpha@example.test` và `hr.beta@example.test` dùng mật khẩu đó và bắt buộc đổi mật khẩu lần đầu. Seed không tạo tài khoản demo trong production.
-
-Mọi lần đăng nhập và request ghi cần header `X-Requested-With: CVMikiri`; frontend tự gửi header này. `docker-compose.yml` chỉ khởi chạy PostgreSQL; API vẫn chạy qua `npm run dev`.
-
-### 1. Cài đặt Dependencies
-Từ thư mục gốc dự án:
+### 1. Cài đặt Dependencies & Cấu hình môi trường
 ```bash
 npm run install:all
 ```
-*(Hoặc `cd backend && npm install` và `cd frontend && npm install`)*
 
----
+Sao chép `backend/.env.example` thành `backend/.env` và cập nhật:
+- `DATABASE_URL`: Chuỗi kết nối PostgreSQL (`postgresql://postgres:postgres@localhost:5432/mikiricv?schema=public`).
+- `GEMINI_API_KEY` & `GEMINI_MODEL=gemini-3.6-flash` (AI Matching).
+- `STORAGE_DRIVER=local` (lưu tại `backend/uploads`) hoặc `cloudinary` (kèm `CLOUDINARY_*`).
+- `CORS_ORIGIN` & `MOBILE_CORS_ORIGINS`: Khai báo origin cho Web LAN / PWA / APK (`capacitor://localhost,https://localhost,http://localhost`).
+- `JWT_ACCESS_SECRET` & `JWT_REFRESH_SECRET`: 2 chuỗi ngẫu nhiên **khác nhau**, mỗi chuỗi ≥ 32 ký tự.
+- `SEED_ADMIN_EMAIL` & `SEED_ADMIN_PASSWORD`: Tài khoản Quản trị viên.
 
-### 2. Cấu hình Môi trường (Backend)
-Mở tệp `backend/.env` và cập nhật thông tin:
-```env
-PORT=4000
-NODE_ENV=development
+### 2. Khởi tạo Database & Nạp Dữ Liệu Mẫu (3 cách)
 
-# Chuỗi kết nối PostgreSQL của bạn
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/mikiricv?schema=public"
-
-# Khóa API Google Gemini
-GEMINI_API_KEY="YOUR_GEMINI_API_KEY_HERE"
-GEMINI_MODEL="gemini-3.5-flash"
-
-# Giới hạn dung lượng tải lên
-MAX_FILE_SIZE_MB=10
-MAX_FILES_PER_REQUEST=20
-UPLOAD_DIR="./uploads"
-```
-
----
-
-### 3. Đồng bộ Cơ sở dữ liệu PostgreSQL (Prisma)
-Sau khi cấu hình `DATABASE_URL` trong `backend/.env`:
+Khởi chạy PostgreSQL và migrate schema trước:
 ```bash
 docker compose up -d postgres
-# Tạo các bảng trong PostgreSQL
-npm run prisma:migrate
-
-# Hoặc tạo Prisma Client
-npm run prisma:generate
+npm --prefix backend run prisma:generate
+npm --prefix backend run prisma:migrate
 ```
 
----
+Chọn **1 trong 3 cách** nạp dữ liệu:
 
-### 4. Khởi chạy Hệ thống
-Chạy đồng thời cả Backend (Port 4000) và Frontend (Port 5173) chỉ với 1 lệnh:
+1. **Cách 1 — Import nhanh `backend/prisma/demo-seed.sql` (Khuyến nghị cho Tester, không cần gọi Gemini):**
+   - Với PostgreSQL local (v17/v18):
+     ```powershell
+     psql "postgresql://postgres:postgres@localhost:5432/mikiricv" -f backend/prisma/demo-seed.sql
+     npm --prefix backend run prisma:seed
+     ```
+   - Với Docker container PostgreSQL 16 (lọc bỏ 2 dòng cú pháp PG 18):
+     ```powershell
+     Get-Content backend/prisma/demo-seed.sql | Where-Object { $_ -notmatch '^SET transaction_timeout' -and $_ -notmatch '^\\restrict' } | docker exec -i mikiricv-postgres-1 psql -U postgres -d mikiricv
+     npm --prefix backend run prisma:seed
+     ```
+2. **Cách 2 — Chạy script tải 20 CV Google Drive & chấm AI thật trực tiếp:** *(yêu cầu `STORAGE_DRIVER=cloudinary` và `GEMINI_API_KEY`)*
+   ```bash
+   npm --prefix backend run seed:demo
+   ```
+3. **Cách 3 — Seed tối thiểu (chỉ tạo Admin + 2 tài khoản dev nếu có `SEED_DEMO_PASSWORD`):**
+   ```bash
+   npm --prefix backend run prisma:seed
+   ```
+
+> Chi tiết danh sách toàn bộ tài khoản mẫu (`admin@example.com`, `hr.main@mikiricv.vn` / `Test@123`, v.v.), 14 JD, 20 CV mẫu và kịch bản test từng luồng xem tại:
+> 👉 **[docs/HuongDan_Demo_Va_KiemThu_CVMikiri.md](docs/HuongDan_Demo_Va_KiemThu_CVMikiri.md)**
+
+### 3. Khởi chạy hệ thống
 ```bash
 npm run dev
 ```
-
-- **Frontend Client**: [http://localhost:5173](http://localhost:5173)
-- **Backend API**: [http://localhost:4000](http://localhost:4000)
-- **Health Check API**: [http://localhost:4000/api/health](http://localhost:4000/api/health)
+- **Frontend (Web/PWA):** [http://localhost:5173](http://localhost:5173)
+- **Backend API:** [http://localhost:4000](http://localhost:4000)
+- **Health Check:** [http://localhost:4000/api/health](http://localhost:4000/api/health)
 
 ---
 
-## 🔁 Chạy dự án trong những lần sau
+## 📱 Chạy Thử Trên Điện Thoại Thật (Android APK & PWA)
 
-Sau khi đã cài dependencies, tạo `backend/.env`, seed tài khoản ban đầu và chạy migration lần đầu, các lần phát triển tiếp theo chỉ cần:
+> Vì giao diện CVMikiri được xây dựng bằng React 18 + Tailwind DOM + Capacitor 7 (không phải React Native), **Expo Go không chạy trực tiếp được**. Hãy test trực tiếp trên điện thoại thật bằng **Android `.apk`** hoặc **PWA**.
 
-```bash
-# Từ thư mục gốc dự án
-docker compose up -d postgres
-npm run dev
-```
+### Cách 1: Cài đặt & chạy file Android `.apk` (Capacitor Native)
+1. **Đóng gói file APK** (yêu cầu JDK 17/21 và Android SDK — script tự dò tự động):
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File scripts/build-android-apk.ps1
+   ```
+   File APK sau khi build nằm tại: **`frontend/release/CVMikiri-debug.apk`** (và `frontend/android/app/build/outputs/apk/debug/app-debug.apk`).
+2. **Cài lên điện thoại Android:**
+   - Qua USB (bật *USB Debugging*):
+     ```powershell
+     adb install -r frontend/release/CVMikiri-debug.apk
+     adb reverse tcp:4000 tcp:4000
+     ```
+   - Hoặc copy `CVMikiri-debug.apk` sang điện thoại để cài trực tiếp.
+3. **Trỏ địa chỉ Backend ngay trong app (không cần build lại APK):**
+   - Mở app **CVMikiri** → tại màn hình Đăng nhập, bấm mở mục **Cấu hình máy chủ API**:
+     - Nếu cắm cáp USB (`adb reverse`): giữ hoặc nhập `http://localhost:4000/api`.
+     - Nếu chạy qua Wi-Fi LAN: nhập `http://<IP_LAN_MÁY_TÍNH>:4000/api` (nhớ mở port 4000 trên Windows Firewall).
+     - Nếu dùng Android Emulator: mặc định là `http://10.0.2.2:4000/api`.
+     - Nếu dùng HTTPS tunnel (`cloudflared` / `ngrok`): nhập `https://<domain-tunnel>/api`.
+   - Bấm **Kiểm tra kết nối** → **Lưu máy chủ** → Đăng nhập để test toàn bộ chức năng & chế độ **Offline-First**.
 
-Mở frontend tại [http://localhost:5173](http://localhost:5173). Không cần chạy lại `npm run install:all` hoặc `npm run prisma:seed` mỗi lần khởi động. PostgreSQL chạy nền trong Docker và dữ liệu được giữ trong volume `mikiricv-postgres`.
+### Cách 2: Chạy dạng PWA (Android Chrome & iOS Safari)
+1. Khởi chạy backend (`npm --prefix backend run dev`) và frontend lắng nghe LAN:
+   ```bash
+   npm --prefix frontend run dev:lan
+   ```
+2. Mở trình duyệt trên điện thoại (qua HTTPS tunnel hoặc LAN) và chọn **Thêm vào màn hình chính (Add to Home Screen)** để cài thành ứng dụng độc lập.
 
-Để dừng frontend/backend, nhấn `Ctrl+C` ở terminal chạy `npm run dev`. Có thể để PostgreSQL chạy nền; nếu muốn dừng cả database:
+---
 
-```bash
-docker compose stop postgres
-```
+## 📄 Trích xuất CV, Bảo mật & Gói Token
 
-Khi có thay đổi schema hoặc pull code có migration mới, chạy các lệnh sau trước khi khởi động app:
+### Trích xuất CV và dữ liệu AI
+- Backend trích xuất văn bản bằng `pdf-parse` (PDF có text layer) và `mammoth` (DOCX); chưa hỗ trợ OCR cho ảnh scan.
+- `FieldParser` (`backend/src/modules/candidates/field-parser.ts`) nhận diện họ tên, email, SĐT Việt Nam, số năm kinh nghiệm (`0–30`), học vấn (các dòng bằng cấp/trường đại học/cao đẳng/thạc sĩ/kỹ sư) và kỹ năng chuẩn hóa từ `skill-dictionary.ts`.
+- API danh sách/tìm kiếm không trả về `rawText`, `searchText`, `fileUrl`. Tệp CV gốc chỉ tải qua `GET /api/candidates/:id/file` sau khi kiểm tra quyền sở hữu.
+- Khi ngoại tuyến hoặc nhà cung cấp AI lỗi, hệ thống không bao giờ trả điểm 0 giả mạo — lỗi AI hiển thị rõ trạng thái `FAILED` kèm mã lỗi.
 
-```bash
-npm run prisma:migrate
-npm run prisma:generate
-```
+### Cấu hình Gói doanh nghiệp & Token cá nhân
 
-Nếu cần tạo lại tài khoản hoặc dữ liệu mẫu trong môi trường phát triển, chạy `npm --prefix backend run prisma:seed` theo hướng dẫn cấu hình seed ở trên. Lệnh seed không cần thiết cho các lần chạy thường ngày.
-
-Để dọn các khóa idempotency đã hết hạn, chạy tùy chọn:
-
-```bash
-npm --prefix backend run cleanup:idempotency
-```
-
-## Trích xuất CV và dữ liệu gửi tới AI
-
-Khi tải CV lên, backend đọc văn bản PDF bằng `pdf-parse` (PDF.js) hoặc DOCX bằng `mammoth`. Bước này không gọi Gemini. File ảnh scan chưa có lớp văn bản hiện chưa được OCR.
-
-Các trường được nhận diện bằng quy tắc trong `backend/src/modules/candidates/field-parser.ts`:
-
-- Họ tên: ưu tiên tên file sau khi bỏ tiền tố CV/Resume; nếu không phù hợp thì dùng dòng văn bản đầu tiên có vẻ hợp lệ. Đây là ước lượng, có thể cần kiểm tra lại.
-- Email và số điện thoại Việt Nam: dùng biểu thức chính quy.
-- Kinh nghiệm: tìm số năm gần cụm “kinh nghiệm” hoặc “experience”, trong khoảng 0–30; không tìm thấy thì mặc định 0, không có nghĩa chắc chắn ứng viên chưa có kinh nghiệm.
-- Kỹ năng: đối chiếu tên và tên viết tắt với từ điển tại `backend/src/modules/skills/skill-dictionary.ts`. Kỹ năng ngoài từ điển có thể bị bỏ sót; bộ lọc vẫn cho phép nhập tự do để tìm trong văn bản đã trích xuất.
-- Học vấn: hiện chưa có bộ trích xuất, mặc định để trống.
-
-Khi chạy AI Matching, chỉ danh sách kỹ năng đã chuẩn hóa theo từ điển và số năm kinh nghiệm của các CV được chọn được gửi cùng JD tới Gemini. Tên, email, điện thoại, tên file, đường dẫn, học vấn và toàn bộ văn bản CV không được đưa vào prompt. Kết quả vì vậy chỉ đánh giá dữ liệu chuyên môn đã trích xuất, chưa phản ánh đầy đủ dự án hoặc thành tích trong CV. JD vẫn được gửi nguyên nội dung; tránh ghi thông tin cá nhân vào JD. Các kết quả chấm cũ không tự được chấm lại.
-
-“Xử lý nội bộ” ở đây là xử lý tại máy chạy backend. Nếu backend chạy trên máy của bạn thì dữ liệu được xử lý tại máy đó; nếu triển khai lên máy chủ thì file và dữ liệu cá nhân được lưu tại máy chủ, không phải chỉ trong trình duyệt. CV gốc và văn bản trích xuất vẫn được giữ trong kho file/PostgreSQL của hệ thống, và tải file phải qua endpoint được xác thực `/api/candidates/:id/file`.
-
-Cảnh báo PDF.js “Ignoring invalid character … in hex string” là cảnh báo về cấu trúc nội bộ của PDF. Bộ đọc đã được đặt mức log lỗi để tránh lặp cảnh báo này; đây không phải sửa lại file PDF. File không đọc được hoặc không có văn bản vẫn được đánh dấu trích xuất thất bại để người dùng kiểm tra.
-
-## Gói doanh nghiệp và token cá nhân
-
-Migration `20261125000000_account_token_billing` thay cơ chế lượt CV dùng chung bằng token thực tế của từng HR. Dữ liệu CV/JD, kết quả matching và lịch sử AI cũ được giữ nguyên. Chu kỳ token đầu tiên bắt đầu tại thời điểm migration đối với doanh nghiệp hiện có; lượt CV cũ không được quy đổi thành token ước đoán.
-
-| Cấu hình ban đầu | FREE | PLUS |
+| Cấu hình mặc định | FREE | PLUS |
 | --- | ---: | ---: |
 | Token mỗi tài khoản mỗi chu kỳ | 100.000 | 3.000.000 |
 | Chu kỳ token | 30 ngày | 30 ngày |
-| Số tài khoản | Không giới hạn | Không giới hạn |
-| CV mỗi yêu cầu matching | 1 | 200 |
-| Token output tối đa mỗi CV, gồm thinking | 4.096 | 8.192 |
+| Số tài khoản HR trong công ty | Không giới hạn | Không giới hạn |
+| CV tối đa mỗi yêu cầu matching | 1 | 200 |
+| Giới hạn trang PDF / ký tự CV | 2 trang (~3.000 ký tự) | Đầy đủ |
+| Trọng số 6 nhóm tiêu chí & Export Excel/PDF | Khóa | Mở khóa |
+| Token output tối đa mỗi CV (gồm thinking) | 4.096 | 8.192 |
 
-Các giá trị trên là cấu hình khởi tạo, admin có thể sửa tại Dashboard quản trị. Gói và thời hạn đăng ký thuộc doanh nghiệp; mỗi HR có ví, token đã dùng, tạm giữ, còn lại và lịch sử riêng. Token cấp thêm/thu hồi áp dụng cho chu kỳ hiện tại, không tự chuyển sang chu kỳ sau. Đổi gói giữ nguyên token đã dùng và đang tạm giữ. Đổi thời lượng chu kỳ có hiệu lực từ lần làm mới tiếp theo. Migration `20261126000000_unlimited_company_accounts` bỏ giới hạn tài khoản và thêm giá tháng cấp doanh nghiệp; giữ nguyên tài khoản, ví và lịch sử. FREE bằng 0; migration `20261126010000_demo_company_monthly_price` đặt PLUS mặc định 100.000đ/doanh nghiệp/tháng, chỉ thay giá cũ 299.000đ và lưu audit, giữ giá đã tùy chỉnh. Giả định demo: vận hành 70.000đ/tháng, Gemini miễn phí, biên lợi nhuận 30%; chưa phải chi phí đã đo. Công cụ tính giá PLUS dùng chi phí toàn doanh nghiệp và biên lợi nhuận do admin nhập, chỉ điền bản nháp trước khi lưu có lý do, không tự thay giá đang áp dụng.
+- **Triển khai & Migration:**
+  ```powershell
+  cd backend
+  npx prisma migrate deploy
+  npm run prisma:generate
+  npm run build
+  ```
 
-Trước mỗi lần sinh nội dung, provider đếm token đầu vào của prompt/schema; backend khóa bản ghi và tạm giữ input cộng output tối đa trong transaction. Thiếu token trả `TOKEN_QUOTA_EXCEEDED`. Backend quyết toán input, output và thinking thực tế, đồng thời giải phóng tạm giữ trong cùng transaction. Lỗi JSON hoặc lỗi lưu báo cáo vẫn ghi nhận token provider đã sử dụng, đồng thời yêu cầu matching vẫn báo thất bại.
+---
 
-Nếu timeout, mất kết nối hoặc thiếu metadata token, phiếu chuyển sang `UNKNOWN` và tiếp tục giữ token. Admin xem mục **Điều chỉnh / Lịch sử → Đối soát** để nhập token thực tế hoặc hoàn tạm giữ khi provider xác nhận không xử lý. Phiếu `HELD`/`STARTED` bị gián đoạn chỉ được đối soát sau 10 phút. Các thao tác có lý do và người thực hiện trong sổ cái. Backend không tự gọi lại một lần sinh nội dung có kết quả chưa rõ; retry an toàn chỉ áp dụng cho bước đếm token.
+## 🧪 Kiểm thử & Build
 
-Mục **Chi phí sử dụng Gemini** lấy đúng model và chế độ từ backend. `AI_BILLING_MODE=FREE` tự ghi chi phí 0 cho lần gọi mới, không cần nhập đơn giá; token vẫn tính vào hạn mức HR. Chế độ PAID dùng đơn giá đầu vào và đầu ra (gồm suy luận) theo đúng model, ưu tiên phiên bản admin rồi cấu hình môi trường. Mỗi lần gọi giữ bản chụp giá lúc tạm giữ; thay giá không tính lại lịch sử. Chưa có đơn giá trả phí thì chi phí là `null`, không suy đoán bằng 0. Dashboard cộng chi phí đã ghi nhận và báo số lần chưa xác định, không hiển thị tiền mô phỏng như chi phí thực tế. Giá trị này không phải hóa đơn/thuế của Google. RPM/TPM/RPD là giới hạn dự án Gemini, độc lập với hạn mức token HR theo chu kỳ và giá bán FREE/PLUS.
+```bash
+# Kiểm thử & Build Frontend
+npm --prefix frontend test
+npm --prefix frontend run build
 
-Trang HR `/account` gồm Hồ sơ (chỉ xem), Bảo mật và Gói & token. Đường dẫn đổi mật khẩu cũ của HR chuyển đến `/account?tab=security`; ADMIN vẫn dùng trang đổi mật khẩu cũ. Chip token mở `/account?tab=plan`. Bảng so sánh FREE/PLUS chỉ xuất hiện trong hộp thoại khi chọn Nâng cấp hoặc Xem gói từ thông báo lỗi hạn mức.
+# Kiểm thử & Build Backend
+npm --prefix backend test
+npm --prefix backend run build
 
-API HR: `GET /api/subscription` (gói công ty và số dư cá nhân), `/api/subscription/balance` (response nhẹ cho chip token), `/api/subscription/plans` (quyền lợi hai gói theo cấu hình thật), `/api/subscription/history?page=1` (lịch sử của chính người gọi, 20 dòng/trang). `/api/subscription/company` là đường dẫn tương thích, chỉ trả thông tin gói và token của người gọi, không trả danh sách tài khoản. API admin giữ nguyên. Lịch sử HR không trả sổ cái nội bộ, đơn giá hay số dư của người khác; JD không còn truy ra được từ dữ liệu cũ được hiển thị là chưa có thông tin. Mỗi dòng tương ứng một lần xử lý CV. Ước tính số CV dựa trên mức token trung bình của chính tài khoản, dùng mức tham khảo 2.000 token/CV khi chưa có mẫu phù hợp; không dùng ước tính này để chặn yêu cầu.
-
-Client gửi `Idempotency-Key` cho `/api/matching/run` và `/api/matching/jobs`; phải giữ nguyên khóa và nội dung khi gửi lại cùng một yêu cầu. Biên nhận matching được lưu riêng, không bị dọn cùng khóa upload hết hạn. Client giữ khóa khi mất phản hồi mạng; gửi lại sẽ nhận biên nhận cũ. Chủ động chấm lại sau khi đã nhận kết quả là yêu cầu mới và tính token mới. Mã item của matching chạy nền ngăn gọi provider/trừ token lại sau khi runner khởi động lại.
-
-Áp dụng migration khi triển khai (không dùng reset database):
-
-```powershell
-cd backend
-npx prisma migrate deploy
-npm run prisma:generate
-npm run build
-```
-
-Kiểm thử tích hợp dùng PostgreSQL từ `BILLING_TEST_DATABASE_URL` hoặc `backend/.env`, tạo schema `billing_test_<uuid>` riêng và xóa đúng schema đó sau kiểm thử. Provider AI được mock, không gọi Gemini thật. Cần tài khoản DB có quyền tạo/xóa schema:
-
-```powershell
+# Chạy thêm bài test tích hợp Token Billing với PostgreSQL thật
 cd backend
 $env:RUN_BILLING_INTEGRATION='1'
 npm test
 ```
+
+*(Chi tiết kiến trúc & các quyết định thiết kế xem thêm tại [docs/Chuong5/](docs/Chuong5/) — bao gồm `ADR-08-authentication-tenant.md` và `ADR-09-cross-platform-offline.md`.)*

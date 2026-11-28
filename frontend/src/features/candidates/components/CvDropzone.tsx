@@ -1,8 +1,9 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useDropzone, FileRejection } from 'react-dropzone';
 import {
   AlertTriangle,
   CheckCircle2,
+  CloudOff,
   CloudUpload,
   FileText,
   LoaderCircle,
@@ -13,8 +14,13 @@ import {
 import toast from 'react-hot-toast';
 import { candidateApi, CandidateItem } from '../api/candidateApi';
 import { useSubscriptionStore } from '../../subscription/subscriptionStore';
+import { useSafeAuth } from '../../auth/useSafeAuth';
+import { useNetworkStore } from '../../../shared/offline/networkStore';
+import { offlineDb } from '../../../shared/offline/offlineDb';
+import { isNetworkOfflineError } from '../../../shared/platform/runtime';
+import { useIsMobileViewport } from '../../../shared/hooks/useIsMobileViewport';
 
-export type UploadState = 'pending' | 'uploading' | 'parsed' | 'warning' | 'failed' | 'rejected';
+export type UploadState = 'pending' | 'uploading' | 'queued_offline' | 'parsed' | 'warning' | 'failed' | 'rejected';
 
 export interface UploadItem {
   id: string;
@@ -42,9 +48,21 @@ export const CvDropzone: React.FC<CvDropzoneProps> = ({ onUploadSuccess, plan })
   const storePlan = useSubscriptionStore((state) => state.subscription?.name);
   const storeBulk = useSubscriptionStore((state) => state.subscription?.bulk);
   const isFreePlan = storeBulk != null ? !storeBulk : (plan ?? storePlan) === 'FREE';
+  const { user } = useSafeAuth();
+  const isOnline = useNetworkStore((state) => state.isOnline);
+  const isMobile = useIsMobileViewport();
   const [items, setItems] = useState<UploadItem[]>([]);
   const [batch, setBatch] = useState<{ files: File[]; key: string } | null>(null);
   const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    const onSynced = () => {
+      setItems((current) => current.filter((item) => item.state !== 'queued_offline'));
+      onUploadSuccess?.();
+    };
+    window.addEventListener('offline:synced', onSynced);
+    return () => window.removeEventListener('offline:synced', onSynced);
+  }, [onUploadSuccess]);
 
   const onDrop = useCallback((accepted: File[], rejections: FileRejection[]) => {
     setItems((current) => {
@@ -189,6 +207,37 @@ export const CvDropzone: React.FC<CvDropzoneProps> = ({ onUploadSuccess, plan })
         toast.error(
           `Không xử lý được ${failed}/${files.length} tệp. ${requestMessage || 'Hãy kiểm tra định dạng và dung lượng.'}`,
         );
+      } else if (isNetworkOfflineError(error) && user?.id) {
+        try {
+          await offlineDb.enqueueUploadCv(user.id, files, key);
+          void useNetworkStore.getState().refreshQueueCounts(user.id);
+          setItems((current) =>
+            current.map((item) =>
+              itemIds.includes(item.id)
+                ? {
+                    ...item,
+                    state: 'queued_offline',
+                    progress: 0,
+                    message: 'Đang mất mạng — đã lưu vào hàng đợi và sẽ tự tải lên khi có mạng.',
+                    retryable: false,
+                  }
+                : item,
+            ),
+          );
+          setBatch(null);
+          toast.success(`Đã đưa ${files.length} tệp vào hàng đợi tải lên ngoại tuyến`);
+        } catch (queueError) {
+          const message =
+            queueError instanceof Error ? queueError.message : 'Không thể lưu hàng đợi ngoại tuyến.';
+          setItems((current) =>
+            current.map((item) =>
+              itemIds.includes(item.id)
+                ? { ...item, state: 'failed', progress: 0, message, retryable: true }
+                : item,
+            ),
+          );
+          toast.error(message);
+        }
       } else {
         const message = requestMessage || 'Mất kết nối máy chủ, chưa xác nhận được trạng thái. Vui lòng thử lại.';
         setItems((current) =>
@@ -206,7 +255,7 @@ export const CvDropzone: React.FC<CvDropzoneProps> = ({ onUploadSuccess, plan })
     }
   };
 
-  const handleUpload = () => {
+  const handleUpload = async () => {
     const valid = items.filter(
       (item) =>
         item.state === 'pending' &&
@@ -218,11 +267,40 @@ export const CvDropzone: React.FC<CvDropzoneProps> = ({ onUploadSuccess, plan })
       return;
     }
     const key = crypto.randomUUID();
-    void uploadFiles(
-      valid.map((item) => item.file),
-      key,
-      valid.map((item) => item.id),
-    );
+    const validFiles = valid.map((item) => item.file);
+    const validIds = valid.map((item) => item.id);
+
+    if (!isOnline) {
+      if (!user?.id) {
+        toast.error('Không xác định được phiên tài khoản để lưu hàng đợi ngoại tuyến.');
+        return;
+      }
+      setSending(true);
+      try {
+        await offlineDb.enqueueUploadCv(user.id, validFiles, key);
+        await useNetworkStore.getState().refreshQueueCounts(user.id);
+        setItems((current) =>
+          current.map((item) =>
+            validIds.includes(item.id)
+              ? {
+                  ...item,
+                  state: 'queued_offline',
+                  progress: 0,
+                  message: 'Đang ngoại tuyến — sẽ tự động tải lên khi có mạng trở lại.',
+                }
+              : item,
+          ),
+        );
+        toast.success(`Đã lưu ${validFiles.length} tệp vào hàng đợi ngoại tuyến`);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Không thể lưu hàng đợi ngoại tuyến');
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
+    void uploadFiles(validFiles, key, validIds);
   };
 
   const handleRetryFile = (item: UploadItem) => {
@@ -247,6 +325,9 @@ export const CvDropzone: React.FC<CvDropzoneProps> = ({ onUploadSuccess, plan })
     if (item.state === 'uploading') {
       return <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-blue-600" />;
     }
+    if (item.state === 'queued_offline') {
+      return <CloudOff className="h-4 w-4 shrink-0 text-amber-600" />;
+    }
     if (item.state === 'parsed') {
       return <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />;
     }
@@ -265,6 +346,8 @@ export const CvDropzone: React.FC<CvDropzoneProps> = ({ onUploadSuccess, plan })
         return 'Chờ tải lên';
       case 'uploading':
         return 'Đang tải lên...';
+      case 'queued_offline':
+        return 'Chờ mạng để tải';
       case 'parsed':
         return 'Đã trích xuất';
       case 'warning':
@@ -295,9 +378,13 @@ export const CvDropzone: React.FC<CvDropzoneProps> = ({ onUploadSuccess, plan })
           <CloudUpload className="h-6 w-6" />
         </div>
         <p className="mt-3 text-sm font-semibold text-slate-800">
-          {isFreePlan
-            ? 'Kéo thả 1 file PDF/DOCX vào đây, hoặc bấm để chọn (≤ 2 trang PDF / ~3.000 ký tự)'
-            : 'Kéo thả file PDF/DOCX vào đây, hoặc bấm để chọn (≤ 10MB/file)'}
+          {isMobile
+            ? isFreePlan
+              ? 'Chạm để chọn 1 file PDF/DOCX từ điện thoại, Drive hoặc iCloud'
+              : 'Chạm để chọn file PDF/DOCX từ điện thoại, Drive hoặc iCloud (≤ 10MB)'
+            : isFreePlan
+              ? 'Kéo thả 1 file PDF/DOCX vào đây, hoặc bấm để chọn (≤ 2 trang PDF / ~3.000 ký tự)'
+              : 'Kéo thả file PDF/DOCX vào đây, hoặc bấm để chọn (≤ 10MB/file)'}
         </p>
         <p className="mt-1 text-xs text-slate-500">
           {isFreePlan
@@ -360,7 +447,7 @@ export const CvDropzone: React.FC<CvDropzoneProps> = ({ onUploadSuccess, plan })
                   {item.message && (
                     <p
                       className={`mt-1 text-xs ${
-                        item.state === 'warning' ? 'text-amber-700' : 'text-rose-600'
+                        item.state === 'warning' || item.state === 'queued_offline' ? 'text-amber-700' : 'text-rose-600'
                       }`}
                     >
                       {item.message}
@@ -372,7 +459,7 @@ export const CvDropzone: React.FC<CvDropzoneProps> = ({ onUploadSuccess, plan })
                   className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
                     item.state === 'parsed'
                       ? 'bg-emerald-50 text-emerald-700'
-                      : item.state === 'warning'
+                      : item.state === 'warning' || item.state === 'queued_offline'
                         ? 'bg-amber-50 text-amber-700'
                         : item.state === 'failed' || item.state === 'rejected'
                           ? 'bg-rose-50 text-rose-700'
@@ -429,12 +516,18 @@ export const CvDropzone: React.FC<CvDropzoneProps> = ({ onUploadSuccess, plan })
               </button>
               <button
                 type="button"
-                onClick={handleUpload}
+                onClick={() => void handleUpload()}
                 disabled={sending || pendingCount === 0}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+                className="inline-flex min-h-[40px] items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
               >
                 {sending && <LoaderCircle className="h-3.5 w-3.5 animate-spin" />}
-                <span>{sending ? 'Đang xử lý...' : `Tải CV lên (${pendingCount})`}</span>
+                <span>
+                  {sending
+                    ? 'Đang xử lý...'
+                    : !isOnline
+                      ? `Lưu chờ mạng (${pendingCount})`
+                      : `Tải CV lên (${pendingCount})`}
+                </span>
               </button>
             </div>
           </div>

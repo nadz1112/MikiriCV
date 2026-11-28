@@ -41,7 +41,10 @@ export class JobController {
 
   async createJob(req: Request, res: Response<ApiResponse>, next: NextFunction): Promise<void> {
     try {
-      const newJob = await jobService.createJob(req.body, req.user!);
+      const idempotencyKey = req.get('Idempotency-Key')?.trim();
+      const newJob = idempotencyKey
+        ? await jobService.createJob(req.body, req.user!, idempotencyKey)
+        : await jobService.createJob(req.body, req.user!);
       res.status(201).json({
         success: true,
         message: 'Tạo Job Description thành công',
@@ -54,7 +57,10 @@ export class JobController {
 
   async updateJob(req: Request, res: Response<ApiResponse>, next: NextFunction): Promise<void> {
     try {
-      const updated = await jobService.updateJob(req.params.id, req.body, req.user!);
+      const unmodifiedSince = req.get('X-Unmodified-Since')?.trim();
+      const updated = unmodifiedSince
+        ? await jobService.updateJob(req.params.id, req.body, req.user!, { unmodifiedSince })
+        : await jobService.updateJob(req.params.id, req.body, req.user!);
       res.json({
         success: true,
         message: 'Cập nhật Job Description thành công',

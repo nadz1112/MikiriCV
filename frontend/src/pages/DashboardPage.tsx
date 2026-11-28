@@ -24,9 +24,17 @@ import { CandidateInsightDrawer } from '../components/dashboard/CandidateInsight
 import { DeleteConfirmModal } from '../components/dashboard/DeleteConfirmModal';
 import { ComparisonExport } from '../features/matching/components/ComparisonExport';
 import { useSubscriptionStore } from '../features/subscription/subscriptionStore';
+import { useSafeAuth } from '../features/auth/useSafeAuth';
+import { useIsMobileViewport } from '../shared/hooks/useIsMobileViewport';
+import { useNetworkStore } from '../shared/offline/networkStore';
+import { offlineDb } from '../shared/offline/offlineDb';
+import { isNetworkOfflineError } from '../shared/platform/runtime';
 import toast from 'react-hot-toast';
 
 export const DashboardPage: React.FC = () => {
+  const { user } = useSafeAuth();
+  const isMobile = useIsMobileViewport();
+  const isOnline = useNetworkStore((state) => state.isOnline);
   // Global Data State
   const [jobs, setJobs] = useState<JobDescription[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -54,25 +62,51 @@ export const DashboardPage: React.FC = () => {
   // Load Initial Dashboard Data
   const loadDashboardData = async () => {
     try {
-      const [jobsData, candidatesData, statsData] = await Promise.all([
+      const [jobsData, pageData, statsData] = await Promise.all([
         jobApi.getAll(),
-        candidateApi.getAll(),
+        candidateApi.getPage(1, 50).catch(() => ({ data: [] as Candidate[], total: 0, page: 1, limit: 50 })),
         dashboardApi.getStats().catch(() => null),
       ]);
+      const candidatesData = pageData.data;
       setJobs(jobsData);
       setCandidates(candidatesData);
       if (statsData) {
         setDashboardStats(statsData);
+      }
+      if (user?.id) {
+        void offlineDb.saveJobs(user.id, jobsData);
+        if (candidatesData.length > 0) {
+          void offlineDb.saveCandidates(user.id, candidatesData as never[], pageData.total || candidatesData.length);
+        }
+        if (statsData) {
+          void offlineDb.saveDashboardStats(user.id, statsData);
+        }
       }
 
       // Mặc định chọn JD đầu tiên nếu có
       if (jobsData.length > 0 && !selectedJobId) {
         const firstJobId = jobsData[0].id;
         setSelectedJobId(firstJobId);
-        loadJobLeaderboard(firstJobId);
+        void loadJobLeaderboard(firstJobId);
       }
     } catch (err) {
-      console.error('Lỗi khi tải dữ liệu dashboard:', err);
+      if (isNetworkOfflineError(err) && user?.id) {
+        const [cachedJobs, cachedCandidates, cachedStats] = await Promise.all([
+          offlineDb.getJobs(user.id),
+          offlineDb.getCandidates(user.id),
+          offlineDb.getDashboardStats(user.id),
+        ]);
+        const jobsList = cachedJobs?.jobs ?? [];
+        setJobs(jobsList);
+        setCandidates((cachedCandidates?.items ?? []) as unknown as Candidate[]);
+        if (cachedStats?.stats) setDashboardStats(cachedStats.stats);
+        if (jobsList.length > 0 && !selectedJobId) {
+          setSelectedJobId(jobsList[0].id);
+          void loadJobLeaderboard(jobsList[0].id);
+        }
+      } else {
+        console.error('Lỗi khi tải dữ liệu dashboard:', err);
+      }
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -80,7 +114,7 @@ export const DashboardPage: React.FC = () => {
   };
 
   useEffect(() => {
-    loadDashboardData();
+    void loadDashboardData();
   }, []);
 
   // Tải bảng xếp hạng và thống kê cho một JD cụ thể
@@ -98,16 +132,31 @@ export const DashboardPage: React.FC = () => {
 
       if (leaderboardRes && leaderboardRes.matchResults) {
         setSelectedJobLeaderboard(leaderboardRes.matchResults);
+        if (user?.id) void offlineDb.saveLeaderboard(user.id, jobId, leaderboardRes.matchResults);
+      } else if (user?.id && !isOnline) {
+        const cachedBoard = await offlineDb.getLeaderboard(user.id, jobId);
+        setSelectedJobLeaderboard(cachedBoard?.results ?? []);
       } else {
         setSelectedJobLeaderboard([]);
       }
 
       if (statsRes) {
         setCurrentJobStats(statsRes);
+        if (user?.id) void offlineDb.saveJobStats(user.id, jobId, statsRes);
+      } else if (user?.id && !isOnline) {
+        const cachedJobs = await offlineDb.getJobs(user.id);
+        setCurrentJobStats(cachedJobs?.statsByJobId?.[jobId] ?? null);
       } else {
         setCurrentJobStats(null);
       }
     } catch (err) {
+      if (user?.id) {
+        const cachedBoard = await offlineDb.getLeaderboard(user.id, jobId);
+        if (cachedBoard) {
+          setSelectedJobLeaderboard(cachedBoard.results);
+          return;
+        }
+      }
       console.error('Lỗi khi tải leaderboard:', err);
       setSelectedJobLeaderboard([]);
       setCurrentJobStats(null);
@@ -186,14 +235,19 @@ export const DashboardPage: React.FC = () => {
     setSelectedMatchForDrawer(matchResult);
 
     // Ưu tiên nạp candidate chi tiết kèm matchResults qua API để có thông tin đầy đủ nhất
-    if (matchResult.candidateId) {
-      try {
-        const fullCandidate = await candidateApi.getById(matchResult.candidateId);
-        setSelectedCandidateForDrawer(fullCandidate || matchResult.candidate || null);
-      } catch {
-        setSelectedCandidateForDrawer(matchResult.candidate || null);
-      }
-    } else {
+      if (matchResult.candidateId) {
+        try {
+          const fullCandidate = await candidateApi.getById(matchResult.candidateId);
+          setSelectedCandidateForDrawer(fullCandidate || matchResult.candidate || null);
+        } catch {
+          if (user?.id) {
+            const pinned = await offlineDb.getPinnedCv(user.id, matchResult.candidateId);
+            setSelectedCandidateForDrawer(pinned?.candidate || matchResult.candidate || null);
+          } else {
+            setSelectedCandidateForDrawer(matchResult.candidate || null);
+          }
+        }
+      } else {
       setSelectedCandidateForDrawer(matchResult.candidate || null);
     }
     setIsDrawerOpen(true);
@@ -615,6 +669,53 @@ export const DashboardPage: React.FC = () => {
                         </Link>
                       </div>
                     </div>
+                  ) : isMobile ? (
+                    <div className="divide-y divide-slate-100">
+                      {selectedJobLeaderboard.map((item, idx) => {
+                        const cand = item.candidate;
+                        return (
+                          <div
+                            key={item.id}
+                            onClick={() => void handleOpenInsight(item)}
+                            className="space-y-2.5 p-4 transition active:bg-blue-50/40"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                {renderRank(idx)}
+                                <div className="min-w-0">
+                                  <div className="truncate font-bold text-slate-900">
+                                    {cand?.fullName || 'Chưa rõ tên'}
+                                  </div>
+                                  <div className="truncate text-xs text-slate-400">
+                                    {cand?.yearsOfExperience || 0} năm KN {cand?.email ? `· ${cand.email}` : ''}
+                                  </div>
+                                </div>
+                              </div>
+                              {renderScoreBadge(item.score)}
+                            </div>
+                            <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                onClick={() => void handleOpenInsight(item)}
+                                className="inline-flex min-h-[36px] items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-semibold"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>Chi tiết</span>
+                              </button>
+                              {cand && (
+                                <button
+                                  disabled={!isOnline}
+                                  onClick={() => handleRequestDelete(cand)}
+                                  className="p-2 text-slate-400 hover:text-rose-600 rounded-lg disabled:opacity-40"
+                                  title="Xóa ứng viên"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-sm text-slate-600">
@@ -784,6 +885,50 @@ export const DashboardPage: React.FC = () => {
             {filteredCandidates.length === 0 ? (
               <div className="p-12 text-center text-slate-400 text-sm">
                 Không tìm thấy ứng viên nào phù hợp với từ khóa "{candidateSearchQuery}".
+              </div>
+            ) : isMobile ? (
+              <div className="divide-y divide-slate-100">
+                {filteredCandidates.map((cand) => (
+                  <div
+                    key={cand.id}
+                    onClick={() => handleOpenCandidateDetails(cand)}
+                    className="space-y-2 py-3.5 transition active:bg-slate-50"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate font-bold text-slate-900">{cand.fullName}</div>
+                        <div className="text-xs text-slate-500">
+                          {cand.yearsOfExperience} năm KN {cand.email ? `· ${cand.email}` : ''}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => handleOpenCandidateDetails(cand)}
+                          className="min-h-[36px] px-3 py-1 bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold"
+                        >
+                          Xem
+                        </button>
+                        <button
+                          disabled={!isOnline}
+                          onClick={() => handleRequestDelete(cand)}
+                          className="p-2 text-slate-400 hover:text-rose-600 rounded-lg disabled:opacity-40"
+                          title="Xóa ứng viên"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                    {cand.skills?.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {cand.skills.slice(0, 3).map((s, idx) => (
+                          <span key={idx} className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-xs">
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             ) : (
               <div className="overflow-x-auto">

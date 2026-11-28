@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { prisma } from '../config/database.js';
 import { CreateJobDto, UpdateJobDto, JobStats, JobScoreDistribution } from '../types/index.js';
 import type { AuthUser } from '../middlewares/auth.middleware.js';
@@ -5,6 +6,7 @@ import type { Prisma } from '@prisma/client';
 import { AppError } from '../common/errors/app-error.js';
 import { CVTEST_DEFAULT_WEIGHTS } from '../modules/evaluation/score-calculator.js';
 import { getUserSubscription } from './subscription.service.js';
+import { idempotencyRepository } from '../modules/common/idempotency.repository.js';
 
 function hasCustomEvaluationWeights(config: unknown): boolean {
   if (!config || typeof config !== 'object') return false;
@@ -145,7 +147,7 @@ export class JobService {
     };
   }
 
-  async createJob(data: CreateJobDto, user: AuthUser) {
+  async createJob(data: CreateJobDto, user: AuthUser, idempotencyKey?: string) {
     if (user.role !== 'ADMIN' && hasCustomEvaluationWeights(data.evaluationConfig)) {
       const subscription = await getUserSubscription(user.id);
       if (subscription.name !== 'PLUS') {
@@ -156,22 +158,85 @@ export class JobService {
         );
       }
     }
-    return prisma.jobDescription.create({
-      data: {
-        title: data.title,
-        description: data.description,
-        requiredSkills: data.requiredSkills,
-        minExperience: data.minExperience ?? 0,
-        preferredSkills: data.preferredSkills ?? [],
-        evaluationConfig: data.evaluationConfig as Prisma.InputJsonValue | undefined,
-        ownerId: user.id,
-        createdById: user.id,
-      },
-    });
+
+    const endpoint = '/api/jobs';
+    const requestHash = idempotencyKey
+      ? crypto.createHash('sha256').update(JSON.stringify({ userId: user.id, data })).digest('hex')
+      : null;
+
+    if (idempotencyKey && requestHash) {
+      const existingRecord = await idempotencyRepository.findByKey(idempotencyKey);
+      if (existingRecord) {
+        if (existingRecord.endpoint !== endpoint || existingRecord.requestHash !== requestHash) {
+          throw new AppError(422, 'IDEMPOTENCY_KEY_REUSED', 'Idempotency-Key đã được dùng cho nội dung khác');
+        }
+        if (existingRecord.statusCode === null) {
+          throw new AppError(409, 'REQUEST_IN_PROGRESS', 'Yêu cầu tạo Job Description đang được xử lý');
+        }
+        return (existingRecord.responseBody as { data: unknown }).data as Awaited<
+          ReturnType<typeof prisma.jobDescription.create>
+        >;
+      }
+      try {
+        await idempotencyRepository.createPending({
+          key: idempotencyKey,
+          endpoint,
+          requestHash,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        });
+      } catch (error) {
+        if ((error as { code?: string }).code === 'P2002') {
+          throw new AppError(409, 'REQUEST_IN_PROGRESS', 'Yêu cầu tạo Job Description đang được xử lý');
+        }
+        throw error;
+      }
+    }
+
+    try {
+      const created = await prisma.jobDescription.create({
+        data: {
+          title: data.title,
+          description: data.description,
+          requiredSkills: data.requiredSkills,
+          minExperience: data.minExperience ?? 0,
+          preferredSkills: data.preferredSkills ?? [],
+          evaluationConfig: data.evaluationConfig as Prisma.InputJsonValue | undefined,
+          ownerId: user.id,
+          createdById: user.id,
+        },
+      });
+      if (idempotencyKey) {
+        await idempotencyRepository
+          .complete(idempotencyKey, 201, { success: true, data: created } as unknown as Prisma.InputJsonValue)
+          .catch(() => undefined);
+      }
+      return created;
+    } catch (error) {
+      if (idempotencyKey) {
+        await idempotencyRepository.remove(idempotencyKey).catch(() => undefined);
+      }
+      throw error;
+    }
   }
 
-  async updateJob(id: string, data: UpdateJobDto, user: AuthUser) {
-    await this.getJobById(id, user);
+  async updateJob(
+    id: string,
+    data: UpdateJobDto,
+    user: AuthUser,
+    options?: { unmodifiedSince?: string },
+  ) {
+    const existing = await this.getJobById(id, user);
+    if (options?.unmodifiedSince) {
+      const baseTime = new Date(options.unmodifiedSince).getTime();
+      const updatedTime = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+      if (Number.isFinite(baseTime) && updatedTime > baseTime) {
+        throw new AppError(
+          409,
+          'CONFLICT',
+          'Job Description đã được cập nhật trên thiết bị khác. Vui lòng tải lại trước khi lưu.',
+        );
+      }
+    }
     if (user.role !== 'ADMIN' && hasCustomEvaluationWeights(data.evaluationConfig)) {
       const subscription = await getUserSubscription(user.id);
       if (subscription.name !== 'PLUS') {

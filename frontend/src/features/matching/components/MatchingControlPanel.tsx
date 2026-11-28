@@ -20,6 +20,7 @@ interface MatchingControlPanelProps {
   candidateSearch: string;
   onlyUnscored: boolean;
   isRunning: boolean;
+  isOnline?: boolean;
   plan?: 'FREE' | 'PLUS';
   remainingQuota?: number;
   maxCvPerCall?: number;
@@ -42,6 +43,7 @@ export const MatchingControlPanel: React.FC<MatchingControlPanelProps> = ({
   candidateSearch,
   onlyUnscored,
   isRunning,
+  isOnline = true,
   plan,
   remainingQuota,
   maxCvPerCall,
@@ -272,6 +274,12 @@ export const MatchingControlPanel: React.FC<MatchingControlPanelProps> = ({
         </div>
       </div>
 
+      {!isOnline && (
+        <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-900">
+          Đang ngoại tuyến: Không thể chấm điểm AI Gemini lúc này. Lựa chọn JD và ứng viên của bạn đã được lưu sẵn trên thiết bị.
+        </div>
+      )}
+
       {quotaExhausted && (
         <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-900">
           Tài khoản đã hết token khả dụng. Vui lòng liên hệ admin để cấp thêm hoặc đổi gói. Tài khoản khác trong doanh nghiệp không bị ảnh hưởng.
@@ -292,8 +300,8 @@ export const MatchingControlPanel: React.FC<MatchingControlPanelProps> = ({
         <div className="flex flex-wrap items-center gap-3"><span className="text-sm font-medium text-slate-600">Còn {remainingQuota === undefined ? '…' : remainingQuota.toLocaleString('vi-VN')} token</span><button
           type="button"
           onClick={onOpenConfirm}
-          disabled={isRunning || quotaExhausted || batchExceeded || !selectedJobId || selectedCandidateIds.length === 0}
-          className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50"
+          disabled={!isOnline || isRunning || quotaExhausted || batchExceeded || !selectedJobId || selectedCandidateIds.length === 0}
+          className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50"
         >
           <Sparkles className="h-4 w-4 text-amber-300" />
           <span>

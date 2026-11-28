@@ -1,5 +1,5 @@
 import { ModalPortal } from '../common/ModalPortal';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   X,
   Sparkles,
@@ -18,8 +18,16 @@ import {
   GraduationCap,
   Calendar,
   Lock,
+  BookmarkCheck,
+  BookmarkPlus,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { Candidate, MatchResult } from '../../types';
+import { useSafeAuth } from '../../features/auth/useSafeAuth';
+import { offlineDb } from '../../shared/offline/offlineDb';
+import { useNetworkStore } from '../../shared/offline/networkStore';
+import { isNativeMobile } from '../../shared/platform/runtime';
+import { fetchCandidateFileBlob, openCandidateCvFile } from '../../shared/platform/fileViewer';
 
 const STATUS_BADGE_MAP = {
   not_found: { label: 'Chưa tìm thấy', className: 'bg-slate-200/70 text-slate-700' },
@@ -71,8 +79,59 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
   const isFreePlan = plan === 'FREE';
   const [showRawText, setShowRawText] = useState(false);
   const [copied, setCopied] = useState(false);
+  const { user } = useSafeAuth();
+  const isOnline = useNetworkStore((state) => state.isOnline);
+  const [isPinnedOffline, setIsPinnedOffline] = useState(false);
+  const [pinBusy, setPinBusy] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    if (!isOpen || !candidate?.id || !user?.id) {
+      setIsPinnedOffline(false);
+      return;
+    }
+    void offlineDb.getPinnedCv(user.id, candidate.id).then((record) => {
+      if (active) setIsPinnedOffline(Boolean(record));
+    });
+    return () => {
+      active = false;
+    };
+  }, [isOpen, candidate?.id, user?.id]);
 
   if (!isOpen || !candidate) return null;
+
+  const handleTogglePinOffline = async () => {
+    if (!user?.id || pinBusy) return;
+    setPinBusy(true);
+    try {
+      if (isPinnedOffline) {
+        await offlineDb.unpinCv(user.id, candidate.id);
+        setIsPinnedOffline(false);
+        toast.success('Đã gỡ hồ sơ khỏi bộ nhớ ngoại tuyến');
+        return;
+      }
+      if (!isOnline) {
+        toast.error('Cần kết nối mạng để tải và lưu hồ sơ xem ngoại tuyến.');
+        return;
+      }
+      let fileBlob: Blob | undefined;
+      let contentType: string | undefined;
+      try {
+        const fetched = await fetchCandidateFileBlob(candidate.id);
+        fileBlob = fetched.blob;
+        contentType = fetched.contentType;
+      } catch {
+        // Save structured insight even if the raw file stream is temporarily unavailable.
+      }
+      await offlineDb.pinCv(user.id, candidate, fileBlob, contentType);
+      setIsPinnedOffline(true);
+      toast.success('Đã lưu hồ sơ để xem ngoại tuyến');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Không thể lưu hồ sơ ngoại tuyến');
+    } finally {
+      setPinBusy(false);
+    }
+  };
 
   const score = matchResult ? matchResult.score : 0;
 
@@ -130,10 +189,10 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
         className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"
       />
 
-      <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
+      <div className="fixed inset-y-0 right-0 max-w-full flex sm:pl-10">
         <div role="dialog" aria-modal="true" aria-label="Chi tiết ứng viên" className="w-screen max-w-2xl bg-white shadow-2xl flex flex-col border-l border-slate-200 animate-in slide-in-from-right duration-300">
           {/* Header */}
-          <div className="px-6 py-5 border-b border-slate-100 flex items-start justify-between bg-slate-50/70">
+          <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-slate-100 flex items-start justify-between bg-slate-50/70">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -567,22 +626,55 @@ export const CandidateInsightDrawer: React.FC<CandidateInsightDrawerProps> = ({
           </div>
 
           {/* Actions Footer */}
-          <div className="p-4 sm:px-6 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
-            <a
-              href={fileDownloadUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 font-semibold border border-slate-200 rounded-xl text-xs sm:text-sm shadow-2xs transition"
-            >
-              <FileText className="w-4 h-4 text-blue-600" />
-              <span>Xem tệp CV gốc</span>
-              <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
-            </a>
+          <div className="p-4 sm:px-6 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+            <div className="flex flex-wrap items-center gap-2">
+              <a
+                href={fileDownloadUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => {
+                  if (isNativeMobile() || !isOnline) {
+                    e.preventDefault();
+                    void openCandidateCvFile({
+                      candidateId: candidate.id,
+                      fileName: candidate.fileName,
+                      userId: user?.id,
+                    });
+                  }
+                }}
+                className="inline-flex min-h-[40px] items-center gap-2 px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 font-semibold border border-slate-200 rounded-xl text-xs sm:text-sm shadow-2xs transition"
+              >
+                <FileText className="w-4 h-4 text-blue-600" />
+                <span>Xem tệp CV gốc</span>
+                <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+              </a>
+
+              {user?.role === 'ENTERPRISE' && (
+                <button
+                  type="button"
+                  disabled={pinBusy}
+                  onClick={() => void handleTogglePinOffline()}
+                  className={`inline-flex min-h-[40px] items-center gap-1.5 px-3.5 py-2 font-semibold border rounded-xl text-xs sm:text-sm transition disabled:opacity-50 ${
+                    isPinnedOffline
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  {isPinnedOffline ? (
+                    <BookmarkCheck className="w-4 h-4 text-emerald-600" />
+                  ) : (
+                    <BookmarkPlus className="w-4 h-4 text-blue-600" />
+                  )}
+                  <span>{isPinnedOffline ? 'Đã lưu ngoại tuyến' : 'Lưu xem ngoại tuyến'}</span>
+                </button>
+              )}
+            </div>
 
             <button
               onClick={() => onDeleteRequest(candidate)}
-              disabled={isLoading || Boolean(error)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold border border-rose-200 rounded-xl text-xs sm:text-sm transition"
+              disabled={isLoading || Boolean(error) || !isOnline}
+              title={!isOnline ? 'Cần kết nối mạng để xóa ứng viên' : undefined}
+              className="inline-flex min-h-[40px] items-center gap-2 px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold border border-rose-200 rounded-xl text-xs sm:text-sm transition disabled:opacity-50"
             >
               <Trash2 className="w-4 h-4" />
               <span>Xóa ứng viên</span>

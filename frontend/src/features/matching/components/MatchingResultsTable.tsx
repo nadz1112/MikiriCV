@@ -8,6 +8,9 @@ import {
   XCircle,
 } from 'lucide-react';
 import { MatchResult } from '../../../types';
+import { openCandidateCvFile } from '../../../shared/platform/fileViewer';
+import { useSafeAuth } from '../../auth/useSafeAuth';
+import { useIsMobileViewport } from '../../../shared/hooks/useIsMobileViewport';
 
 interface MatchingResultsTableProps {
   selectedJobId: string;
@@ -24,6 +27,8 @@ export const MatchingResultsTable: React.FC<MatchingResultsTableProps> = ({
   isLoading,
   onOpenInsight,
 }) => {
+  const { user } = useSafeAuth();
+  const isMobile = useIsMobileViewport();
   const renderScoreBadge = (score: number) => {
     if (score >= 80) {
       return (
@@ -83,6 +88,81 @@ export const MatchingResultsTable: React.FC<MatchingResultsTableProps> = ({
           {selectedJobId
             ? 'Chưa có kết quả đánh giá nào cho vị trí này. Hãy chọn ứng viên ở trên và bấm Chạy AI Matching.'
             : 'Hãy chọn một Job Description ở Bước 1 để xem bảng xếp hạng ứng viên.'}
+        </div>
+      ) : isMobile ? (
+        <div className="divide-y divide-slate-100">
+          {results.map((result, idx) => (
+            <div
+              key={result.id}
+              onClick={() => onOpenInsight(result)}
+              className="space-y-3 p-4 transition active:bg-blue-50/40"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-600">
+                      {idx === 0 ? '🥇 #1' : idx === 1 ? '🥈 #2' : idx === 2 ? '🥉 #3' : `#${idx + 1}`}
+                    </span>
+                    <h3 className="truncate text-sm font-bold text-slate-900">
+                      {result.candidate?.fullName || 'Ứng viên'}
+                    </h3>
+                  </div>
+                  {result.candidate?.email && (
+                    <p className="mt-0.5 truncate text-xs text-slate-500">{result.candidate.email}</p>
+                  )}
+                </div>
+                {renderScoreBadge(result.score)}
+              </div>
+
+              <div className="flex flex-wrap gap-1">
+                {result.matchedSkills.slice(0, 3).map((skill) => (
+                  <span
+                    key={`m-${skill}`}
+                    className="inline-flex items-center gap-0.5 rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700"
+                  >
+                    <CheckCircle2 className="h-2.5 w-2.5" />
+                    {skill}
+                  </span>
+                ))}
+                {result.missingSkills.slice(0, 2).map((skill) => (
+                  <span
+                    key={`x-${skill}`}
+                    className="inline-flex items-center gap-0.5 rounded border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700"
+                  >
+                    <XCircle className="h-2.5 w-2.5" />
+                    {skill}
+                  </span>
+                ))}
+              </div>
+
+              <p className="line-clamp-2 text-xs leading-relaxed text-slate-600">{result.summary}</p>
+
+              <div className="flex items-center justify-end gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void openCandidateCvFile({
+                      candidateId: result.candidateId,
+                      fileName: result.candidate?.fileName,
+                      userId: user?.id,
+                    })
+                  }
+                  className="inline-flex min-h-[38px] items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700"
+                >
+                  <ExternalLink className="h-3.5 w-3.5 text-slate-400" />
+                  <span>CV gốc</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onOpenInsight(result)}
+                  className="inline-flex min-h-[38px] items-center gap-1 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700"
+                >
+                  <span>AI Insight</span>
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
         <div className="overflow-x-auto">
@@ -162,11 +242,11 @@ export const MatchingResultsTable: React.FC<MatchingResultsTableProps> = ({
                       <button
                         type="button"
                         onClick={() =>
-                          window.open(
-                            `/api/candidates/${result.candidateId}/file`,
-                            '_blank',
-                            'noopener,noreferrer',
-                          )
+                          void openCandidateCvFile({
+                            candidateId: result.candidateId,
+                            fileName: result.candidate?.fileName,
+                            userId: user?.id,
+                          })
                         }
                         className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
                         title="Xem CV gốc"

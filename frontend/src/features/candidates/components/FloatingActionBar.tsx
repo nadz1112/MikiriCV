@@ -26,15 +26,16 @@ export const FloatingActionBar: React.FC = () => {
   };
 
   return (
-    <div className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 animate-in fade-in slide-in-from-bottom-4 duration-200">
-      <div className="flex items-center gap-4 rounded-2xl border border-slate-700/80 bg-slate-900/95 px-5 py-3 text-white shadow-2xl backdrop-blur-md">
-        <div className="flex items-center gap-2.5">
+    <div className="fixed bottom-20 md:bottom-6 left-1/2 z-40 -translate-x-1/2 max-w-[calc(100vw-1.5rem)] animate-in fade-in slide-in-from-bottom-4 duration-200">
+      <div className="flex items-center gap-2.5 sm:gap-4 rounded-2xl border border-slate-700/80 bg-slate-900/95 px-3.5 sm:px-5 py-2.5 sm:py-3 text-white shadow-2xl backdrop-blur-md">
+        <div className="flex items-center gap-2">
           <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-blue-600 px-2 text-xs font-bold text-white">
             {selectedCandidateIds.length}
           </span>
-          <span className="text-sm font-medium text-slate-100">
+          <span className="hidden sm:inline text-sm font-medium text-slate-100">
             Đã chọn <strong className="text-white">{selectedCandidateIds.length}</strong> ứng viên
           </span>
+          <span className="sm:hidden text-xs font-medium text-slate-100">Đã chọn</span>
         </div>
 
         <div className="h-4 w-px bg-slate-700" />
@@ -42,7 +43,7 @@ export const FloatingActionBar: React.FC = () => {
         <button
           type="button"
           onClick={clearSelection}
-          className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-800 hover:text-white"
+          className="inline-flex min-h-[38px] items-center gap-1 rounded-lg px-2 sm:px-2.5 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-800 hover:text-white"
         >
           <X className="h-3.5 w-3.5" />
           <span>Bỏ chọn</span>
@@ -52,10 +53,10 @@ export const FloatingActionBar: React.FC = () => {
           <button
             type="button"
             onClick={handleGoToMatching}
-            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-blue-500/20 transition hover:from-blue-500 hover:to-indigo-500"
+            className="inline-flex min-h-[40px] items-center gap-1.5 sm:gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-3 sm:px-4 py-2 text-xs font-semibold text-white shadow-md shadow-blue-500/20 transition hover:from-blue-500 hover:to-indigo-500"
           >
             <Sparkles className="h-3.5 w-3.5 text-amber-300" />
-            <span>{isFreePlan ? 'Chấm điểm CV này (FREE)' : 'Chạy AI Matching'}</span>
+            <span>{isFreePlan ? 'Chấm điểm (FREE)' : 'AI Matching'}</span>
             <ArrowRight className="h-3.5 w-3.5" />
           </button>
         )}

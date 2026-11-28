@@ -23,3 +23,4 @@ Migration `20261007000000_auth_tenant` tạo một bản ghi `legacy-owner@syste
 - Phải cấu hình hai JWT secret đủ dài trước khi backend khởi động; secret không được đưa vào frontend hoặc log.
 - Cookie auth yêu cầu frontend gửi header CSRF tùy biến và request credentials.
 - Lưu tệp hiện tại vẫn dùng filesystem cục bộ; triển khai nhiều instance cần shared storage.
+- Mở rộng đa nền tảng (PWA + Capacitor Native Mobile) và cơ chế giữ phiên ngoại tuyến được bổ sung tại [ADR-09](./ADR-09-cross-platform-offline.md).

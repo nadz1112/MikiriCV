@@ -12,7 +12,12 @@ export function useJobs() {
   useEffect(() => {
     const controller = new AbortController();
     void fetchJobs({ signal: controller.signal });
-    return () => controller.abort();
+    const onSynced = () => void fetchJobs({ background: true });
+    window.addEventListener('offline:synced', onSynced);
+    return () => {
+      controller.abort();
+      window.removeEventListener('offline:synced', onSynced);
+    };
   }, [fetchJobs]);
   useAutoRefresh((signal) => fetchJobs({ background: true, signal }), isAdmin && !isLoading);
   useEffect(() => {

@@ -33,11 +33,41 @@ const createJobSchema = z.object({
 // PUT replaces the JD and uses the same complete validation rules as creation.
 const updateJobSchema = createJobSchema;
 
+const optionalSyncHeadersSchema = z.object({
+  idempotencyKey: z
+    .string()
+    .trim()
+    .min(8, 'Idempotency-Key phải có ít nhất 8 ký tự')
+    .max(128, 'Idempotency-Key tối đa 128 ký tự')
+    .optional(),
+  unmodifiedSince: z
+    .string()
+    .trim()
+    .refine((value) => !Number.isNaN(Date.parse(value)), 'X-Unmodified-Since không hợp lệ')
+    .optional(),
+});
+
+const validateOptionalSyncHeaders = (
+  req: import('express').Request,
+  _res: import('express').Response,
+  next: import('express').NextFunction,
+) => {
+  const parsed = optionalSyncHeadersSchema.safeParse({
+    idempotencyKey: req.get('Idempotency-Key')?.trim() || undefined,
+    unmodifiedSince: req.get('X-Unmodified-Since')?.trim() || undefined,
+  });
+  if (!parsed.success) {
+    next(parsed.error);
+    return;
+  }
+  next();
+};
+
 router.get('/', (req, res, next) => jobController.getAllJobs(req, res, next));
 router.get('/:id/stats', (req, res, next) => jobController.getJobStats(req, res, next));
 router.get('/:id', (req, res, next) => jobController.getJobById(req, res, next));
-router.post('/', requireRole('ENTERPRISE'), validateRequest({ body: createJobSchema }), (req, res, next) => jobController.createJob(req, res, next));
-router.put('/:id', validateRequest({ body: updateJobSchema }), (req, res, next) => jobController.updateJob(req, res, next));
+router.post('/', requireRole('ENTERPRISE'), validateOptionalSyncHeaders, validateRequest({ body: createJobSchema }), (req, res, next) => jobController.createJob(req, res, next));
+router.put('/:id', validateOptionalSyncHeaders, validateRequest({ body: updateJobSchema }), (req, res, next) => jobController.updateJob(req, res, next));
 router.delete('/:id', (req, res, next) => jobController.deleteJob(req, res, next));
 
 export default router;

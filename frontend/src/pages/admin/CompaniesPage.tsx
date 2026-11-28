@@ -5,6 +5,7 @@ import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContai
 import { getAdminDashboard, type AdminDashboard, type DashboardRange, type EnterpriseActivity } from '../../services/adminDashboardApi';
 import { useAutoRefresh } from '../../shared/hooks/useAutoRefresh';
 import { SubscriptionPlans } from '../../components/common/SubscriptionPlans';
+import { useIsMobileViewport } from '../../shared/hooks/useIsMobileViewport';
 
 type SortKey = 'companyName' | 'jobCount' | 'candidateCount' | 'matchCount' | 'tokens' | 'lastLoginAt';
 const number = (value: number) => value.toLocaleString('vi-VN');
@@ -12,6 +13,7 @@ const recordedCost = (value?: string | null) => value == null ? 'Chưa xác đ�
 const panel = 'rounded-2xl border border-slate-200 bg-white p-5 shadow-sm';
 
 export function CompaniesPage() {
+  const isMobile = useIsMobileViewport();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [range, setRange] = useState<DashboardRange>('7d');
@@ -69,7 +71,7 @@ export function CompaniesPage() {
     {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-800">{error}<button onClick={() => setRetry((value) => value + 1)} className="ml-3 rounded-lg border border-red-300 px-3 py-1 font-semibold">Thử lại</button></div>}
     {data && <>
       <section className={panel}><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-bold">Chi tiết doanh nghiệp</h2><label className="text-sm font-medium">Doanh nghiệp <select aria-label="Doanh nghiệp thống kê AI" value={companyId} onChange={(event) => setCompanyId(event.target.value)} className="ml-2 rounded-lg border border-slate-300 bg-white px-3 py-2"><option value="">Tất cả doanh nghiệp</option>{enterprises.filter((enterprise) => enterprise.id !== null).map((enterprise) => <option key={enterprise.id} value={enterprise.id!}>{enterprise.companyName}</option>)}</select></label></div>
-        <div role="tablist" className="mt-5 flex gap-2">{[["plan", "Gói dịch vụ"], ["accounts", "Tài khoản HR"], ["usage", "Sử dụng AI"]].map(([key, label]) => <button role="tab" aria-selected={tab === key} key={key} onClick={() => setTab(key)} className={`rounded-lg px-4 py-2 text-sm ${tab === key ? "bg-blue-700 text-white" : "bg-slate-100"}`}>{label}</button>)}</div>
+        <div role="tablist" className="mt-5 flex gap-2 overflow-x-auto">{[["plan", "Gói dịch vụ"], ["accounts", "Tài khoản HR"], ["usage", "Sử dụng AI"]].map(([key, label]) => <button role="tab" aria-selected={tab === key} key={key} onClick={() => setTab(key)} className={`min-h-[40px] whitespace-nowrap rounded-lg px-4 py-2 text-sm ${tab === key ? "bg-blue-700 text-white" : "bg-slate-100"}`}>{label}</button>)}</div>
         {tab === "usage" && <><div className="my-5 grid gap-4 sm:grid-cols-3">{[['Token đầu vào', number(data.ai.inputTokens)], ['Token đầu ra', number(data.ai.outputTokens)], ['Chi phí Gemini đã ghi nhận', recordedCost(data.ai.actualCostUsd)]].map(([label, value]) => <div key={label} className="rounded-xl bg-slate-50 p-4"><p className="text-xs text-slate-500">{label}</p><p className="mt-2 text-xl font-bold">{value}</p></div>)}</div>
         <div className="my-4 grid gap-4 sm:grid-cols-2"><div className="rounded-xl bg-slate-50 p-4"><p className="text-xs text-slate-500">Token suy luận</p><p className="mt-2 text-xl font-bold">{number(data.ai.thinkingTokens ?? 0)}</p></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-xs text-slate-500">Chi phí AI đã ghi nhận theo phiên bản đơn giá (USD)</p><p className="mt-2 text-xl font-bold">{recordedCost(data.ai.actualCostUsd)}</p><p className="mt-1 text-xs text-slate-500">{data.ai.callsWithoutPrice ?? 0} lần gọi chưa xác định chi phí; tổng trên có thể chưa đầy đủ.</p></div></div>
 
@@ -81,13 +83,57 @@ export function CompaniesPage() {
         {tab !== "usage" && <SubscriptionPlans admin view={tab === "accounts" ? "accounts" : "plan"} subscription={enterprises.find((enterprise) => enterprise.id === companyId)?.subscription} onUpdated={() => setRetry((value) => value + 1)} />}
       </section>
       <section className={panel}><h2 className="text-lg font-bold">Hoạt động theo doanh nghiệp</h2><input aria-label="Tìm doanh nghiệp" placeholder="Tìm theo tên doanh nghiệp" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} className="mt-3 w-full rounded-lg border px-3 py-2 sm:max-w-sm" />
-        <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[800px] text-left text-sm"><thead className="bg-slate-50 text-slate-600"><tr>{([
-          ['companyName', 'Doanh nghiệp'], ['jobCount', 'JD'], ['candidateCount', 'CV'], ['matchCount', 'Matching'], ['tokens', 'Token đã dùng'], ['lastLoginAt', 'Đăng nhập cuối'],
-        ] as const).map(([key, label]) => <th key={key} aria-sort={sort.key === key ? sort.ascending ? 'ascending' : 'descending' : 'none'} className="px-4 py-3"><button onClick={() => changeSort(key)} className="font-semibold">{label}{sort.key === key ? sort.ascending ? ' ↑' : ' ↓' : ' ↕'}</button></th>)}<th className="px-4 py-3">Lượt gọi AI</th><th className="px-4 py-3">Chi phí Gemini (USD)</th></tr></thead><tbody>
-          {filtered.length === 0 ? <tr><td colSpan={8} className="p-8 text-center text-slate-500">{search ? 'Không có doanh nghiệp phù hợp.' : 'Chưa có tài khoản doanh nghiệp.'}</td></tr> : visible.map((row) => <tr key={row.id ?? 'deleted-accounts'} className="border-t border-slate-100"><td className="px-4 py-3">{row.id ? <button aria-expanded={expandedId === row.id} aria-controls="company-hr-details" onClick={() => { setExpandedId((current) => current === row.id ? null : row.id); setCompanyId(row.id!); }} className="text-left font-semibold text-blue-700 hover:underline">{row.companyName || 'Chưa có tên công ty'}</button> : <div className="font-medium">{row.companyName}</div>}<div className="text-xs text-slate-500">{row.members?.filter((hr) => hr.isActive).length ?? 0} hoạt động / {row.members?.filter((hr) => !hr.isActive).length ?? 0} đã khóa</div></td><td className="px-4 py-3">{number(row.jobCount)}</td><td className="px-4 py-3">{number(row.candidateCount)}</td><td className="px-4 py-3">{number(row.matchCount)}</td><td className="px-4 py-3">{number(row.inputTokens + row.outputTokens)}</td><td className="px-4 py-3">{row.lastLoginAt ? new Date(row.lastLoginAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : 'Chưa đăng nhập'}</td><td className="px-4 py-3">{number(row.calls)}</td><td className="px-4 py-3">{recordedCost(row.actualCostUsd)}{row.subscription && <div className="mt-1 text-xs font-medium text-blue-700">{row.subscription.name} · {number(row.subscription.tokenLimit)} token / HR / {row.subscription.cycleDays} ngày<br />{row.subscription.startsAt ? new Date(row.subscription.startsAt).toLocaleDateString("vi-VN") : "—"} → {row.subscription.endsAt ? new Date(row.subscription.endsAt).toLocaleDateString("vi-VN") : "Không giới hạn"}</div>}</td></tr>)}
-        </tbody></table></div>
+        {isMobile ? (
+          <div className="mt-4 space-y-3">
+            {filtered.length === 0 ? (
+              <p className="p-6 text-center text-sm text-slate-500">{search ? 'Không có doanh nghiệp phù hợp.' : 'Chưa có tài khoản doanh nghiệp.'}</p>
+            ) : visible.map((row) => (
+              <article key={row.id ?? 'deleted-accounts'} className="space-y-2 rounded-xl border border-slate-200 p-4 text-sm">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    {row.id ? (
+                      <button aria-expanded={expandedId === row.id} aria-controls="company-hr-details" onClick={() => { setExpandedId((current) => current === row.id ? null : row.id); setCompanyId(row.id!); }} className="text-left font-semibold text-blue-700 hover:underline">
+                        {row.companyName || 'Chưa có tên công ty'}
+                      </button>
+                    ) : <div className="font-medium">{row.companyName}</div>}
+                    <p className="text-xs text-slate-500">{row.members?.filter((hr) => hr.isActive).length ?? 0} hoạt động / {row.members?.filter((hr) => !hr.isActive).length ?? 0} đã khóa</p>
+                  </div>
+                  {row.subscription && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">{row.subscription.name}</span>}
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
+                  <span>JD: <strong>{number(row.jobCount)}</strong> · CV: <strong>{number(row.candidateCount)}</strong></span>
+                  <span>Matching: <strong>{number(row.matchCount)}</strong></span>
+                  <span>Token: <strong>{number(row.inputTokens + row.outputTokens)}</strong></span>
+                  <span>Chi phí: <strong>{recordedCost(row.actualCostUsd)}</strong></span>
+                </div>
+                <div className="text-xs text-slate-400">Đăng nhập cuối: {row.lastLoginAt ? new Date(row.lastLoginAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : 'Chưa đăng nhập'}</div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[800px] text-left text-sm"><thead className="bg-slate-50 text-slate-600"><tr>{([
+            ['companyName', 'Doanh nghiệp'], ['jobCount', 'JD'], ['candidateCount', 'CV'], ['matchCount', 'Matching'], ['tokens', 'Token đã dùng'], ['lastLoginAt', 'Đăng nhập cuối'],
+          ] as const).map(([key, label]) => <th key={key} aria-sort={sort.key === key ? sort.ascending ? 'ascending' : 'descending' : 'none'} className="px-4 py-3"><button onClick={() => changeSort(key)} className="font-semibold">{label}{sort.key === key ? sort.ascending ? ' ↑' : ' ↓' : ' ↕'}</button></th>)}<th className="px-4 py-3">Lượt gọi AI</th><th className="px-4 py-3">Chi phí Gemini (USD)</th></tr></thead><tbody>
+            {filtered.length === 0 ? <tr><td colSpan={8} className="p-8 text-center text-slate-500">{search ? 'Không có doanh nghiệp phù hợp.' : 'Chưa có tài khoản doanh nghiệp.'}</td></tr> : visible.map((row) => <tr key={row.id ?? 'deleted-accounts'} className="border-t border-slate-100"><td className="px-4 py-3">{row.id ? <button aria-expanded={expandedId === row.id} aria-controls="company-hr-details" onClick={() => { setExpandedId((current) => current === row.id ? null : row.id); setCompanyId(row.id!); }} className="text-left font-semibold text-blue-700 hover:underline">{row.companyName || 'Chưa có tên công ty'}</button> : <div className="font-medium">{row.companyName}</div>}<div className="text-xs text-slate-500">{row.members?.filter((hr) => hr.isActive).length ?? 0} hoạt động / {row.members?.filter((hr) => !hr.isActive).length ?? 0} đã khóa</div></td><td className="px-4 py-3">{number(row.jobCount)}</td><td className="px-4 py-3">{number(row.candidateCount)}</td><td className="px-4 py-3">{number(row.matchCount)}</td><td className="px-4 py-3">{number(row.inputTokens + row.outputTokens)}</td><td className="px-4 py-3">{row.lastLoginAt ? new Date(row.lastLoginAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : 'Chưa đăng nhập'}</td><td className="px-4 py-3">{number(row.calls)}</td><td className="px-4 py-3">{recordedCost(row.actualCostUsd)}{row.subscription && <div className="mt-1 text-xs font-medium text-blue-700">{row.subscription.name} · {number(row.subscription.tokenLimit)} token / HR / {row.subscription.cycleDays} ngày<br />{row.subscription.startsAt ? new Date(row.subscription.startsAt).toLocaleDateString("vi-VN") : "—"} → {row.subscription.endsAt ? new Date(row.subscription.endsAt).toLocaleDateString("vi-VN") : "Không giới hạn"}</div>}</td></tr>)}
+          </tbody></table></div>
+        )}
         <Pagination page={currentPage} total={filtered.length} onChange={setPage} label="Phân trang doanh nghiệp" />
-        {expanded && <section id="company-hr-details" aria-label={`HR thuộc ${expanded.companyName}`} className="mt-5 rounded-xl border border-blue-100 bg-blue-50/40 p-4"><div className="flex items-center justify-between gap-3"><h3 className="font-bold">Tài khoản HR · {expanded.companyName}</h3><button onClick={() => setExpandedId(null)} className="text-sm font-semibold text-blue-700">Thu gọn</button></div><div className="mt-3 overflow-x-auto"><table className="w-full min-w-[750px] text-left text-sm"><thead><tr>{['Họ tên HR', 'Email', 'Trạng thái', 'JD', 'CV', 'Matching', 'Token đầu vào', 'Token đầu ra', 'Lượt gọi AI'].map((heading) => <th key={heading} className="px-3 py-2">{heading}</th>)}</tr></thead><tbody>{expanded.members.length === 0 ? <tr><td colSpan={9} className="p-4 text-center text-slate-500">Chưa có tài khoản HR.</td></tr> : expanded.members.map((hr) => <tr key={hr.id} className="border-t border-blue-100"><td className="px-3 py-3 font-medium">{hr.fullName}</td><td className="px-3 py-3">{hr.email}</td><td className="px-3 py-3">{hr.isActive ? 'Hoạt động' : 'Đã khóa'}</td><td className="px-3 py-3">{number(hr.jobCount)}</td><td className="px-3 py-3">{number(hr.candidateCount)}</td><td className="px-3 py-3">{number(hr.matchCount)}</td><td className="px-3 py-3">{number(hr.inputTokens)}</td><td className="px-3 py-3">{number(hr.outputTokens)}</td><td className="px-3 py-3">{number(hr.calls)}</td></tr>)}</tbody></table></div></section>}
+        {expanded && <section id="company-hr-details" aria-label={`HR thuộc ${expanded.companyName}`} className="mt-5 rounded-xl border border-blue-100 bg-blue-50/40 p-4"><div className="flex items-center justify-between gap-3"><h3 className="font-bold">Tài khoản HR · {expanded.companyName}</h3><button onClick={() => setExpandedId(null)} className="text-sm font-semibold text-blue-700">Thu gọn</button></div>{isMobile ? (
+          <div className="mt-3 space-y-2">
+            {expanded.members.length === 0 ? <p className="p-4 text-center text-sm text-slate-500">Chưa có tài khoản HR.</p> : expanded.members.map((hr) => (
+              <div key={hr.id} className="rounded-lg border border-blue-100 bg-white p-3 text-xs space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-bold text-slate-900">{hr.fullName}</span>
+                  <span className={hr.isActive ? 'text-emerald-700' : 'text-rose-700'}>{hr.isActive ? 'Hoạt động' : 'Đã khóa'}</span>
+                </div>
+                <div className="text-slate-500">{hr.email}</div>
+                <div className="text-slate-700">JD: {number(hr.jobCount)} · CV: {number(hr.candidateCount)} · Matching: {number(hr.matchCount)} · Lượt gọi: {number(hr.calls)}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[750px] text-left text-sm"><thead><tr>{['Họ tên HR', 'Email', 'Trạng thái', 'JD', 'CV', 'Matching', 'Token đầu vào', 'Token đầu ra', 'Lượt gọi AI'].map((heading) => <th key={heading} className="px-3 py-2">{heading}</th>)}</tr></thead><tbody>{expanded.members.length === 0 ? <tr><td colSpan={9} className="p-4 text-center text-slate-500">Chưa có tài khoản HR.</td></tr> : expanded.members.map((hr) => <tr key={hr.id} className="border-t border-blue-100"><td className="px-3 py-3 font-medium">{hr.fullName}</td><td className="px-3 py-3">{hr.email}</td><td className="px-3 py-3">{hr.isActive ? 'Hoạt động' : 'Đã khóa'}</td><td className="px-3 py-3">{number(hr.jobCount)}</td><td className="px-3 py-3">{number(hr.candidateCount)}</td><td className="px-3 py-3">{number(hr.matchCount)}</td><td className="px-3 py-3">{number(hr.inputTokens)}</td><td className="px-3 py-3">{number(hr.outputTokens)}</td><td className="px-3 py-3">{number(hr.calls)}</td></tr>)}</tbody></table></div>
+        )}</section>}
       </section>
     </>}
   </div>;

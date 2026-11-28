@@ -10,8 +10,8 @@ function AccountDialog({ title, children, onClose }: { title: string; children: 
     ref.current?.focus();
     return () => { if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); };
   }, []);
-  return <ModalPortal><div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4" onClick={onClose}>
-    <div role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={ref} className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-2xl bg-white p-5 shadow-xl sm:p-7" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => {
+  return <ModalPortal><div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-slate-950/50 p-0 sm:p-4" onClick={onClose}>
+    <div role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={ref} className="max-h-[92dvh] w-full max-w-3xl overflow-auto rounded-t-2xl sm:rounded-2xl bg-white p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-xl sm:p-7" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => {
       if (e.key === 'Escape') { e.stopPropagation(); onClose(); }
       if (e.key === 'Tab') {
         const focusable = ref.current?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], [tabindex="0"]');
@@ -19,7 +19,7 @@ function AccountDialog({ title, children, onClose }: { title: string; children: 
         if (e.shiftKey && (document.activeElement === first || document.activeElement === ref.current)) { e.preventDefault(); last?.focus(); }
         else if (!e.shiftKey && (document.activeElement === last || document.activeElement === ref.current)) { e.preventDefault(); first?.focus(); }
       }
-    }}><div className="mb-4 flex items-start justify-between gap-3"><h2 className="text-xl font-bold">{title}</h2><button aria-label="Đóng hộp thoại" onClick={onClose} className="rounded-lg px-3 py-1 text-slate-600 hover:bg-slate-100">Đóng</button></div>{children}</div>
+    }}><div className="mb-4 flex items-start justify-between gap-3"><h2 className="text-xl font-bold">{title}</h2><button aria-label="Đóng hộp thoại" onClick={onClose} className="min-h-[40px] rounded-lg px-3 py-1 text-slate-600 hover:bg-slate-100">Đóng</button></div>{children}</div>
   </div></ModalPortal>;
 }
 

@@ -13,6 +13,7 @@
 | Đóng gói dễ triển khai | NFR7 | Docker Compose: web + api + postgres + volume |
 | Tiếng Việt | NFR8 | UTF-8 xuyên suốt, chuẩn hóa bỏ dấu cho tìm kiếm (mục 5.4.5) |
 | Dữ liệu cá nhân nhạy cảm (CV) | Bối cảnh nghiệp vụ | Không phục vụ file tĩnh công khai, không log `rawText`, xóa thật khi xóa ứng viên |
+| Đa nền tảng & Ngoại tuyến | Mở rộng sau MVP ([ADR-09](./ADR-09-cross-platform-offline.md)) | PWA + Capacitor Mobile trên cùng codebase React; Dual-mode Auth; `IndexedDB` cô lập theo `userId` và hàng đợi `Idempotency-Key` |
 
 ### 5.1.2 Kiến trúc ngữ cảnh hệ thống (C4 — Level 1)
 

@@ -1,8 +1,26 @@
 import axios, { type InternalAxiosRequestConfig } from 'axios';
 import toast from 'react-hot-toast';
 import { removeDeletedCandidate } from '../features/candidates/store/removeDeletedCandidate';
+import {
+  getApiBaseUrl,
+  isNativeMobile,
+  isNetworkOfflineError,
+  resolveApiUrl,
+} from '../shared/platform/runtime';
+import {
+  clearNativeTokens,
+  getNativeAccessToken,
+  getNativeRefreshToken,
+  setNativeTokens,
+  type NativeTokenPair,
+} from '../shared/platform/secureTokenStorage';
+import { useNetworkStore } from '../shared/offline/networkStore';
 
-export const api = axios.create({ baseURL: '/api', withCredentials: true, headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'CVMikiri' } });
+export const api = axios.create({
+  baseURL: getApiBaseUrl(),
+  withCredentials: true,
+  headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'CVMikiri' },
+});
 let refreshRequest: Promise<unknown> | null = null;
 let refreshBlocked = false;
 let authGeneration = 0;
@@ -10,6 +28,7 @@ const pendingMatching = new Map<string, string>();
 type SessionConfig = InternalAxiosRequestConfig & { _retried?: boolean; _authGeneration?: number; _matchingIntent?: string };
 
 api.interceptors.request.use((config) => {
+  config.baseURL = getApiBaseUrl();
   if (config.method === 'post' && ['/matching/run', '/matching/jobs'].includes(config.url ?? '') && !config.headers.get('Idempotency-Key')) {
     const intent = `${config.url}:${JSON.stringify(config.data)}`;
     const key = pendingMatching.get(intent) ?? crypto.randomUUID();
@@ -18,24 +37,45 @@ api.interceptors.request.use((config) => {
     config.headers.set('Idempotency-Key', key);
   }
   (config as SessionConfig)._authGeneration = authGeneration;
+  if (isNativeMobile()) {
+    config.headers.set('X-Client-Platform', 'mobile-native');
+    const accessToken = getNativeAccessToken();
+    if (accessToken && !config.headers.get('Authorization')) {
+      config.headers.set('Authorization', `Bearer ${accessToken}`);
+    }
+  }
   return config;
 });
 
 function expireSession() {
   if (refreshBlocked) return;
   refreshBlocked = true;
+  if (isNativeMobile()) {
+    void clearNativeTokens();
+  }
   window.dispatchEvent(new Event('auth:expired'));
 }
 
 api.interceptors.response.use((response) => {
   const intent = (response.config as SessionConfig)._matchingIntent;
   if (intent) pendingMatching.delete(intent);
+  if (!useNetworkStore.getState().isOnline) {
+    useNetworkStore.getState().setOnline(true);
+  }
   const url = response.config.url;
+  const responseTokens = response.data?.data?.tokens as NativeTokenPair | undefined;
+  if (isNativeMobile() && responseTokens?.accessToken && responseTokens?.refreshToken) {
+    void setNativeTokens(responseTokens);
+  }
   if (url === '/auth/login' || url === '/auth/change-password') {
     refreshBlocked = false;
     authGeneration++;
     pendingMatching.clear();
-  } else if (url === '/auth/logout' || (url === '/auth/me' && !response.data?.data?.user)) {
+  } else if (url === '/auth/logout') {
+    refreshBlocked = true;
+    pendingMatching.clear();
+    if (isNativeMobile()) void clearNativeTokens();
+  } else if (url === '/auth/me' && !response.data?.data?.user) {
     refreshBlocked = true;
     pendingMatching.clear();
   } else if (url === '/auth/me' && response.data?.data?.user) {
@@ -65,8 +105,23 @@ api.interceptors.response.use((response) => {
     // A late 401 from the previous access token should reuse the refreshed cookie.
     if (original._authGeneration !== authGeneration) return api(original);
     try {
-      refreshRequest ??= axios.post('/api/auth/refresh', {}, { withCredentials: true, headers: { 'X-Requested-With': 'CVMikiri' } })
-        .then((response) => { authGeneration++; return response; })
+      const nativeMode = isNativeMobile();
+      const refreshToken = nativeMode ? await getNativeRefreshToken() : null;
+      const refreshHeaders: Record<string, string> = { 'X-Requested-With': 'CVMikiri' };
+      if (nativeMode) refreshHeaders['X-Client-Platform'] = 'mobile-native';
+      refreshRequest ??= axios.post(
+        resolveApiUrl('/auth/refresh'),
+        nativeMode && refreshToken ? { refreshToken } : {},
+        { withCredentials: true, headers: refreshHeaders },
+      )
+        .then((response) => {
+          const tokens = response.data?.data?.tokens as NativeTokenPair | undefined;
+          if (nativeMode && tokens?.accessToken && tokens?.refreshToken) {
+            void setNativeTokens(tokens);
+          }
+          authGeneration++;
+          return response;
+        })
         .finally(() => { refreshRequest = null; });
       await refreshRequest;
       return api(original);
@@ -74,6 +129,10 @@ api.interceptors.response.use((response) => {
       if (axios.isAxiosError(refreshError) && [401, 403].includes(refreshError.response?.status ?? 0)) expireSession();
       return Promise.reject(refreshError);
     }
+  }
+  if (isNetworkOfflineError(error)) {
+    useNetworkStore.getState().setOnline(false);
+    return Promise.reject(error);
   }
   const message = error.response?.data?.error?.message || error.response?.data?.message || error.message || 'Đã xảy ra lỗi kết nối máy chủ';
   if ((error.response?.status === 403 || !/\/auth\//.test(url)) && !url.endsWith('/candidates/upload')) toast.error(message);

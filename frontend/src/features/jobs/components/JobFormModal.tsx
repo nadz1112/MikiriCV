@@ -6,6 +6,10 @@ import toast from 'react-hot-toast';
 import { CvTestCategory, CvTestWeights, JobDescription } from '../../../types';
 import { jobFeatureApi, JobPayload } from '../api/jobApi';
 import { useSubscriptionStore } from '../../subscription/subscriptionStore';
+import { useSafeAuth } from '../../auth/useSafeAuth';
+import { useNetworkStore } from '../../../shared/offline/networkStore';
+import { offlineDb } from '../../../shared/offline/offlineDb';
+import { isNetworkOfflineError } from '../../../shared/platform/runtime';
 
 const DEFAULT_WEIGHTS: CvTestWeights = {
   skill_matching: 25,
@@ -95,6 +99,8 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
 }) => {
   const storePlan = useSubscriptionStore((state) => state.subscription?.name);
   const isFreePlan = (plan ?? storePlan) === 'FREE';
+  const { user } = useSafeAuth();
+  const isOnline = useNetworkStore((state) => state.isOnline);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [skills, setSkills] = useState<string[]>([]);
@@ -211,7 +217,47 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
       ...(isFreePlan ? {} : { evaluationConfig: { weights: validWeights } }),
     };
 
+    const queueOfflineMutation = async () => {
+      if (!user?.id) {
+        toast.error('Không xác định được phiên tài khoản để lưu ngoại tuyến.');
+        return;
+      }
+      const key = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `job-${Date.now()}`;
+      const isEdit = Boolean(editingJob);
+      await offlineDb.enqueueJobMutation(user.id, {
+        type: isEdit ? 'UPDATE_JOB' : 'CREATE_JOB',
+        targetJobId: editingJob?.id,
+        baseUpdatedAt: editingJob?.updatedAt,
+        idempotencyKey: key,
+        payload,
+      });
+      await useNetworkStore.getState().refreshQueueCounts(user.id);
+      const nowIso = new Date().toISOString();
+      const optimisticJob: JobDescription = {
+        id: editingJob?.id ?? `offline-draft-${key}`,
+        title: payload.title,
+        description: payload.description,
+        requiredSkills: payload.requiredSkills,
+        minExperience: payload.minExperience,
+        preferredSkills: payload.preferredSkills,
+        evaluationConfig: payload.evaluationConfig,
+        createdAt: editingJob?.createdAt ?? nowIso,
+        updatedAt: nowIso,
+        createdById: editingJob?.createdById ?? user.id,
+        _count: editingJob?._count ?? { matchResults: 0 },
+      };
+      toast.success('Đang ngoại tuyến: Đã lưu Job Description vào hàng đợi đồng bộ.');
+      onSuccess(optimisticJob, isEdit);
+      onClose();
+    };
+
     try {
+      if (!isOnline) {
+        await queueOfflineMutation();
+        return;
+      }
       if (editingJob) {
         const updated = await jobFeatureApi.update(editingJob.id, payload);
         if (updated) {
@@ -226,7 +272,10 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
         }
       }
       onClose();
-    } catch {
+    } catch (error) {
+      if (isNetworkOfflineError(error)) {
+        await queueOfflineMutation();
+      }
       // Lỗi từ server được hiển thị qua interceptor toast
     } finally {
       setSubmitting(false);
@@ -236,14 +285,14 @@ export const JobFormModal: React.FC<JobFormModalProps> = ({
   return (
     <ModalPortal>
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4 backdrop-blur-sm animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center bg-slate-950/50 p-0 sm:p-4 backdrop-blur-sm animate-in fade-in duration-150"
     >
       <section
         role="dialog"
         aria-modal="true"
         aria-labelledby="job-form-title"
         onClick={(e) => e.stopPropagation()}
-        className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+        className="max-h-[92dvh] w-full max-w-xl overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl"
       >
         <div className="mb-5 flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
           <div>

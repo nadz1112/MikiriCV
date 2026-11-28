@@ -9,6 +9,11 @@ import { useSubscriptionStore } from '../../subscription/subscriptionStore';
 import type { Candidate } from '../../../types';
 import { CandidateInsightDrawer } from '../../../components/dashboard/CandidateInsightDrawer';
 import { useAutoRefresh } from '../../../shared/hooks/useAutoRefresh';
+import { useIsMobileViewport } from '../../../shared/hooks/useIsMobileViewport';
+import { useNetworkStore } from '../../../shared/offline/networkStore';
+import { offlineDb } from '../../../shared/offline/offlineDb';
+import { openCandidateCvFile } from '../../../shared/platform/fileViewer';
+import { useSafeAuth } from '../../auth/useSafeAuth';
 
 interface CandidateTableProps {
   candidates: CandidateItem[];
@@ -30,6 +35,9 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
   onCandidateDeleted,
 }) => {
   const isAdmin = useAuthStore((state) => state.user?.role === 'ADMIN');
+  const { user } = useSafeAuth();
+  const isMobile = useIsMobileViewport();
+  const isOnline = useNetworkStore((state) => state.isOnline);
   const subscription = useSubscriptionStore((state) => state.subscription);
   const isFreePlan = !isAdmin && subscription?.maxCvPerCall === 1;
   const {
@@ -59,6 +67,14 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
       const detail = signal ? await candidateApi.getById(candidate.id, signal) : await candidateApi.getById(candidate.id);
       if (!signal?.aborted && request === detailRequest.current) { setDetailCandidate(detail); setDetailError(''); }
     } catch {
+      if (user?.id) {
+        const pinned = await offlineDb.getPinnedCv(user.id, candidate.id);
+        if (pinned && !signal?.aborted && request === detailRequest.current) {
+          setDetailCandidate(pinned.candidate);
+          setDetailError('');
+          return;
+        }
+      }
       if (!signal?.aborted && request === detailRequest.current) setDetailError('Không thể tải chi tiết ứng viên. Vui lòng thử lại.');
     } finally {
       if (!signal?.aborted && request === detailRequest.current) setDetailLoading(false);
@@ -233,6 +249,134 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
             Đặt lại bộ lọc
           </button>
         </div>
+      ) : isMobile ? (
+        <div className={`divide-y divide-slate-100 ${isLoading ? 'opacity-60 pointer-events-none' : ''}`}>
+          {!isAdmin && !isFreePlan && selectableVisibleIds.length > 0 && (
+            <div className="flex items-center justify-between bg-slate-50/70 px-4 py-2.5 text-xs">
+              <label className="inline-flex items-center gap-2 font-medium text-slate-700">
+                <input
+                  type="checkbox"
+                  ref={headerCheckboxRef}
+                  checked={isAllVisibleSelected}
+                  disabled={selectableVisibleIds.length === 0}
+                  onChange={() => toggleSelectAll(selectableVisibleIds)}
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span>Chọn tất cả ({selectableVisibleIds.length})</span>
+              </label>
+            </div>
+          )}
+          {candidates.map((candidate) => {
+            const isSelected = !isAdmin && selectedCandidateIds.includes(candidate.id);
+            return (
+              <div
+                key={candidate.id}
+                className={`space-y-2.5 p-4 transition ${isSelected ? 'bg-blue-50/50' : 'bg-white'}`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex min-w-0 items-start gap-2.5">
+                    {!isAdmin && (
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        disabled={candidate.extractionStatus === 'FAILED'}
+                        onChange={() => (isFreePlan ? selectSingle(candidate.id) : toggleSelect(candidate.id))}
+                        title={
+                          candidate.extractionStatus === 'FAILED'
+                            ? 'Hồ sơ lỗi trích xuất không thể đưa vào AI Matching'
+                            : 'Chọn ứng viên để chạy AI Matching'
+                        }
+                        className="mt-1 h-5 w-5 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500 disabled:opacity-40"
+                      />
+                    )}
+                    <div className="min-w-0">
+                      {isAdmin ? (
+                        <button
+                          type="button"
+                          onClick={() => void openDetail(candidate)}
+                          className="text-left text-sm font-bold text-blue-700 hover:underline"
+                        >
+                          {candidate.fullName}
+                        </button>
+                      ) : (
+                        <div className="truncate text-sm font-bold text-slate-900">{candidate.fullName}</div>
+                      )}
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                        <span className="font-semibold text-slate-700">{candidate.yearsOfExperience} năm KN</span>
+                        {candidate.email && <span>• {candidate.email}</span>}
+                      </div>
+                      {isAdmin && (
+                        <div className="mt-1 text-xs text-slate-500">
+                          {candidate.uploadedBy?.fullName || 'Không xác định'}
+                          {candidate.uploadedBy?.companyName ? ` · ${candidate.uploadedBy.companyName}` : ''}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    {showMatchScore && renderScoreBadge(candidate.matchScore)}
+                    {renderStatusBadge(candidate.extractionStatus, candidate.extractionMessage)}
+                  </div>
+                </div>
+
+                {candidate.skills.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {candidate.skills.slice(0, 3).map((skill) => (
+                      <span
+                        key={skill}
+                        className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700"
+                      >
+                        {skill}
+                      </span>
+                    ))}
+                    {candidate.skills.length > 3 && (
+                      <span className="rounded bg-slate-200/60 px-1.5 py-0.5 text-[10px] text-slate-500">
+                        +{candidate.skills.length - 3}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                  {!isAdmin && (candidate.extractionStatus === 'FAILED' || candidate.extractionStatus === 'WARNING') && (
+                    <button
+                      type="button"
+                      disabled={reextractingId === candidate.id || !isOnline}
+                      onClick={() => void handleReextract(candidate.id)}
+                      className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 disabled:opacity-50"
+                    >
+                      <RotateCcw className={`h-3 w-3 ${reextractingId === candidate.id ? 'animate-spin' : ''}`} />
+                      <span>{reextractingId === candidate.id ? 'Đang đọc...' : 'Thử lại trích xuất'}</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void openCandidateCvFile({
+                        candidateId: candidate.id,
+                        fileName: candidate.fileName,
+                        userId: user?.id,
+                      })
+                    }
+                    className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-blue-600"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    <span>Xem CV</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!isOnline}
+                    onClick={() => setCandidateToDelete(candidate)}
+                    className="inline-flex min-h-[36px] items-center justify-center rounded-lg px-2.5 py-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
+                    title="Xóa ứng viên"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       ) : (
         <div className="overflow-x-auto">
           <table
@@ -346,7 +490,13 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
                         )}
                         <button
                           type="button"
-                          onClick={() => window.open(`/api/candidates/${candidate.id}/file`, '_blank', 'noopener,noreferrer')}
+                          onClick={() =>
+                            void openCandidateCvFile({
+                              candidateId: candidate.id,
+                              fileName: candidate.fileName,
+                              userId: user?.id,
+                            })
+                          }
                           className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
                           title="Xem tệp CV gốc"
                         >
@@ -355,9 +505,10 @@ export const CandidateTable: React.FC<CandidateTableProps> = ({
                         </button>
                         <button
                           type="button"
+                          disabled={!isOnline}
                           onClick={() => setCandidateToDelete(candidate)}
-                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                          title="Xóa ứng viên"
+                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition disabled:opacity-40"
+                          title={!isOnline ? 'Cần kết nối mạng để xóa ứng viên' : 'Xóa ứng viên'}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>

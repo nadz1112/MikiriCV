@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { JobDescription } from '../../../types';
 import { useCandidateFeatureStore } from '../../candidates/store/candidateStore';
+import { useNetworkStore } from '../../../shared/offline/networkStore';
 
 interface JobCardProps {
   job: JobDescription;
@@ -31,6 +32,8 @@ export const JobCard: React.FC<JobCardProps> = ({
 }) => {
   const navigate = useNavigate();
   const { setJobId, setSkills, setMinExp } = useCandidateFeatureStore();
+  const isOnline = useNetworkStore((state) => state.isOnline);
+  const isOfflineDraft = job.id.startsWith('offline-draft-');
   const matchCount = job._count?.matchResults ?? 0;
 
   const handleFilterCandidatesByJob = (e: React.MouseEvent) => {
@@ -60,19 +63,21 @@ export const JobCard: React.FC<JobCardProps> = ({
             >
               <button
                 type="button"
+                disabled={isOfflineDraft}
                 onClick={() => onEdit(job)}
                 aria-label={`Chỉnh sửa ${job.title}`}
-                title="Chỉnh sửa JD"
-                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-blue-50 hover:text-blue-700"
+                title={isOfflineDraft ? 'Đang chờ đồng bộ lên máy chủ' : 'Chỉnh sửa JD'}
+                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-blue-50 hover:text-blue-700 disabled:opacity-40"
               >
                 <Pencil className="h-4 w-4" />
               </button>
               <button
                 type="button"
+                disabled={!isOnline || isOfflineDraft}
                 onClick={() => onDelete(job)}
                 aria-label={`Xóa ${job.title}`}
-                title="Xóa JD"
-                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                title={!isOnline ? 'Cần kết nối mạng để xóa JD' : 'Xóa JD'}
+                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
               >
                 <Trash2 className="h-4 w-4" />
               </button>

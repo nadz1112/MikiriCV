@@ -10,6 +10,14 @@ import { requireCsrf } from './middlewares/auth.middleware.js';
 
 export function createApp(): Express {
   const app = express();
+  const allowedOrigins = Array.from(
+    new Set(
+      `${env.CORS_ORIGIN},${env.MOBILE_CORS_ORIGINS}`
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  );
   app.use((req, res, next) => {
     const incomingId = req.get('X-Request-Id')?.trim();
     const requestId = incomingId || randomUUID();
@@ -18,7 +26,21 @@ export function createApp(): Express {
     next();
   });
   app.use(helmet());
-  app.use(cors({ origin: env.CORS_ORIGIN.split(',').map((value) => value.trim()), credentials: true }));
+  app.use(
+    cors({
+      origin: allowedOrigins,
+      credentials: true,
+      allowedHeaders: [
+        'Content-Type',
+        'Authorization',
+        'X-Requested-With',
+        'X-Client-Platform',
+        'X-Request-Id',
+        'Idempotency-Key',
+        'X-Unmodified-Since',
+      ],
+    }),
+  );
   app.use(cookieParser());
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));

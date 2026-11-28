@@ -10,6 +10,7 @@ import { CandidateInsightDrawer } from '../components/dashboard/CandidateInsight
 import { DeleteConfirmModal } from '../components/dashboard/DeleteConfirmModal';
 import { useSubscriptionStore } from '../features/subscription/subscriptionStore';
 import { ComparisonExport } from '../features/matching/components/ComparisonExport';
+import { useNetworkStore } from '../shared/offline/networkStore';
 
 interface MatchingLocationState {
   selectedCandidateIds?: string[];
@@ -57,24 +58,27 @@ export const MatchingPage: React.FC = () => {
     handleConfirmDeleteCandidate,
   } = useMatching(navState?.jobId, navState?.selectedCandidateIds);
   const { subscription, fetchSubscription, refreshBalance } = useSubscriptionStore();
+  const isOnline = useNetworkStore((state) => state.isOnline);
   const prevRunning = useRef(false);
 
   useEffect(() => {
-    void fetchSubscription();
-  }, [fetchSubscription]);
+    if (isOnline) {
+      void fetchSubscription();
+    }
+  }, [fetchSubscription, isOnline]);
 
   useEffect(() => {
-    if (prevRunning.current && !isRunning) {
+    if (isOnline && prevRunning.current && !isRunning) {
       void refreshBalance();
     }
     prevRunning.current = isRunning;
-  }, [isRunning, refreshBalance]);
+  }, [isOnline, isRunning, refreshBalance]);
 
   useEffect(() => {
-    if (activeJob && ['COMPLETED', 'CANCELLED', 'FAILED'].includes(activeJob.status)) {
+    if (isOnline && activeJob && ['COMPLETED', 'CANCELLED', 'FAILED'].includes(activeJob.status)) {
       void refreshBalance();
     }
-  }, [activeJob, refreshBalance]);
+  }, [isOnline, activeJob, refreshBalance]);
 
   useEffect(() => {
     if (subscription && selectedCandidateIds.length > subscription.maxCvPerCall) {
@@ -115,6 +119,7 @@ export const MatchingPage: React.FC = () => {
         candidateSearch={candidateSearch}
         onlyUnscored={onlyUnscored}
         isRunning={isRunning}
+        isOnline={isOnline}
         plan={subscription?.name}
         remainingQuota={subscription?.remaining}
         maxCvPerCall={subscription?.maxCvPerCall}

@@ -7,9 +7,24 @@ import { randomUUID } from 'crypto';
 export interface AuthUser { id: string; role: 'ADMIN' | 'ENTERPRISE'; tokenVersion: number; mustChangePassword: boolean }
 declare global { namespace Express { interface Request { user?: AuthUser } } }
 
+export function isMobileNativeClient(req: Request): boolean {
+  return req.get('X-Client-Platform') === 'mobile-native';
+}
+
+export function extractAccessToken(req: Request): string | undefined {
+  const cookieToken = req.cookies?.accessToken as string | undefined;
+  if (cookieToken) return cookieToken;
+  const authHeader = req.get('Authorization');
+  if (authHeader && /^Bearer\s+/i.test(authHeader)) {
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    return token || undefined;
+  }
+  return undefined;
+}
+
 export async function authenticate(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const token = req.cookies?.accessToken as string | undefined;
+    const token = extractAccessToken(req);
     if (!token) { res.status(401).json({ success: false, error: { code: 'UNAUTHENTICATED', message: 'Vui lòng đăng nhập để tiếp tục' }, requestId: randomUUID() }); return; }
     const payload = jwt.verify(token, env.JWT_ACCESS_SECRET) as jwt.JwtPayload;
     if (typeof payload.sub !== 'string' || !['ADMIN', 'ENTERPRISE'].includes(String(payload.role))) throw new Error('invalid');

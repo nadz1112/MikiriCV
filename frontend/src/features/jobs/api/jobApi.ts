@@ -10,6 +10,11 @@ export interface JobPayload {
   evaluationConfig?: CvTestEvaluationConfig;
 }
 
+export interface JobSyncOptions {
+  idempotencyKey?: string;
+  unmodifiedSince?: string;
+}
+
 export const jobFeatureApi = {
   getAll: async (): Promise<JobDescription[]> => {
     const res = await httpClient.get<ApiResponse<JobDescription[]>>('/jobs');
@@ -26,13 +31,18 @@ export const jobFeatureApi = {
     return res.data.data;
   },
 
-  create: async (data: JobPayload): Promise<JobDescription | undefined> => {
-    const res = await httpClient.post<ApiResponse<JobDescription>>('/jobs', data);
+  create: async (data: JobPayload, options?: JobSyncOptions): Promise<JobDescription | undefined> => {
+    const headers: Record<string, string> = {};
+    if (options?.idempotencyKey) headers['Idempotency-Key'] = options.idempotencyKey;
+    const res = await httpClient.post<ApiResponse<JobDescription>>('/jobs', data, { headers });
     return res.data.data;
   },
 
-  update: async (id: string, data: JobPayload): Promise<JobDescription | undefined> => {
-    const res = await httpClient.put<ApiResponse<JobDescription>>(`/jobs/${id}`, data);
+  update: async (id: string, data: JobPayload, options?: JobSyncOptions): Promise<JobDescription | undefined> => {
+    const headers: Record<string, string> = {};
+    if (options?.idempotencyKey) headers['Idempotency-Key'] = options.idempotencyKey;
+    if (options?.unmodifiedSince) headers['X-Unmodified-Since'] = options.unmodifiedSince;
+    const res = await httpClient.put<ApiResponse<JobDescription>>(`/jobs/${id}`, data, { headers });
     return res.data.data;
   },
 

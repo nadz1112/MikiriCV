@@ -2,16 +2,21 @@
 <html lang="vi">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/icons/icon-192.svg" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#1d4ed8" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="description" content="CVMikiri - Hệ thống kiểm tra, sàng lọc và chấm điểm CV thông minh bằng Google Gemini AI & PostgreSQL" />
     <title>CVMikiri — AI Resume Screening & Matching</title>
-    <!-- Google Fonts: Inter -->
+    <!-- Google Fonts: Inter (non-blocking for offline readiness) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
   </head>
-  <body class="bg-slate-50 font-['Inter',sans-serif] text-slate-900 antialiased">
+  <body class="bg-slate-50 font-['Inter',system-ui,-apple-system,'Segoe_UI',Roboto,sans-serif] text-slate-900 antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

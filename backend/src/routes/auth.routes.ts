@@ -2,7 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { env } from '../config/env.js';
-import { authenticate } from '../middlewares/auth.middleware.js';
+import { authenticate, extractAccessToken, isMobileNativeClient } from '../middlewares/auth.middleware.js';
 import { changePassword, issueTokens, login, publicUser, refresh } from '../services/auth.service.js';
 import { prisma } from '../config/database.js';
 import { randomUUID } from 'crypto';
@@ -13,6 +13,14 @@ const accessCookie = (res: import('express').Response, tokens: { access: string;
   res.cookie('accessToken', tokens.access, { ...cookieBase, path: '/' });
   res.cookie('refreshToken', tokens.refresh, { ...cookieBase, path: '/api/auth' });
 };
+const formatAuthResponseData = (
+  req: import('express').Request,
+  user: ReturnType<typeof publicUser>,
+  tokens: { access: string; refresh: string },
+) =>
+  isMobileNativeClient(req)
+    ? { user, tokens: { accessToken: tokens.access, refreshToken: tokens.refresh } }
+    : { user };
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false, handler: (_req, res) => { res.status(429).json({ success: false, error: { code: 'RATE_LIMITED', message: 'Bạn thử đăng nhập quá nhiều lần. Vui lòng thử lại sau.' }, requestId: randomUUID() }); } });
 
 router.post('/login', loginLimiter, async (req, res, next) => {
@@ -20,14 +28,18 @@ router.post('/login', loginLimiter, async (req, res, next) => {
     const data = z.object({ email: z.string().email(), password: z.string().min(1) }).parse(req.body);
     const result = await login(data.email, data.password);
     accessCookie(res, result.tokens);
-    res.json({ success: true, data: { user: result.user } });
+    res.json({ success: true, data: formatAuthResponseData(req, result.user, result.tokens) });
   } catch (err) { next(err); }
 });
 router.post('/refresh', async (req, res) => {
   try {
-    const result = await refresh(req.cookies?.refreshToken);
+    const bodyToken = isMobileNativeClient(req)
+      ? z.object({ refreshToken: z.string().min(1).optional() }).parse(req.body ?? {}).refreshToken
+      : undefined;
+    const refreshToken = req.cookies?.refreshToken || bodyToken;
+    const result = await refresh(refreshToken);
     accessCookie(res, result.tokens);
-    res.json({ success: true, data: { user: result.user } });
+    res.json({ success: true, data: formatAuthResponseData(req, result.user, result.tokens) });
   } catch {
     res.clearCookie('accessToken', { path: '/', ...cookieBase });
     res.clearCookie('refreshToken', { path: '/api/auth', ...cookieBase });
@@ -37,7 +49,7 @@ router.post('/refresh', async (req, res) => {
 router.get('/me', (req, res, next) => {
   // Probing an anonymous session is normal when opening the login page.
   // Expired/invalid cookies still pass through authentication and return 401.
-  if (!req.cookies?.accessToken && !req.cookies?.refreshToken) {
+  if (!req.cookies?.accessToken && !req.cookies?.refreshToken && !extractAccessToken(req)) {
     res.json({ success: true, data: { user: null } });
     return;
   }
@@ -57,7 +69,7 @@ router.post('/change-password', authenticate, async (req, res, next) => {
     const user = await changePassword(req.user!.id, data.currentPassword, data.newPassword);
     const tokens = issueTokens(user);
     accessCookie(res, tokens);
-    res.json({ success: true, data: { user: publicUser(user) } });
+    res.json({ success: true, data: formatAuthResponseData(req, publicUser(user), tokens) });
   } catch (err) { next(err); }
 });
 export default router;

@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { billingApi, type AiBillingInfo } from '../../services/subscriptionApi';
+import { useNetworkStore } from '../../shared/offline/networkStore';
 
 export function AiBillingPanel() {
+  const isOnline = useNetworkStore((state) => state.isOnline);
   const [info, setInfo] = useState<AiBillingInfo>();
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
@@ -29,7 +31,7 @@ export function AiBillingPanel() {
               const signature = JSON.stringify([info.model, input, output, reason]);
               if (receipt.current.signature !== signature) receipt.current = { signature, key: crypto.randomUUID() };
               void billingApi.savePrice(info.model, Number(input), Number(output), reason, receipt.current.key).then(() => { setRevision((v) => v + 1); setReason(''); }).catch(() => setError('Không thể lưu đơn giá Gemini.')).finally(() => setSaving(false));
-            }}>{[['Đầu vào (USD / 1 triệu token)', input, setInput], ['Đầu ra, gồm suy luận (USD / 1 triệu token)', output, setOutput]].map(([label, value, setter]) => <label key={String(label)} className="text-sm">{String(label)}<input required type="number" min="0" max="10000" step="0.00000001" className="mt-1 block w-full rounded-lg border px-3 py-2" value={String(value)} onChange={(e) => (setter as (v: string) => void)(e.target.value)} /></label>)}<label className="text-sm">Lý do thay đổi<input required minLength={3} className="mt-1 block w-full rounded-lg border px-3 py-2" value={reason} onChange={(e) => setReason(e.target.value)} /></label><button disabled={saving} className="self-end rounded-lg bg-blue-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">Lưu đơn giá trả phí</button></form>
+            }}>{[['Đầu vào (USD / 1 triệu token)', input, setInput], ['Đầu ra, gồm suy luận (USD / 1 triệu token)', output, setOutput]].map(([label, value, setter]) => <label key={String(label)} className="text-sm">{String(label)}<input required type="number" min="0" max="10000" step="0.00000001" className="mt-1 block w-full rounded-lg border px-3 py-2" value={String(value)} onChange={(e) => (setter as (v: string) => void)(e.target.value)} /></label>)}<label className="text-sm">Lý do thay đổi<input required minLength={3} className="mt-1 block w-full rounded-lg border px-3 py-2" value={reason} onChange={(e) => setReason(e.target.value)} /></label><button disabled={!isOnline || saving} className="self-end rounded-lg bg-blue-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">Lưu đơn giá trả phí</button></form>
           </details></>}
       <details className="mt-3 text-sm text-slate-600"><summary className="cursor-pointer">Thông tin cấu hình</summary><p className="mt-2">Chế độ lấy từ cấu hình hệ thống. Giới hạn của Google áp dụng cho cả dự án Gemini, độc lập với hạn mức token của HR.</p><div className="mt-2 flex flex-wrap gap-4"><a className="text-blue-700 underline" href={info.pricingUrl} target="_blank" rel="noreferrer">Bảng giá Google</a><a className="text-blue-700 underline" href={info.rateLimitsUrl} target="_blank" rel="noreferrer">Giới hạn Gemini</a></div></details>
     </>}

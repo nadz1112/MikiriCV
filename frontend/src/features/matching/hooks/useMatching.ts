@@ -8,10 +8,16 @@ import { Candidate, MatchResult, MatchingJob } from '../../../types';
 import { candidateApi } from '../../../services/candidateApi';
 import { useAccountDialogsStore, showMatchingQuotaError } from '../../subscription/accountDialogsStore';
 import { useSubscriptionStore } from '../../subscription/subscriptionStore';
+import { useSafeAuth } from '../../auth/useSafeAuth';
+import { useNetworkStore } from '../../../shared/offline/networkStore';
+import { offlineDb } from '../../../shared/offline/offlineDb';
+import { isNetworkOfflineError } from '../../../shared/platform/runtime';
 
 const TERMINAL_JOB_STATUSES = new Set(['COMPLETED', 'CANCELLED', 'FAILED']);
 
 export function useMatching(initialJobId?: string, initialCandidateIds?: string[]) {
+  const { user } = useSafeAuth();
+  const isOnline = useNetworkStore((state) => state.isOnline);
   const { jobs, fetchJobs } = useJobStore();
   const { candidates, fetchCandidates } = useCandidateStore();
   const {
@@ -50,18 +56,60 @@ export function useMatching(initialJobId?: string, initialCandidateIds?: string[
     setIsLoadingLeaderboard(true);
     try {
       const jobData = await matchingFeatureApi.getLeaderboard(jobId);
-      setMatchingResults(jobData?.matchResults || []);
-    } catch {
-      setMatchingResults([]);
+      const results = jobData?.matchResults || [];
+      setMatchingResults(results);
+      if (user?.id) {
+        void offlineDb.saveLeaderboard(user.id, jobId, results);
+      }
+    } catch (error) {
+      if (isNetworkOfflineError(error) && user?.id) {
+        const cached = await offlineDb.getLeaderboard(user.id, jobId);
+        setMatchingResults(cached?.results ?? []);
+      } else {
+        setMatchingResults([]);
+      }
     } finally {
       setIsLoadingLeaderboard(false);
     }
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     void fetchJobs();
     void fetchCandidates();
   }, [fetchJobs, fetchCandidates]);
+
+  useEffect(() => {
+    let active = true;
+    if (!user?.id) return;
+    void offlineDb.getMatchingDraft(user.id).then((draft) => {
+      if (!active || !draft) return;
+      if (!initialJobId && !useMatchingFeatureStore.getState().selectedJobId && draft.selectedJobId) {
+        setSelectedJobId(draft.selectedJobId);
+      }
+      if (
+        (!initialCandidateIds || initialCandidateIds.length === 0) &&
+        useMatchingFeatureStore.getState().selectedCandidateIds.length === 0 &&
+        draft.selectedCandidateIds.length > 0
+      ) {
+        setSelectedCandidateIds(draft.selectedCandidateIds);
+      }
+      if (draft.activeJob && !TERMINAL_JOB_STATUSES.has(draft.activeJob.status)) {
+        setActiveJob(draft.activeJob);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [user?.id, initialJobId, initialCandidateIds, setSelectedJobId, setSelectedCandidateIds]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    void offlineDb.saveMatchingDraft(user.id, {
+      selectedJobId,
+      selectedCandidateIds,
+      activeJob,
+    });
+  }, [user?.id, selectedJobId, selectedCandidateIds, activeJob]);
 
   useEffect(() => {
     if (initialJobId) {
@@ -194,6 +242,10 @@ export function useMatching(initialJobId?: string, initialCandidateIds?: string[
 
   const handleRunMatching = async () => {
     if (isRunning) return;
+    if (!isOnline) {
+      toast.error('Đang ngoại tuyến: Không thể chấm điểm AI Gemini lúc này. Lựa chọn của bạn đã được lưu.');
+      return;
+    }
     if (!selectedJobId) {
       toast.error('Vui lòng chọn một Job Description mục tiêu');
       return;
@@ -306,7 +358,12 @@ export function useMatching(initialJobId?: string, initialCandidateIds?: string[
         setInsightCandidate(fullCandidate);
       }
     } catch {
-      // Giữ thông tin cơ bản nếu không tải được chi tiết
+      if (user?.id) {
+        const pinned = await offlineDb.getPinnedCv(user.id, result.candidateId);
+        if (pinned?.candidate) {
+          setInsightCandidate(pinned.candidate);
+        }
+      }
     }
   };
 

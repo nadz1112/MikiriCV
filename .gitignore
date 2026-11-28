@@ -44,3 +44,11 @@ Thumbs.db
 
 .postman/
 postman/
+
+# Android / Capacitor build artifacts
+frontend/android/.gradle/
+frontend/android/build/
+frontend/android/app/build/
+frontend/android/capacitor-cordova-android-plugins/build/
+frontend/android/local.properties
+frontend/release/*.apk
