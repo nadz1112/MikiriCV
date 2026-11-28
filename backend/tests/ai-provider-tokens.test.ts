@@ -12,7 +12,7 @@ it('counts the same prompt and schema that will be sent to the provider', async 
 it('bounds generated output and preserves separate thinking and total counts', async () => {
   calls.generate.mockResolvedValue({ response: { text: () => '{}', usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 50, thoughtsTokenCount: 20, totalTokenCount: 170 } } });
   expect(await provider.generateEvaluation('Safe prompt', 'PLUS', 4096)).toEqual({ rawText: '{}', inputTokens: 100, outputTokens: 50, thinkingTokens: 20, totalTokens: 170 });
-  expect(calls.generate).toHaveBeenCalledWith({ contents: [{ role: 'user', parts: [{ text: 'Safe prompt' }] }], generationConfig: { maxOutputTokens: 4096 } }, { timeout: 60000 });
+  expect(calls.generate).toHaveBeenCalledWith({ contents: [{ role: 'user', parts: [{ text: 'Safe prompt' }] }], generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 4096 } }, { timeout: 60000 });
 });
 it('does not hide an ambiguous failure behind another billable generation attempt', async () => {
   calls.generate.mockRejectedValue({ name: 'TimeoutError' });

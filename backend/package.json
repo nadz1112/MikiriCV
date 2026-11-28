@@ -12,6 +12,8 @@
     "prisma:studio": "prisma studio",
     "prisma:seed": "tsx prisma/seed.ts",
     "seed:candidates": "tsx src/scripts/seed-candidates.ts",
+    "seed:demo": "tsx src/scripts/seed-full-demo.ts",
+    "export:demo-sql": "tsx src/scripts/export-demo-sql.ts",
     "cleanup:idempotency": "tsx src/scripts/cleanup-idempotency-keys.ts",
     "maintenance:orphans": "tsx src/scripts/maintenance-orphans.ts",
     "test": "vitest run"

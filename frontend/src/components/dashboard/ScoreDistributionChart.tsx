@@ -127,9 +127,6 @@ export const ScoreDistributionChart: React.FC<ScoreDistributionChartProps> = ({
             <h3 className="font-bold text-slate-900 text-base">
               Phân bổ Điểm số Phù hợp (Score Distribution)
             </h3>
-            <span className="text-xs bg-blue-50 text-blue-700 font-semibold px-2 py-0.5 rounded-full">
-              FR5.5 Recharts
-            </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
             {jobTitle ? `Thống kê đối soát cho vị trí: ${jobTitle}` : 'Dữ liệu phân bổ theo 4 khoảng điểm chuẩn'}

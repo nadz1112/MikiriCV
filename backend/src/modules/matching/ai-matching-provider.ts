@@ -58,8 +58,10 @@ export class GeminiMatchingProvider implements AIMatchingProvider {
 
   async generateEvaluation(prompt: string, plan: 'FREE' | 'PLUS' = 'PLUS', maxOutputTokens = 8192): Promise<AiEvaluationOutput> {
     // No hidden retry after an ambiguous generation failure: it may already be billed.
-    const geminiResponse = await this.model(plan).generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens },
+    const model = this.model(plan);
+    const geminiResponse = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: { ...model.generationConfig, maxOutputTokens },
     }, { timeout: 60000 });
     const metadata = geminiResponse.response.usageMetadata as (typeof geminiResponse.response.usageMetadata & { thoughtsTokenCount?: number });
     let rawText = '';
